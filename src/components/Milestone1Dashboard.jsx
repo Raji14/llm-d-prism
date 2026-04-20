@@ -626,8 +626,8 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav }) 
                     
                     {/* Compact Prism Logo & Name */}
                     <div className="flex items-center gap-2.5 border-r border-slate-500 pr-4">
-                        <img src="/favicon.png" alt="Prism Logo" className="h-6 w-6 object-contain drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-emerald-600 hidden sm:inline">
+                        <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
+                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 hidden sm:inline">
                             Prism
                         </span>
                     </div>

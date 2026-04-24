@@ -294,13 +294,13 @@ const PrismHome = ({ onNavigate }) => {
                          Designed for human insight and agent automation. Standardizing the end-to-end lifecycle from routing optimization to high-fidelity reproduction.
                      </p>
                      
-                     <div className="flex flex-row gap-4 justify-between items-center relative mb-6">
+                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-6">
                          
                          {/* Ambient glowing background in center */}
                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
                          {/* Left Column: Roles & Actions */}
-                         <div className="w-1/3 space-y-3 flex flex-col items-center md:items-end">
+                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
                              <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-cyan-400/90 uppercase tracking-widest mb-2">User & Agent Roles</div>
                              
                              {/* Feature Developer */}
@@ -348,7 +348,7 @@ const PrismHome = ({ onNavigate }) => {
                          </div>
 
                          {/* Center Column: Core Pipeline */}
-                         <div className="w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
+                         <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
                              
                              {/* Prism */}
                              <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
@@ -407,7 +407,7 @@ const PrismHome = ({ onNavigate }) => {
                          </div>
 
                          {/* Right Column: Roles & Actions */}
-                         <div className="w-1/3 space-y-3 flex flex-col items-center lg:items-start">
+                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
                              <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-purple-400/90 uppercase tracking-widest mb-2">User & Agent Roles</div>
                              
                              {/* Solutions Architect */}

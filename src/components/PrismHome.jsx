@@ -11,8 +11,8 @@ const PrismHome = ({ onNavigate }) => {
 
             <div className="max-w-6xl w-full z-10 flex flex-col items-center">
                 {/* Hero Header */}
-                <header className="mb-10 text-center relative pt-6 flex flex-col items-center">
-                    <div className="flex items-center justify-center mb-2 space-x-3">
+                <header className="mb-12 text-center relative pt-6 flex flex-col items-center">
+                    <div className="flex items-center justify-center mb-3 space-x-3">
                         <a href="https://llm-d.ai" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
                             <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-9 object-contain" />
                         </a>
@@ -22,13 +22,10 @@ const PrismHome = ({ onNavigate }) => {
                             </h1>
                         </a>
                     </div>
-                    <p className="text-xl text-slate-400 max-w-3xl leading-relaxed font-light tracking-wide mb-4">
+                    <p className="text-lg text-slate-400 max-w-3xl leading-relaxed font-normal tracking-wide">
                         Performance analysis for distributed inference systems and agentic workflows
                     </p>
                 </header>
-
-
-
 
                 {/* Results Store landing Front Door */}
                 <section className="mb-16 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
@@ -41,9 +38,9 @@ const PrismHome = ({ onNavigate }) => {
                             <div>
                                 <div className="flex items-center gap-2.5 mb-1.5">
                                     <Database className="h-5 w-5 text-cyan-400" />
-                                    <h2 className="text-lg font-bold tracking-wider text-white uppercase font-mono">Results Store</h2>
+                                    <h2 className="text-2xl font-extrabold tracking-tight text-white">Results Store</h2>
                                 </div>
-                                <p className="text-[12px] text-slate-400 max-w-xl leading-relaxed">
+                                <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
                                     The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
                                 </p>
                             </div>
@@ -88,9 +85,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </div>
                                     <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
                                         <BarChart2 className="h-4 w-4" />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Browse Results</h3>
+                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Browse Results</h3>
                                     </div>
-                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
                                         Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
                                     </p>
                                 </div>
@@ -126,9 +123,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </div>
                                     <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
                                         <Upload className="h-4.5 w-4.5" />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Add Benchmark</h3>
+                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Add Benchmark</h3>
                                     </div>
-                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
                                         Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
                                     </p>
                                 </div>
@@ -162,9 +159,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </div>
                                     <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
                                         <Sliders className="h-4.5 w-4.5" />
-                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Manage Submissions</h3>
+                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Manage Submissions</h3>
                                     </div>
-                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
                                         Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
                                     </p>
                                 </div>
@@ -178,10 +175,10 @@ const PrismHome = ({ onNavigate }) => {
 
                 {/* Well-lit paths */}
                 <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-bold mb-2 text-center text-slate-100">
+                    <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
                         Well-lit paths
                     </h2>
-                    <p className="text-xs text-slate-500 leading-relaxed text-center mb-8">Live benchmarked serving configurations and architectural templates</p>
+                    <p className="text-xs text-slate-450 leading-relaxed text-center mb-8">Live benchmarked serving configurations and architectural templates</p>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full items-stretch">
                         {/* Path 1: Inference scheduling */}
@@ -190,14 +187,14 @@ const PrismHome = ({ onNavigate }) => {
                             className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
                         >
                             <div>
-                                <h3 className="text-xs xl:text-sm font-bold mb-1.5 text-white group-hover:text-cyan-400 transition-colors leading-tight uppercase font-mono tracking-wide">
+                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
                                     Intelligent routing
                                 </h3>
-                                <div className="flex flex-wrap gap-1 mb-2">
+                                <div className="flex flex-wrap gap-1 mb-2.5">
                                     <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Prefix-cache</span>
                                     <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Load balance</span>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-3">
+                                <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
                                     Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
                                 </p>
                                 
@@ -244,14 +241,14 @@ const PrismHome = ({ onNavigate }) => {
                             className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
                         >
                             <div>
-                                <h3 className="text-xs xl:text-sm font-bold mb-1.5 text-white group-hover:text-cyan-400 transition-colors leading-tight uppercase font-mono tracking-wide">
+                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
                                     Agentic serving
                                 </h3>
-                                <div className="flex flex-wrap gap-1 mb-2">
+                                <div className="flex flex-wrap gap-1 mb-2.5">
                                     <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Multi-turn</span>
                                     <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Tool use</span>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-3">
+                                <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
                                     Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
                                 </p>
                                 
@@ -317,13 +314,13 @@ const PrismHome = ({ onNavigate }) => {
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
                                         <Layers className="h-4.5 w-4.5 text-purple-400" />
-                                        <h3 className="text-xs xl:text-sm font-bold text-white group-hover:text-purple-400 transition-colors uppercase font-mono tracking-wide">Roadmap</h3>
+                                        <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400">Roadmap</h3>
                                     </div>
                                     <span className="text-[8.5px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400 uppercase font-black tracking-wider">
                                         {isComingSoonExpanded ? 'Active Deck' : 'Expand (4 Items)'}
                                     </span>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-4">
+                                <p className="text-slate-400 text-[11px] leading-relaxed mb-4">
                                     Upcoming performance optimizations and architectural templates on the Prism roadmap.
                                 </p>
 
@@ -381,20 +378,19 @@ const PrismHome = ({ onNavigate }) => {
                                 )}
                             </div>
 
-                            <button className="w-full mt-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-300 rounded-lg font-medium text-[10px] flex items-center justify-center border border-slate-800 transition-colors">
+                            <button className="w-full mt-3 py-1.5 bg-slate-855 hover:bg-slate-800 text-slate-300 rounded-lg font-medium text-[10px] flex items-center justify-center border border-slate-800 transition-colors">
                                 {isComingSoonExpanded ? 'Collapse Deck' : 'Expand Roadmap Deck'}
                             </button>
                         </div>
                     </div>
                 </section>
                 
-
-{/* Section: Utility Suite */}
+                {/* Section: Utility Suite */}
                 <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-bold mb-2 text-center text-slate-100">
-                          Utility suite
+                    <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
+                        Utility suite
                     </h2>
-                    <p className="text-xs text-slate-500 text-center mb-8 font-mono">Access specialized tools for deeper analysis and schema browsing.</p>
+                    <p className="text-xs text-slate-450 text-center mb-8">Access specialized tools for deeper analysis and schema browsing</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                         {/* Card 1: Benchmark Browser */}
                         <div 
@@ -404,9 +400,9 @@ const PrismHome = ({ onNavigate }) => {
                             <div>
                                 <div className="flex items-center mb-2">
                                     <BarChart2 className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Benchmark browser</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Benchmark browser</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Browse and compare benchmark results across runs.</p>
+                                <p className="text-[11px] text-slate-400 mb-4">Browse and compare benchmark results across runs.</p>
                             </div>
                             <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -421,9 +417,9 @@ const PrismHome = ({ onNavigate }) => {
                             <div>
                                 <div className="flex items-center mb-2">
                                     <FileCode className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Schema explorer</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Schema explorer</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Explore data schemas and metric definitions.</p>
+                                <p className="text-[11px] text-slate-400 mb-4">Explore data schemas and metric definitions.</p>
                             </div>
                             <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -438,9 +434,9 @@ const PrismHome = ({ onNavigate }) => {
                             <div>
                                 <div className="flex items-center mb-2">
                                     <Zap className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Workload catalog</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Workload catalog</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Explore standardized workloads for evaluation.</p>
+                                <p className="text-[11px] text-slate-400 mb-4">Explore standardized workloads for evaluation.</p>
                             </div>
                             <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -455,9 +451,9 @@ const PrismHome = ({ onNavigate }) => {
                             <div>
                                 <div className="flex items-center mb-2">
                                     <Activity className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Regressions & analysis</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Regressions & analysis</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Track nightly benchmark runs and detect regressions across well-lit paths.</p>
+                                <p className="text-[11px] text-slate-400 mb-4">Track nightly benchmark runs and detect regressions across well-lit paths.</p>
                             </div>
                             <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -467,178 +463,179 @@ const PrismHome = ({ onNavigate }) => {
                 </section>
                 
 
-
-
                 {/* Section: How it works */}
                 <section className="mb-20 w-full max-w-6xl mx-auto pl-20">
-                     <h2 className="text-3xl font-bold mb-2 text-center text-slate-100">
+                     <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
                           How it works: the full benchmark lifecycle
                      </h2>
-                     <p className="text-sm text-slate-400 text-center mb-12 max-w-2xl mx-auto">
+                     <p className="text-xs text-slate-450 text-center mb-12 max-w-2xl mx-auto">
                           Designed for human insight and agent automation. Standardizing the end-to-end lifecycle from routing optimization to high-fidelity reproduction.
                      </p>
                      
                      <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-6">
-                         
-                         {/* Ambient glowing background in center */}
-                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+                          
+                          {/* Ambient glowing background in center */}
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-                         {/* Left Column: Roles & Actions */}
-                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
-                             <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-cyan-400/90 uppercase tracking-widest mb-2">User & agent roles</div>
-                             
-                             {/* Feature Developer */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Feature developer</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Isolate component and system benchmarks.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Evaluate performance with established baselines.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Format results for publication and reproduction.</span>
-                                     </div>
-                                 </div>
-                             </div>
+                          {/* Left Column: Roles & Actions */}
+                          <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
+                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-cyan-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
+                              
+                              {/* Feature Developer */}
+                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
+                                  <div className="mb-2">
+                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Feature developer</h3>
+                                  </div>
+                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Isolate component and system benchmarks.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Evaluate performance with established baselines.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Format results for publication and reproduction.</span>
+                                      </div>
+                                  </div>
+                              </div>
 
-                             {/* Benchmark Developer */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Benchmark developer</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Publish reproducible workloads to the open catalog.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Configure cloud infrastructure for distributed testing.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Validate benchmark results for accuracy and correctness.</span>
-                                     </div>
-                                 </div>
-                             </div>
+                              {/* Benchmark Developer */}
+                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
+                                  <div className="mb-2">
+                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Benchmark developer</h3>
+                                  </div>
+                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Publish reproducible workloads to the open catalog.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Configure cloud infrastructure for distributed testing.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-cyan-400">•</span>
+                                          <span>Validate benchmark results for accuracy and correctness.</span>
+                                      </div>
+                                  </div>
+                              </div>
 
-                         </div>
+                          </div>
 
-                         {/* Center Column: Core Pipeline */}
-                         <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
-                             
-                             {/* Prism */}
-                             <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
-                                 <h4 className="text-sm font-bold text-purple-400 mb-0.5">Prism</h4>
-                                 <p className="text-sm text-slate-400">Visualize and compare metrics across benchmarks.</p>
-                             </div>
+                          {/* Center Column: Core Pipeline */}
+                          <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
+                              
+                              {/* Column Label */}
+                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-purple-400/90 uppercase tracking-widest mb-1.5 font-mono">Central pipeline</div>
 
-                             {/* Llm-d Results Store */}
-                             <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-3 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-blue-500/50 transition-all">
-                                 <h4 className="text-sm font-bold text-blue-400 mb-0.5">llm-d results store</h4>
-                                 <p className="text-sm text-slate-400">Scalable OSS store for unified schema results.</p>
-                             </div>
+                              {/* Prism */}
+                              <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
+                                  <h3 className="text-sm font-bold text-purple-400 mb-1">Prism</h3>
+                                  <p className="text-[11px] text-slate-400 leading-normal">Visualize and compare metrics across benchmarks.</p>
+                              </div>
 
-                             {/* Standard Benchmark Format / Report */}
-                             <a 
-                                 href="https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
+                              {/* Llm-d Results Store */}
+                              <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-3 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-blue-500/50 transition-all">
+                                  <h3 className="text-sm font-bold text-blue-400 mb-1">llm-d results store</h3>
+                                  <p className="text-[11px] text-slate-400 leading-normal">Scalable OSS store for unified schema results.</p>
+                              </div>
+
+                              {/* Standard Benchmark Format / Report */}
+                              <a 
+                                  href="https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
                               >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Standard benchmark report
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Unified JSON schema guarantees data interoperability.</p>
-                             </a>
+                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                      Standard benchmark report
+                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
+                                  </h3>
+                                  <p className="text-[11px] text-slate-400 leading-normal">Unified JSON schema guarantees data interoperability.</p>
+                              </a>
 
-                             {/* Test Harness */}
-                             <a 
-                                 href="https://github.com/kubernetes-sigs/inference-perf/"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                             >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Test harness
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Stress distributed systems with agentic serving workloads.</p>
-                             </a>
+                              {/* Test Harness */}
+                              <a 
+                                  href="https://github.com/kubernetes-sigs/inference-perf/"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
+                              >
+                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                      Test harness
+                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
+                                  </h3>
+                                  <p className="text-[11px] text-slate-400 leading-normal">Stress distributed systems with agentic serving workloads.</p>
+                              </a>
 
-                             {/* Real World Workload Catalog */}
-                             <a 
-                                 href="https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                             >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Real world workload catalog
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Access standardized workloads for evaluation.</p>
-                             </a>
+                              {/* Real World Workload Catalog */}
+                              <a 
+                                  href="https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
+                              >
+                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                      Real world workload catalog
+                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
+                                  </h3>
+                                  <p className="text-[11px] text-slate-400 leading-normal">Access standardized workloads for evaluation.</p>
+                              </a>
 
-                         </div>
+                          </div>
 
-                         {/* Right Column: Roles & Actions */}
-                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
-                             <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-purple-400/90 uppercase tracking-widest mb-2">User & agent roles</div>
-                             
-                             {/* Solutions Architect */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Solutions architect</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Analyze features for optimal architectural fit.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Architect full stack distributed inference solutions.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Fork and run new custom benchmarks dynamically.</span>
-                                     </div>
-                                 </div>
-                             </div>
+                          {/* Right Column: Roles & Actions */}
+                          <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
+                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-purple-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
+                              
+                              {/* Solutions Architect */}
+                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
+                                  <div className="mb-2">
+                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Solutions architect</h3>
+                                  </div>
+                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Analyze features for optimal architectural fit.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Architect full stack distributed inference solutions.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Fork and run new custom benchmarks dynamically.</span>
+                                      </div>
+                                  </div>
+                              </div>
 
-                             {/* Stack Operator */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Stack operator</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Compare price vs performance of serving stacks.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Select optimal configurations for production use.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Reproduce benchmarks to validate performance gain.</span>
-                                     </div>
-                                 </div>
-                             </div>
+                              {/* Stack Operator */}
+                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
+                                  <div className="mb-2">
+                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Stack operator</h3>
+                                  </div>
+                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Compare price vs performance of serving stacks.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Select optimal configurations for production use.</span>
+                                      </div>
+                                      <div className="flex items-start gap-1">
+                                          <span className="text-purple-400">•</span>
+                                          <span>Reproduce benchmarks to validate performance gain.</span>
+                                      </div>
+                                  </div>
+                              </div>
 
-                         </div>
-                     </div>
-                </section>
+                          </div>
+                      </div>
+                 </section>
 
                 {/* Secondary Actions / Footer */}
                 <div className="flex space-x-4 mb-16">
@@ -646,9 +643,9 @@ const PrismHome = ({ onNavigate }) => {
                         href="https://llm-d.ai/" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="px-6 py-2 bg-transparent hover:bg-slate-800 text-slate-400 rounded-lg transition-colors flex items-center text-sm font-medium"
+                        className="px-5 py-2.5 bg-slate-900/50 hover:bg-slate-850 text-slate-400 border border-slate-800 rounded font-mono text-[10px] uppercase tracking-widest transition-all"
                     >
-                        llm-d.ai docs
+                        llm-d.ai documentation
                     </a>
                 </div>
             </div>

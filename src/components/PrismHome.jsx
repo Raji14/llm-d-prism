@@ -31,79 +31,146 @@ const PrismHome = ({ onNavigate }) => {
 
 
                 {/* Results Store landing Front Door */}
-                <section className="mb-16 w-full max-w-5xl bg-gradient-to-br from-slate-900 via-[#0d1527] to-slate-950 p-6 rounded-2xl border border-cyan-500/20 shadow-[0_4px_30px_rgba(6,182,212,0.08)] relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+                <section className="mb-16 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
+                    {/* Grid mesh backdrop decorative lines */}
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-6">
-                        <div>
-                            <div className="flex items-center gap-2.5 mb-1.5">
-                                <Database className="h-6 w-6 text-cyan-400 animate-pulse" />
-                                <h2 className="text-xl font-bold tracking-wider text-white uppercase font-mono">Results Store</h2>
-                            </div>
-                            <p className="text-[12px] text-slate-400 max-w-xl leading-relaxed">
-                                The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2 font-mono text-[9px] text-slate-500 border border-slate-800/80 px-2.5 py-1 rounded bg-slate-950/40 select-none">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Schema Sync (v0.2)
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Action 1: Browse Results */}
-                        <div 
-                            onClick={() => onNavigate('benchmark-browser')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
+                    <div className="relative p-6 md:p-8 z-10">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
                             <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <BarChart2 className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Browse Results</h3>
+                                <div className="flex items-center gap-2.5 mb-1.5">
+                                    <Database className="h-5 w-5 text-cyan-400" />
+                                    <h2 className="text-lg font-bold tracking-wider text-white uppercase font-mono">Results Store</h2>
                                 </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
+                                <p className="text-[12px] text-slate-400 max-w-xl leading-relaxed">
+                                    The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
                                 </p>
                             </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Open Browser <ArrowRight className="h-3 w-3" />
+                            <div className="flex items-center gap-2 font-mono text-[9px] text-slate-400 border border-slate-800/80 px-2.5 py-1 rounded bg-slate-950/40 select-none">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Schema Sync (v0.2)
                             </div>
                         </div>
 
-                        {/* Action 2: Add/Submit */}
-                        <div 
-                            onClick={() => onNavigate('manage-benchmarks')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <Upload className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Add Benchmark</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Action 1: Browse Results */}
+                            <div 
+                                onClick={() => onNavigate('benchmark-browser')}
+                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
+                            >
+                                <div>
+                                    {/* Tech Illustration */}
+                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/10 transition-colors">
+                                        <div className="absolute inset-0 bg-[linear-gradient(to_right,#090d16_1px,transparent_1px),linear-gradient(to_bottom,#090d16_1px,transparent_1px)] bg-[size:10px_10px]" />
+                                        <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
+                                            <line x1="15" y1="10" x2="15" y2="70" stroke="#1e293b" strokeWidth="1" strokeDasharray="2 2" />
+                                            <line x1="15" y1="70" x2="185" y2="70" stroke="#1e293b" strokeWidth="1" strokeDasharray="2 2" />
+                                            <path d="M15 65 Q 50 30, 80 50 T 140 25 T 185 15" stroke="rgba(34, 211, 238, 0.08)" strokeWidth="6" strokeLinecap="round" fill="none" />
+                                            <path 
+                                                d="M15 65 Q 50 30, 80 50 T 140 25 T 185 15" 
+                                                stroke="url(#chart-cyan-grad)" 
+                                                strokeWidth="1.5" 
+                                                strokeLinecap="round" 
+                                                fill="none"
+                                            />
+                                            <circle cx="80" cy="50" r="3" fill="#22d3ee" className="animate-ping opacity-60" />
+                                            <circle cx="80" cy="50" r="1.5" fill="#22d3ee" />
+                                            <circle cx="140" cy="25" r="3" fill="#06b6d4" className="animate-ping opacity-60" style={{ animationDelay: '0.4s' }} />
+                                            <circle cx="140" cy="25" r="1.5" fill="#06b6d4" />
+                                            <defs>
+                                                <linearGradient id="chart-cyan-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                    <stop offset="0%" stopColor="#0891b2" />
+                                                    <stop offset="50%" stopColor="#22d3ee" />
+                                                    <stop offset="100%" stopColor="#6366f1" />
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
+                                        <BarChart2 className="h-4 w-4" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Browse Results</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                        Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
+                                    </p>
                                 </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
-                                </p>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
+                                    Open Browser <ArrowRight className="h-3 w-3" />
+                                </div>
                             </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Submit Run <ArrowRight className="h-3 w-3" />
-                            </div>
-                        </div>
 
-                        {/* Action 3: Manage Submissions */}
-                        <div 
-                            onClick={() => onNavigate('manage-benchmarks')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <Sliders className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Manage Submissions</h3>
+                            {/* Action 2: Add/Submit */}
+                            <div 
+                                onClick={() => onNavigate('manage-benchmarks')}
+                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
+                            >
+                                <div>
+                                    {/* Tech Illustration */}
+                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-blue-500/10 transition-colors">
+                                        <div className="absolute inset-0 bg-[radial-gradient(#0c1322_1px,transparent_1px)] bg-[size:8px_8px]" />
+                                        <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
+                                            <rect x="65" y="45" width="70" height="20" rx="3" fill="#0b0f19" stroke="#1e293b" strokeWidth="1" />
+                                            <line x1="72" y1="51" x2="82" y2="51" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
+                                            <line x1="72" y1="57" x2="95" y2="57" stroke="#334155" strokeWidth="1" strokeLinecap="round" />
+                                            <circle cx="123" cy="55" r="1.5" fill="#10b981" />
+                                            <circle cx="129" cy="55" r="1.5" fill="#6366f1" />
+                                            <line x1="100" y1="45" x2="100" y2="18" stroke="url(#upload-beam-grad)" strokeWidth="1.5" strokeDasharray="3 3" />
+                                            <path d="M94 24 L100 18 L106 24 M100 18 L100 32" stroke="#60a5fa" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="animate-bounce" />
+                                            <defs>
+                                                <linearGradient id="upload-beam-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+                                                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0" />
+                                                    <stop offset="100%" stopColor="#60a5fa" stopOpacity="0.8" />
+                                                </linearGradient>
+                                            </defs>
+                                        </svg>
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
+                                        <Upload className="h-4.5 w-4.5" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Add Benchmark</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                        Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
+                                    </p>
                                 </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
-                                </p>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
+                                    Submit Run <ArrowRight className="h-3 w-3" />
+                                </div>
                             </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Track Progress <ArrowRight className="h-3 w-3" />
+
+                            {/* Action 3: Manage Submissions */}
+                            <div 
+                                onClick={() => onNavigate('manage-benchmarks')}
+                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
+                            >
+                                <div>
+                                    {/* Tech Illustration */}
+                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-purple-500/10 transition-colors">
+                                        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(168,85,247,0.01)_1px,transparent_1px)] bg-[size:100%_4px]" />
+                                        <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
+                                            <line x1="45" y1="36" x2="100" y2="36" stroke="#1e293b" strokeWidth="1" />
+                                            <line x1="100" y1="36" x2="155" y2="36" stroke="#1e293b" strokeWidth="1" />
+                                            <circle cx="45" cy="36" r="6" fill="#111827" stroke="#4f46e5" strokeWidth="1" />
+                                            <circle cx="45" cy="36" r="2.5" fill="#818cf8" />
+                                            <circle cx="100" cy="36" r="9" fill="#1e152a" stroke="#a855f7" strokeWidth="1" />
+                                            <circle cx="100" cy="36" r="3.5" fill="#c084fc" className="animate-pulse" />
+                                            <circle cx="155" cy="36" r="6" fill="#111827" stroke="#059669" strokeWidth="1" />
+                                            <circle cx="155" cy="36" r="2.5" fill="#34d399" />
+                                            <text x="45" y="55" textAnchor="middle" fill="#475569" className="font-mono text-[6px] uppercase tracking-wider font-bold">Staged</text>
+                                            <text x="100" y="58" textAnchor="middle" fill="#c084fc" className="font-mono text-[6.5px] uppercase tracking-wider font-bold">Review</text>
+                                            <text x="155" y="55" textAnchor="middle" fill="#475569" className="font-mono text-[6px] uppercase tracking-wider font-bold">Public</text>
+                                        </svg>
+                                    </div>
+                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
+                                        <Sliders className="h-4.5 w-4.5" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Manage Submissions</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
+                                        Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
+                                    </p>
+                                </div>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
+                                    Track Progress <ArrowRight className="h-3 w-3" />
+                                </div>
                             </div>
                         </div>
                     </div>

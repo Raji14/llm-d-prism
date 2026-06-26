@@ -13,17 +13,65 @@
 // limitations under the License.
 
 import React, { useState } from 'react';
-import { RotateCcw, ChevronDown, ChevronUp, Star, CheckSquare, Square, Check, Pencil, Trash2 } from 'lucide-react';
-import { getEffectiveTp, getBucket, getSourceTag, getSourceType, getSourceTypeStyle, formatOriginLabel } from '../../utils/dashboardHelpers';
+import { RotateCcw, ChevronDown, ChevronUp, Pin, CheckSquare, Square, Check, Pencil, Trash2, Code2, Copy, X, Database, Eye, ShieldCheck, AlertCircle, TrendingUp, AlertTriangle, Search, FileText, FileClock, Sliders, Activity } from 'lucide-react';
+import { RunComparisonChart } from '../Dashboard/RunComparisonChart';
+import { ThroughputCostChart } from '../Dashboard/ThroughputCostChart';
+import { getEffectiveTp, getBucket, getSourceTag, getSourceType, getSourceTypeStyle, formatOriginLabel, getBenchmarkKey } from '../../utils/dashboardHelpers';
 
 const getCleanModelName = (name) => {
     if (!name) return '';
     return name.replace(/\s*\[.*?\]/g, '').replace(/\s*\(.*?\)/g, '').trim();
 };
 
+const getKpiFilterLabel = (filter) => {
+    switch (filter) {
+        case 'my-uploads': return 'My Uploads';
+        case 'verified': return 'Production Ready';
+        case 'staged': return 'Staged';
+        case 'processing': return 'Pending Processing';
+        case 'in_review': return 'In Review';
+        case 'approved': return 'Public';
+        case 'action': return 'Rejected';
+        case 'legacy': return 'Legacy Format';
+        case 'pareto': return 'Pareto Frontier';
+        case 'regressions': return 'Active Regressions';
+        default: return null;
+    }
+};
+
 export const UnifiedDataTable = (props) => {
+    const [showComparisonDrawer, setShowComparisonDrawer] = useState(false);
+    const [comparisonTab, setComparisonTab] = useState('scatter'); // 'scatter' or 'bar'
+    
+    // Local state for ThroughputCostChart inside Comparison Drawer
+    const [drawerTputType, setDrawerTputType] = useState('output');
+    const [drawerChartMode, setDrawerChartMode] = useState('tpot');
+    const [drawerYQualityMode, setDrawerYQualityMode] = useState('mmlu_pro');
+    const [drawerXQualityMode, setDrawerXQualityMode] = useState('mmlu_pro');
+    const [drawerCostMode, setDrawerCostMode] = useState('spot');
+    const [drawerShowPerChip, setDrawerShowPerChip] = useState(false);
+    const [drawerShowLabels, setDrawerShowLabels] = useState(true);
+    const [drawerShowDataLabels, setDrawerShowDataLabels] = useState(false);
+    const [drawerShowPareto, setDrawerShowPareto] = useState(true);
+    const [drawerIsZoomEnabled, setDrawerIsZoomEnabled] = useState(false);
+    const [drawerZoomDomain, setDrawerZoomDomain] = useState(null);
+    const [drawerXAxisMax, setDrawerXAxisMax] = useState(Infinity);
+    const [drawerIsLogScaleX, setDrawerIsLogScaleX] = useState(false);
+    const [drawerLatType, setDrawerLatType] = useState('e2e');
+    const [drawerChartColorMode, setDrawerChartColorMode] = useState('hardware');
+    const [drawerIsDragging, setDrawerIsDragging] = useState(false);
+    
+    const drawerChartContainerRef = React.useRef(null);
+    const drawerLastMouseRef = React.useRef({ x: 0, y: 0 });
+
+
+    const [viewingPayloadRun, setViewingPayloadRun] = useState(null);
     const [editingRunId, setEditingRunId] = useState(null);
     const [editingValue, setEditingValue] = useState('');
+    const [rejectingRunId, setRejectingRunId] = useState(null);
+    const [rejectionFeedback, setRejectionFeedback] = useState('');
+    const [drawerRejectingRunId, setDrawerRejectingRunId] = useState(null);
+    const [drawerRejectionFeedback, setDrawerRejectionFeedback] = useState('');
 
     const commitEdit = () => {
         if (editingRunId && setBrv02CustomLabels) {
@@ -54,6 +102,15 @@ export const UnifiedDataTable = (props) => {
         hideShowSelectedOnly = false,
         renameClearToUnselectAll = false,
         brv02Runs = [], brv02CustomLabels = {}, setBrv02CustomLabels, removeBrv02Run,
+        setShowDataPanel,
+        searchTerm = '',
+        kpiFilter = null,
+        setKpiFilter,
+        paretoKeys = new Set(),
+        submissionsMap = {},
+        updateSubmissionStatus,
+        qualityMetrics,
+        onOpenUploadDialog,
         groupBy = 'Model',
         sortByField = 'timestamp',
         sortDirection = 'desc',
@@ -81,18 +138,45 @@ export const UnifiedDataTable = (props) => {
         }
     } = props;
 
-    const hasNonLocalSelected = React.useMemo(() => {
-        if (!selectedBenchmarks || selectedBenchmarks.size === 0) return false;
-        return Array.from(selectedBenchmarks).some(key => {
+    const drawerMetricAvailability = React.useMemo(() => {
+        const hasNtpot = filteredBySource?.some(d => d.metrics?.ntpot != null);
+        const hasTtft = filteredBySource?.some(d => d.metrics?.ttft?.mean != null || d.ttft?.mean != null);
+        const hasTokensPerSec = filteredBySource?.some(d => d.tokens_per_second != null);
+        const hasItl = filteredBySource?.some(d => d.metrics?.itl != null || d.itl != null);
+        return { ntpot: hasNtpot, ttft: hasTtft, tokens_per_sec: hasTokensPerSec, itl: hasItl };
+    }, [filteredBySource]);
+
+    const localSelectedCount = React.useMemo(() => {
+        let count = 0;
+        selectedBenchmarks.forEach(key => {
             const stat = modelStats.find(s => s.benchmarkKey === key);
-            if (!stat) return false;
-            const sourceStr = stat.data?.[0]?.source || '';
-            return !sourceStr.startsWith('brv02:');
+            if (stat) {
+                const sourceStr = stat.data?.[0]?.source || '';
+                if (sourceStr.startsWith('brv02:')) count++;
+            }
         });
+        return count;
     }, [selectedBenchmarks, modelStats]);
+
+    const hasLocalSelected = localSelectedCount > 0;
+
+    const hasAnyLocalRuns = React.useMemo(() => {
+        return modelStats.some(s => {
+            const sourceStr = s.data?.[0]?.source || '';
+            return sourceStr.startsWith('brv02:');
+        });
+    }, [modelStats]);
 
     const handleDeleteSelected = () => {
         if (!removeBrv02Run) return;
+        if (localSelectedCount === 0) return;
+
+        const confirmMsg = localSelectedCount === 1 
+            ? "Are you sure you want to permanently delete this staged run from your local view?"
+            : `Are you sure you want to permanently delete these ${localSelectedCount} staged runs from your local view?`;
+
+        if (!window.confirm(confirmMsg)) return;
+
         selectedBenchmarks.forEach(key => {
             const stat = modelStats.find(s => s.benchmarkKey === key);
             if (stat) {
@@ -232,8 +316,102 @@ export const UnifiedDataTable = (props) => {
     };
 
     const filteredStats = React.useMemo(() => {
-        return modelStats.filter(stat => !showSelectedOnly || selectedBenchmarks.has(stat.benchmarkKey));
-    }, [modelStats, showSelectedOnly, selectedBenchmarks]);
+        let stats = modelStats;
+
+        // Apply show selected only
+        if (showSelectedOnly) {
+            stats = stats.filter(stat => selectedBenchmarks.has(stat.benchmarkKey));
+        }
+
+        // Apply KPI Filter
+        if (kpiFilter === 'my-uploads') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                return src.startsWith('brv02:');
+            });
+        } else if (kpiFilter === 'verified') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                return src.startsWith('brv02:') || src.startsWith('llm-d:');
+            });
+        } else if (kpiFilter === 'staged') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                const isBrv02 = src.startsWith('brv02:');
+                const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                return isBrv02 && (!sub || sub.status === 'staged');
+            });
+        } else if (kpiFilter === 'processing') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                const isBrv02 = src.startsWith('brv02:');
+                const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                return sub && sub.status === 'submitted_pending_processing';
+            });
+        } else if (kpiFilter === 'in_review') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                const isBrv02 = src.startsWith('brv02:');
+                const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                return sub && (sub.status === 'submitted_pending_review' || sub.status === 'in_review');
+            });
+        } else if (kpiFilter === 'approved') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                const isBrv02 = src.startsWith('brv02:');
+                const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                return sub && (sub.status === 'public' || sub.status === 'promoted' || sub.status === 'approved');
+            });
+        } else if (kpiFilter === 'action') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                const isBrv02 = src.startsWith('brv02:');
+                const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                return sub && (sub.status === 'rejected' || sub.status === 'changes_requested');
+            });
+        } else if (kpiFilter === 'legacy') {
+            stats = stats.filter(stat => {
+                const src = stat.data?.[0]?.source || '';
+                return !src.startsWith('brv02:');
+            });
+        } else if (kpiFilter === 'pareto') {
+            stats = stats.filter(stat => paretoKeys.has(stat.benchmarkKey));
+        } else if (kpiFilter === 'regressions') {
+            if (baselineBenchmarkKey) {
+                const baselineStat = modelStats.find(s => s.benchmarkKey === baselineBenchmarkKey);
+                if (baselineStat && baselineStat.maxTput) {
+                    stats = stats.filter(stat => {
+                        if (stat.benchmarkKey === baselineBenchmarkKey) return false;
+                        if (!stat.maxTput) return false;
+                        const tputDelta = ((stat.maxTput - baselineStat.maxTput) / baselineStat.maxTput) * 100;
+                        return tputDelta < -5;
+                    });
+                } else {
+                    stats = [];
+                }
+            } else {
+                stats = [];
+            }
+        }
+
+        // Apply Text Search Term Filter
+        if (searchTerm) {
+            const term = searchTerm.toLowerCase();
+            stats = stats.filter(stat => {
+                const modelMatch = (stat.model || '').toLowerCase().includes(term);
+                const hwMatch = (stat.hardware || '').toLowerCase().includes(term);
+                const confMatch = (stat.configuration || '').toLowerCase().includes(term);
+                return modelMatch || hwMatch || confMatch;
+            });
+        }
+
+        return stats;
+    }, [modelStats, showSelectedOnly, selectedBenchmarks, kpiFilter, searchTerm, paretoKeys, baselineBenchmarkKey]);
 
     const sortedStats = React.useMemo(() => {
         return [...filteredStats].sort((a, b) => {
@@ -365,25 +543,219 @@ export const UnifiedDataTable = (props) => {
         setSelectedBenchmarks(new Set());
     };
 
-    const toggleGroup = (groupStats, isAllSelected) => {
-        const newSelected = new Set(selectedBenchmarks);
-        if (isAllSelected) {
-            groupStats.forEach(s => newSelected.delete(s.benchmarkKey));
-        } else {
-            groupStats.forEach(s => newSelected.add(s.benchmarkKey));
+    // Computes metric-specific empty state messaging, icons, colors and actions
+    const getEmptyStateConfig = () => {
+        switch (kpiFilter) {
+            case 'my-uploads':
+                return {
+                    icon: <FileText className="w-8 h-8" />,
+                    themeColor: 'cyan',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+                    radialGlow: 'bg-cyan-500/10',
+                    title: 'No Uploaded Benchmarks Found',
+                    description: "You haven't uploaded or staged any benchmark runs yet. Staged and submitted benchmarks will appear here.",
+                    action: (
+                        <button
+                            onClick={() => onOpenUploadDialog && onOpenUploadDialog()}
+                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Upload & Stage Runs
+                        </button>
+                    )
+                };
+            case 'staged':
+                return {
+                    icon: <FileText className="w-8 h-8" />,
+                    themeColor: 'cyan',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+                    radialGlow: 'bg-cyan-500/10',
+                    title: 'No Staged Submissions Found',
+                    description: "You haven't uploaded or staged any local benchmark runs yet. Benchmark uploads staged via the ingestion tool will appear here.",
+                    action: (
+                        <button
+                            onClick={() => onOpenUploadDialog && onOpenUploadDialog()}
+                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Upload & Stage Runs
+                        </button>
+                    )
+                };
+            case 'verified':
+                return {
+                    icon: <ShieldCheck className="w-8 h-8" />,
+                    themeColor: 'emerald',
+                    glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                    radialGlow: 'bg-emerald-500/10',
+                    title: 'No Production-Ready Runs',
+                    description: "No benchmarks currently meet the strict v0.2 production validation criteria. To publish to production, ensure runs comply with all verification logs.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Clear Filters & View All
+                        </button>
+                    )
+                };
+            case 'in_review':
+                return {
+                    icon: <FileClock className="w-8 h-8" />,
+                    themeColor: 'purple',
+                    glowClass: 'shadow-[0_0_30px_rgba(168,85,247,0.2)] bg-purple-500/10 border-purple-500/30 text-purple-400',
+                    radialGlow: 'bg-purple-500/10',
+                    title: 'No Submissions In Review',
+                    description: "There are currently no benchmark submissions pending admin compliance review. Everything has been processed.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                        >
+                            Reset Filters
+                        </button>
+                    )
+                };
+            case 'approved':
+                return {
+                    icon: <ShieldCheck className="w-8 h-8" />,
+                    themeColor: 'emerald',
+                    glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                    radialGlow: 'bg-emerald-500/10',
+                    title: 'No Approved Runs Found',
+                    description: "No benchmark submissions have been approved for this profile yet. Once review admins approve staged runs, they will display here.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            View Staged Registry
+                        </button>
+                    )
+                };
+            case 'legacy':
+                return {
+                    icon: <Database className="w-8 h-8" />,
+                    themeColor: 'slate',
+                    glowClass: 'shadow-[0_0_30px_rgba(148,163,184,0.15)] bg-slate-800/40 border-slate-700/50 text-slate-400',
+                    radialGlow: 'bg-slate-800/10',
+                    title: 'No Legacy Runs Found',
+                    description: "No v0.1 format legacy benchmark runs match your active filter set. Standardize workflows onto the v0.2 layout spec.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                        >
+                            Reset Filters
+                        </button>
+                    )
+                };
+            case 'action':
+                return {
+                    icon: <Check className="w-8 h-8" />,
+                    themeColor: 'emerald',
+                    glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+                    radialGlow: 'bg-emerald-500/10',
+                    title: 'All Clear! No Action Required',
+                    description: "Excellent work! None of your staged submissions currently require code adjustments, re-running, or reviewer actions.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                        >
+                            Back to Main Catalog
+                        </button>
+                    )
+                };
+            case 'pareto':
+                return {
+                    icon: <TrendingUp className="w-8 h-8" />,
+                    themeColor: 'purple',
+                    glowClass: 'shadow-[0_0_30px_rgba(168,85,247,0.2)] bg-purple-500/10 border-purple-500/30 text-purple-400',
+                    radialGlow: 'bg-purple-500/10',
+                    title: 'No Pareto Frontier Configurations',
+                    description: "No configurations currently match the cost-performance optimal frontier. Try clearing active filters or uploading multi-node sweeps.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-purple-500/20 hover:shadow-purple-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Clear Filters
+                        </button>
+                    )
+                };
+            case 'regressions':
+                return {
+                    icon: <AlertTriangle className="w-8 h-8" />,
+                    themeColor: 'amber',
+                    glowClass: 'shadow-[0_0_30px_rgba(245,158,11,0.2)] bg-amber-500/10 border-amber-500/30 text-amber-400',
+                    radialGlow: 'bg-amber-500/10',
+                    title: 'No Active Regressions',
+                    description: "Fantastic! No configurations show a performance or throughput drop of more than 5% relative to the pinned baseline configuration.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Reset Views
+                        </button>
+                    )
+                };
+            default:
+                return {
+                    icon: <Search className="w-8 h-8" />,
+                    themeColor: 'cyan',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+                    radialGlow: 'bg-cyan-500/10',
+                    title: 'No Benchmarks Matching Filters',
+                    description: "No records in the database match your combination of text query and active dropdown selections. Adjust your facets or start fresh.",
+                    action: (
+                        <button
+                            onClick={clearFilters}
+                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                        >
+                            Reset Slices
+                        </button>
+                    )
+                };
         }
-        setSelectedBenchmarks(newSelected);
     };
+
+    const emptyConfig = getEmptyStateConfig();
 
     return (
         <div className="flex flex-col gap-3">
             {/* Action Bar */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-1 border-b border-slate-200 dark:border-slate-700/50 pb-3">
                 <div className="flex items-center gap-4">
-                    <div className="flex flex-col">
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                            {modelStats.length} matching benchmarks
-                        </span>
+                    <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 font-mono">
+                                {filteredStats.length} matching benchmarks
+                            </span>
+                            {kpiFilter && (
+                                <span className={`text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full border flex items-center gap-1.5 transition-all select-none ${
+                                    kpiFilter === 'my-uploads' ? 'bg-cyan-550/10 text-cyan-400 border-cyan-550/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' :
+                                    kpiFilter === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' :
+                                    kpiFilter === 'action' ? 'bg-red-500/10 text-red-400 border-red-500/25' :
+                                    kpiFilter === 'staged' ? 'bg-amber-500/10 text-amber-400 border-amber-500/25' :
+                                    kpiFilter === 'in_review' ? 'bg-purple-500/10 text-purple-400 border-purple-500/25' :
+                                    kpiFilter === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' :
+                                    kpiFilter === 'legacy' ? 'bg-slate-800 border-slate-700 text-slate-400' :
+                                    kpiFilter === 'pareto' ? 'bg-purple-500/10 text-purple-400 border-purple-500/25' :
+                                    kpiFilter === 'regressions' ? 'bg-amber-500/10 text-amber-400 border-amber-500/25' : 'bg-slate-800/60 text-slate-400 border-slate-700'
+                                }`}>
+                                    <span>{getKpiFilterLabel(kpiFilter)}</span>
+                                    {setKpiFilter && (
+                                        <button 
+                                            onClick={() => setKpiFilter(null)}
+                                            className="hover:text-white transition-colors cursor-pointer flex items-center justify-center"
+                                            title="Clear filter"
+                                        >
+                                            <X size={10} strokeWidth={3} />
+                                        </button>
+                                    )}
+                                </span>
+                            )}
+                        </div>
                         <span className="text-xs text-slate-500">
                             {selectedBenchmarks.size} selected
                         </span>
@@ -405,55 +777,81 @@ export const UnifiedDataTable = (props) => {
                     )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {selectedBenchmarks.size === 0 ? (
-                        <>
-                            <button
-                                onClick={selectAllVisible}
-                                className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                            >
-                                Select All Visible
-                            </button>
-                            <button
-                                onClick={clearFilters}
-                                className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 border border-transparent text-slate-600 dark:text-slate-400 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
-                            >
-                                <RotateCcw size={12} /> Clear Filters
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                onClick={invertSelected}
-                                className="px-3 py-1.5 text-xs font-medium bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-                            >
-                                Invert Selected
-                            </button>
-                            <button
-                                onClick={clearSelected}
-                                className="px-3 py-1.5 text-xs font-medium bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 text-red-600 dark:text-red-400 rounded hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
-                            >
-                                {renameClearToUnselectAll ? "Unselect All" : "Clear Selected"}
-                            </button>
-                            <div className="relative group flex items-center">
-                                <button
-                                    onClick={handleDeleteSelected}
-                                    disabled={hasNonLocalSelected}
-                                    className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                                        hasNonLocalSelected
-                                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700/50 cursor-not-allowed opacity-50'
-                                            : 'bg-red-600 hover:bg-red-500 text-white shadow-sm border border-transparent'
-                                    }`}
-                                >
-                                    Delete Selected
-                                </button>
-                                {hasNonLocalSelected && (
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 border border-slate-700/80 text-white text-xs font-medium rounded-lg invisible group-hover:visible shadow-xl z-[99999] whitespace-nowrap flex items-center gap-2">
-                                        Non-local data sources are read-only.
-                                    </div>
-                                )}
-                            </div>
-                        </>
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Compare Selected Button */}
+                    <button
+                        onClick={() => selectedBenchmarks.size > 0 && sortedStats.length > 0 && setShowComparisonDrawer(true)}
+                        disabled={selectedBenchmarks.size === 0 || sortedStats.length === 0}
+                        className={
+                            (selectedBenchmarks.size === 0 || sortedStats.length === 0)
+                            ? "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-50 flex items-center gap-1.5"
+                            : "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
+                        }
+                    >
+                        <Eye className="w-3.5 h-3.5" />
+                        Visualize & Inspect ({selectedBenchmarks.size})
+                    </button>
+
+                    {/* Select All Visible */}
+                    <button
+                        onClick={selectAllVisible}
+                        disabled={sortedStats.length === 0}
+                        className={
+                            sortedStats.length === 0
+                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
+                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
+                        }
+                    >
+                        Select All Visible
+                    </button>
+
+                    {/* Invert Selected */}
+                    <button
+                        onClick={invertSelected}
+                        disabled={sortedStats.length === 0}
+                        className={
+                            sortedStats.length === 0
+                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
+                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
+                        }
+                    >
+                        Invert Selected
+                    </button>
+
+                    {/* Unselect All / Clear Selected */}
+                    <button
+                        onClick={clearSelected}
+                        disabled={selectedBenchmarks.size === 0}
+                        className={
+                            selectedBenchmarks.size === 0
+                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
+                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 cursor-pointer transition-all duration-200"
+                        }
+                    >
+                        {renameClearToUnselectAll ? "Unselect All" : "Clear Selected"}
+                    </button>
+
+                    {/* Clear Filters */}
+                    <button
+                        onClick={clearFilters}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200 flex items-center gap-1.5"
+                    >
+                        <RotateCcw size={12.5} /> Clear Filters
+                    </button>
+
+                    {/* Delete Staged Runs */}
+                    {hasAnyLocalRuns && (
+                        <button
+                            onClick={handleDeleteSelected}
+                            disabled={localSelectedCount === 0}
+                            className={
+                                localSelectedCount === 0
+                                ? "px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-50"
+                                : "px-3 py-1.5 text-xs font-semibold rounded-xl bg-red-600/90 hover:bg-red-500 text-white shadow-sm border border-transparent cursor-pointer transition-all duration-200"
+                            }
+                        >
+                            Delete Staged Runs ({localSelectedCount})
+                        </button>
                     )}
                 </div>
             </div>
@@ -461,15 +859,72 @@ export const UnifiedDataTable = (props) => {
             {/* Stacked Cards List Container */}
             <div className="relative">
                 <div className="flex flex-col gap-4 pr-1">
-                    {modelStats.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                        <span className="mb-3">No benchmarks match your current filters.</span>
-                        <button 
-                            onClick={clearFilters}
-                            className="text-blue-500 hover:text-blue-400 hover:underline text-sm flex items-center gap-1 font-medium"
-                        >
-                            <RotateCcw size={14} /> Clear all filters
-                        </button>
+                    {filteredStats.length === 0 ? (
+                    <div className="w-full py-16 px-8 flex flex-col items-center justify-center text-center bg-slate-900/80 border border-slate-800 rounded-3xl shadow-2xl relative overflow-hidden backdrop-blur-xl mb-6">
+                        <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 ${emptyConfig.radialGlow} rounded-full blur-3xl pointer-events-none`} />
+                        <div className={`w-16 h-16 rounded-3xl flex items-center justify-center mb-5 ${emptyConfig.glowClass}`}>
+                            {emptyConfig.icon}
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2 tracking-wide">
+                            {emptyConfig.title}
+                        </h3>
+                        <p className="text-sm text-slate-400 max-w-md mb-8 leading-relaxed">
+                            {emptyConfig.description}
+                        </p>
+                        {emptyConfig.action}
+
+                        {kpiFilter !== 'staged' && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-4xl mx-auto">
+                                {/* Card 1: Cloud Store */}
+                                <div 
+                                    onClick={() => setShowDataPanel && setShowDataPanel(true)}
+                                    className="group bg-slate-950/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-2xl p-6 hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col items-start text-left relative overflow-hidden shadow-lg hover:shadow-[0_0_30px_rgba(34,211,238,0.15)]"
+                                >
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-500/5 rounded-full blur-xl group-hover:bg-cyan-500/15 transition-colors" />
+                                    <h4 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors mb-1.5">
+                                        Connect Cloud Store
+                                    </h4>
+                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                        Index GCS, AWS S3, or Google Drive shared result archives.
+                                    </p>
+                                </div>
+
+                                {/* Card 2: Upload v0.2 YAML / JSON */}
+                                <label className="group bg-slate-950/80 border border-slate-800/80 hover:border-blue-500/50 rounded-2xl p-6 hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col items-start text-left relative overflow-hidden shadow-lg hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+                                    <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        accept=".yaml,.yml,.json" 
+                                        onChange={(e) => {
+                                            if (e.target.files?.[0]) {
+                                                alert(`Parsed report ${e.target.files[0].name}`);
+                                            }
+                                        }} 
+                                    />
+                                    <h4 className="text-base font-bold text-white group-hover:text-blue-400 transition-colors mb-1.5">
+                                        Ingest v0.2 Report
+                                    </h4>
+                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                        Directly parse standalone benchmark YAML/JSON reports.
+                                    </p>
+                                </label>
+
+                                {/* Card 3: Clear Filters / Reset */}
+                                <div 
+                                    onClick={clearFilters}
+                                    className="group bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl p-6 hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col items-start text-left relative overflow-hidden shadow-lg hover:shadow-[0_0_30px_rgba(168,85,247,0.15)]"
+                                >
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/5 rounded-full blur-xl group-hover:bg-purple-500/15 transition-colors" />
+                                    <h4 className="text-base font-bold text-white group-hover:text-purple-400 transition-colors mb-1.5 flex items-center gap-2">
+                                        <RotateCcw className="w-4 h-4 text-purple-400 group-hover:rotate-180 transition-transform duration-500" />
+                                        Reset Filters
+                                    </h4>
+                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                        Clear all active facet slices to reveal the entire catalog.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     Object.entries(groupedStats).map(([groupKey, stats]) => {
@@ -837,44 +1292,240 @@ export const UnifiedDataTable = (props) => {
                                                                                     toggleBaseline(stat.benchmarkKey);
                                                                                 }}
                                                                                 title={isBaseline ? 'Clear baseline' : 'Set as baseline'}
-                                                                                className={`p-1 rounded-full transition-colors flex-shrink-0 ${
+                                                                                className={`px-2.5 py-1 rounded-xl transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-extrabold uppercase tracking-wider ${
                                                                                     isBaseline
-                                                                                        ? 'text-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
-                                                                                        : 'text-slate-300 dark:text-slate-600 hover:text-cyan-500 hover:bg-slate-100 dark:hover:bg-slate-700'
+                                                                                        ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30'
+                                                                                        : 'text-slate-400 border border-slate-800/80 bg-[#0b0f17] hover:text-cyan-400 hover:border-cyan-500/30 hover:bg-[#101622]'
                                                                                 }`}
                                                                             >
-                                                                                <Star size={16} fill={isBaseline ? 'currentColor' : 'none'} />
+                                                                                <Pin size={11} className={`transition-transform duration-300 ${isBaseline ? 'rotate-[45deg]' : '-rotate-45'}`} fill={isBaseline ? 'currentColor' : 'none'} />
+                                                                                <span>{isBaseline ? 'Baseline' : 'Set Baseline'}</span>
                                                                             </button>
                                                                             {isBrv02 && (
-                                                                                <button
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        if (removeBrv02Run) {
-                                                                                            removeBrv02Run(runId);
-                                                                                        }
-                                                                                    }}
-                                                                                    title="Delete run"
-                                                                                    className="p-1 rounded text-slate-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition-colors flex-shrink-0"
-                                                                                >
-                                                                                    <Trash2 size={14} />
-                                                                                </button>
+                                                                                <div className="flex flex-col items-end gap-1.5 relative">
+                                                                                    <div className="flex items-center gap-2">
+                                                                                        {(() => {
+                                                                                            const sub = submissionsMap ? submissionsMap[runId] : null;
+                                                                                            const status = sub?.status || 'staged';
+                                                                                            
+                                                                                            if (status === 'staged') {
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            if (updateSubmissionStatus) {
+                                                                                                                updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware);
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        title="Submit this benchmark to staging GCS bucket for automated format checks"
+                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 text-[10px] font-extrabold uppercase tracking-wider transition-colors cursor-pointer select-none"
+                                                                                                    >
+                                                                                                        Submit for Review
+                                                                                                    </button>
+                                                                                                );
+                                                                                            }
+                                                                                            if (status === 'submitted_pending_processing') {
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            if (updateSubmissionStatus) {
+                                                                                                                updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware);
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        title="Promote benchmark to the admin review queue"
+                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 text-purple-400 text-[10px] font-extrabold uppercase tracking-wider transition-colors cursor-pointer select-none"
+                                                                                                    >
+                                                                                                        Promote to Review
+                                                                                                    </button>
+                                                                                                );
+                                                                                            }
+                                                                                            if (status === 'submitted_pending_review' || status === 'in_review') {
+                                                                                                return (
+                                                                                                    <>
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                if (updateSubmissionStatus) {
+                                                                                                                    updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware);
+                                                                                                                }
+                                                                                                            }}
+                                                                                                            title="Approve this run and publish it to the global registry"
+                                                                                                            className="px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-455 text-[10px] font-extrabold uppercase tracking-wider transition-colors cursor-pointer select-none"
+                                                                                                        >
+                                                                                                            Approve
+                                                                                                        </button>
+                                                                                                        <button
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                setRejectingRunId(runId);
+                                                                                                                setRejectionFeedback('');
+                                                                                                            }}
+                                                                                                            title="Reject compliance or request changes with custom feedback"
+                                                                                                            className="px-2.5 py-1 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 text-red-400 text-[10px] font-extrabold uppercase tracking-wider transition-colors cursor-pointer select-none"
+                                                                                                        >
+                                                                                                            Reject
+                                                                                                        </button>
+                                                                                                    </>
+                                                                                                );
+                                                                                            }
+                                                                                            if (status === 'rejected' || status === 'changes_requested') {
+                                                                                                return (
+                                                                                                    <button
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            if (updateSubmissionStatus) {
+                                                                                                                updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware);
+                                                                                                            }
+                                                                                                        }}
+                                                                                                        title="Resubmit this run for automated verification after corrections"
+                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer select-none animate-pulse"
+                                                                                                    >
+                                                                                                        Resubmit
+                                                                                                    </button>
+                                                                                                );
+                                                                                            }
+                                                                                            return null;
+                                                                                        })()}
+                                                                                    </div>
+                                                                                    {rejectingRunId === runId && (
+                                                                                        <div onClick={e => e.stopPropagation()} className="p-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-lg shadow-inner w-64 flex flex-col gap-2 mt-1 z-30">
+                                                                                            <div className="text-[10px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wider">Reason for Rejecting Run</div>
+                                                                                            <textarea
+                                                                                                autoFocus
+                                                                                                value={rejectionFeedback}
+                                                                                                onChange={e => setRejectionFeedback(e.target.value)}
+                                                                                                placeholder="Reason details..."
+                                                                                                className="w-full text-xs p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 focus:outline-none focus:border-red-500/50 resize-none h-12 font-sans"
+                                                                                            />
+                                                                                            <div className="flex justify-end gap-2 text-[10px]">
+                                                                                                <button
+                                                                                                    onClick={() => setRejectingRunId(null)}
+                                                                                                    className="px-2 py-0.5 text-slate-500 hover:text-slate-750 dark:text-slate-400 dark:hover:text-slate-250 transition-colors uppercase font-bold"
+                                                                                                >
+                                                                                                    Cancel
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        if (rejectionFeedback.trim() && updateSubmissionStatus) {
+                                                                                                            updateSubmissionStatus(runId, 'rejected', rejectionFeedback, stat.model, stat.hardware);
+                                                                                                            setRejectingRunId(null);
+                                                                                                        }
+                                                                                                    }}
+                                                                                                    disabled={!rejectionFeedback.trim()}
+                                                                                                    className="px-2.5 py-0.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded font-bold uppercase transition-colors"
+                                                                                                >
+                                                                                                    Submit
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
                                                                             )}
                                                                         </div>
                                                                         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-                                                                             <span className="text-[10px] sm:text-xs bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap">
-                                                                                 {getSourceTag(benchmarkData[0])}
-                                                                             </span>
-                                                                             {(() => {
-                                                                                 const type = getSourceType(benchmarkData[0]);
-                                                                                 const style = getSourceTypeStyle(type);
-                                                                                 return (
-                                                                                     <span className={`text-[10px] sm:text-xs font-semibold px-1.5 py-0.5 rounded border whitespace-nowrap ${style.bg} ${style.text} ${style.border}`}>
-                                                                                         {type}
-                                                                                     </span>
-                                                                                 );
-                                                                             })()}
+                                                                            {(isBrv02 || benchmarkData[0]?.source?.startsWith('llm-d:')) ? (
+                                                                                <span 
+                                                                                    title="High-fidelity v0.2 report manifest containing detailed observability metrics"
+                                                                                    className="px-2 py-0.5 text-[10px] font-mono tracking-wider font-bold uppercase rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center gap-1.5 shadow-[0_0_10px_rgba(34,211,238,0.2)] cursor-help"
+                                                                                >
+                                                                                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                                                                                    v0.2 Verified
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span 
+                                                                                    title="Legacy JSON run profile derived from steady-state approximations"
+                                                                                    className="px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase rounded-full bg-slate-800 border border-slate-700 text-slate-400 cursor-help"
+                                                                                >
+                                                                                    v0.1 Legacy
+                                                                                </span>
+                                                                            )}
+
+                                                                            {(() => {
+                                                                                const sub = isBrv02 && submissionsMap ? submissionsMap[runId] : null;
+                                                                                
+                                                                                if (isBrv02) {
+                                                                                    const status = sub?.status || 'staged';
+                                                                                    if (status === 'staged') {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                                                                                <FileClock className="w-3 h-3 text-amber-400" /> Staged
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    if (status === 'submitted_pending_processing') {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-yellow-500/10 text-yellow-400 px-2.5 py-0.5 rounded-full border border-yellow-500/20">
+                                                                                                <Activity className="w-3 h-3 text-yellow-400 animate-pulse" /> Processing
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    if (status === 'submitted_pending_review' || status === 'in_review') {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-500/10 text-purple-400 px-2.5 py-0.5 rounded-full border border-purple-500/20 animate-pulse">
+                                                                                                <Eye className="w-3 h-3 text-purple-400" /> In Review
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    if (status === 'public' || status === 'promoted' || status === 'approved') {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                                                                                <Check className="w-3 h-3 text-emerald-400 font-extrabold" /> Public
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                    if (status === 'rejected' || status === 'changes_requested') {
+                                                                                        return (
+                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-500/10 text-red-400 px-2.5 py-0.5 rounded-full border border-red-500/20">
+                                                                                                <AlertCircle className="w-3 h-3 text-red-400" /> Rejected
+                                                                                            </span>
+                                                                                        );
+                                                                                    }
+                                                                                } else {
+                                                                                    return (
+                                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/5 text-emerald-400/90 px-2.5 py-0.5 rounded-full border border-emerald-500/10">
+                                                                                            Official
+                                                                                        </span>
+                                                                                    );
+                                                                                }
+                                                                                return null;
+                                                                            })() }
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setViewingPayloadRun(stat);
+                                                                                }}
+                                                                                className="p-1 text-slate-400 hover:text-cyan-400 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+                                                                                title="Inspect Raw YAML / JSON Manifest"
+                                                                            >
+                                                                                <Code2 size={15} />
+                                                                            </button>
+                                                                            <span 
+                                                                                title={getSourceTag(benchmarkData[0]) === 'llm-d' ? "Official llm-d benchmark results stored in shared Google Drive store" : `Source: ${getSourceTag(benchmarkData[0])}`}
+                                                                                className="text-[10px] sm:text-xs bg-slate-100 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700/80 text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap cursor-help"
+                                                                            >
+                                                                                {getSourceTag(benchmarkData[0])}
+                                                                            </span>
                                                                         </div>
                                                                     </div>
+
+                                                                    {(() => {
+                                                                        const sub = isBrv02 && submissionsMap ? submissionsMap[runId] : null;
+                                                                        if (sub && sub.status === 'changes_requested' && sub.feedback) {
+                                                                            return (
+                                                                                <div 
+                                                                                    onClick={e => e.stopPropagation()}
+                                                                                    className="mt-2 text-[11px] bg-red-500/10 text-red-300 border border-red-500/20 rounded-xl p-3 max-w-3xl italic leading-relaxed flex items-start gap-2 shadow-sm font-sans"
+                                                                                >
+                                                                                    <span className="font-extrabold uppercase text-[9px] not-italic tracking-wider bg-red-500/20 px-1.5 py-0.5 rounded text-red-450 shrink-0 mt-0.5">
+                                                                                        Changes Requested:
+                                                                                    </span>
+                                                                                    <span>"{sub.feedback}"</span>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    })()}
 
                                                                     {/* Line 2: Dedicated to just selected visible stats */}
                                                                     {specs.length > 0 && (
@@ -1008,6 +1659,325 @@ export const UnifiedDataTable = (props) => {
                     }}
                 />
             )}
+
+            {/* Raw Payload Manifest Modal */}
+            {viewingPayloadRun && (
+                <div 
+                    className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-300"
+                    onClick={() => setViewingPayloadRun(null)}
+                >
+                    <div 
+                        className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-950 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <Code2 className="w-5 h-5 text-cyan-400" />
+                                <span className="font-mono text-sm font-bold text-white tracking-wide">
+                                    Raw Manifest Payload: {viewingPayloadRun.benchmarkKey || viewingPayloadRun.model || 'Configuration'}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(JSON.stringify(viewingPayloadRun.data?.[0] || viewingPayloadRun, null, 2));
+                                        alert('Manifest copied to clipboard');
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg transition-colors cursor-pointer"
+                                >
+                                    <Copy className="w-3.5 h-3.5" /> Copy Payload
+                                </button>
+                                <button
+                                    onClick={() => setViewingPayloadRun(null)}
+                                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="p-4 overflow-y-auto font-mono text-xs text-cyan-300/90 leading-relaxed bg-slate-950/50 selection:bg-cyan-500 selection:text-black">
+                            <pre className="m-0">
+                                {JSON.stringify(viewingPayloadRun.data?.[0] || viewingPayloadRun, null, 2)}
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Slide-Over Comparison Drawer Displayed from Right */}
+            <div className={`fixed inset-0 z-[99999] flex justify-end overflow-hidden pointer-events-none transition-opacity duration-300 ${showComparisonDrawer ? 'opacity-100' : 'opacity-0'}`}>
+                {/* Backdrop */}
+                {showComparisonDrawer && (
+                    <div 
+                        className="absolute inset-0 bg-black/40 backdrop-blur-[1.5px] pointer-events-auto"
+                        onClick={() => setShowComparisonDrawer(false)}
+                    />
+                )}
+                
+                {/* Sub-Panel Animating from the Right */}
+                <div className={`relative w-full sm:w-[720px] xl:w-[860px] h-full bg-slate-950/95 border-l border-cyan-500/40 p-6 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-y-auto z-10 transform transition-transform duration-300 pointer-events-auto ${showComparisonDrawer ? 'translate-x-0' : 'translate-x-full'}`}>
+                        <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+                        
+                        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-800 flex-shrink-0">
+                            <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-3">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                                    <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-cyan-400">
+                                        Visualize & Inspect Submissions ({selectedBenchmarks.size} Runs)
+                                    </span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                    Inspect throughput, latency, and cost trends of your staged or review submissions against production baselines.
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
+                                    <button
+                                        onClick={() => setComparisonTab('scatter')}
+                                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${comparisonTab === 'scatter' ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Scatter Trade-offs
+                                    </button>
+                                    <button
+                                        onClick={() => setComparisonTab('bar')}
+                                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${comparisonTab === 'bar' ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                                    >
+                                        Direct Comparison
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setShowComparisonDrawer(false)}
+                                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Active Submissions Status & Actions Panel */}
+                        <div className="mb-6 p-4 rounded-xl border border-slate-800 bg-[#070b12]/50 flex-shrink-0">
+                            <div className="flex items-center justify-between mb-3 border-b border-slate-900 pb-2">
+                                <div className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                                    <Sliders className="w-3.5 h-3.5 text-cyan-500" /> Active Submissions Status & Actions
+                                </div>
+                                <div className="text-[9px] text-slate-500 font-mono">
+                                    Manage staging pipeline states directly
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
+                                {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => {
+                                    const src = stat.data?.[0]?.source || '';
+                                    const isBrv02 = src.startsWith('brv02:');
+                                    const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                                    const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                                    const status = sub?.status || 'staged';
+                                    
+                                    return (
+                                        <div key={stat.benchmarkKey} className="flex flex-col p-3 rounded-lg border border-slate-800/30 bg-[#0d131f]/40 hover:bg-[#0d131f]/60 transition-colors">
+                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
+                                                        {stat.model}
+                                                        {isBrv02 ? (
+                                                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-900/35">
+                                                                {stat.hardware}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-900/35">
+                                                                Production Registry
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-500 truncate max-w-[280px]">
+                                                        {stat.configuration || 'Default Settings'}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-2 flex-wrap">                                                    {/* Status Badge */}
+                                                    {isBrv02 ? (
+                                                        <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                                                            (status === 'public' || status === 'promoted' || status === 'approved') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                            status === 'submitted_pending_processing' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse' :
+                                                            (status === 'submitted_pending_review' || status === 'in_review') ? 'bg-purple-500/10 text-purple-400 border-purple-500/20 animate-pulse' :
+                                                            (status === 'rejected' || status === 'changes_requested') ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                        }`}>
+                                                            {(status === 'rejected' || status === 'changes_requested') ? 'Rejected' :
+                                                             status === 'submitted_pending_processing' ? 'Processing' :
+                                                             (status === 'submitted_pending_review' || status === 'in_review') ? 'In Review' :
+                                                             (status === 'public' || status === 'promoted' || status === 'approved') ? 'Public' :
+                                                             status}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                                                            Verified
+                                                        </span>
+                                                    )}
+                                                    
+                                                    {/* Actions */}
+                                                    {isBrv02 && (
+                                                        <div className="flex items-center gap-1.5">
+                                                            {status === 'staged' && (
+                                                                <button
+                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
+                                                                    className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                >
+                                                                    Submit for Review
+                                                                </button>
+                                                            )}
+                                                            {status === 'submitted_pending_processing' && (
+                                                                <button
+                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware)}
+                                                                    className="px-2 py-1 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-355 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                >
+                                                                    Promote to Review
+                                                                </button>
+                                                            )}
+                                                            {(status === 'submitted_pending_review' || status === 'in_review') && (
+                                                                <>
+                                                                    <button
+                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware)}
+                                                                        className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                    >
+                                                                        Approve
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setDrawerRejectingRunId(runId);
+                                                                            setDrawerRejectionFeedback('');
+                                                                        }}
+                                                                        className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                    >
+                                                                        Reject
+                                                                    </button>
+                                                                </>
+                                                            )}
+                                                            {(status === 'rejected' || status === 'changes_requested') && (
+                                                                <button
+                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
+                                                                    className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                >
+                                                                    Re-Submit
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Drawer Rejection inline input */}
+                                            {drawerRejectingRunId === runId && (
+                                                <div className="w-full mt-3 p-3 bg-slate-900 border border-red-500/20 rounded-lg animate-fadeIn flex flex-col gap-2">
+                                                    <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center justify-between">
+                                                        <span>Provide Revision Feedback</span>
+                                                        <button 
+                                                            onClick={() => setDrawerRejectingRunId(null)}
+                                                            className="text-slate-400 hover:text-white"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                    <textarea
+                                                        value={drawerRejectionFeedback}
+                                                        onChange={(e) => setDrawerRejectionFeedback(e.target.value)}
+                                                        placeholder="Explain why this run is rejected or what changes are required..."
+                                                        className="w-full p-2 bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-md outline-none focus:border-red-500/50 min-h-[50px] resize-y"
+                                                    />
+                                                    <div className="flex justify-end gap-1.5 mt-1">
+                                                        <button
+                                                            onClick={() => setDrawerRejectingRunId(null)}
+                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded"
+                                                        >
+                                                            Cancel
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (drawerRejectionFeedback.trim() && updateSubmissionStatus) {
+                                                                    updateSubmissionStatus(runId, 'rejected', drawerRejectionFeedback, stat.model, stat.hardware);
+                                                                    setDrawerRejectingRunId(null);
+                                                                }
+                                                            }}
+                                                            disabled={!drawerRejectionFeedback.trim()}
+                                                            className={`px-2 py-1 text-[10px] font-bold rounded ${
+                                                                drawerRejectionFeedback.trim()
+                                                                ? 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer'
+                                                                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                                            }`}
+                                                        >
+                                                            Confirm Rejection
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex-1 flex flex-col min-h-[500px] w-full">
+                            {comparisonTab === 'scatter' ? (
+                                <div className="flex-1 flex flex-col">
+                                    <ThroughputCostChart
+                                        tputType={drawerTputType}
+                                        setTputType={setDrawerTputType}
+                                        yQualityMode={drawerYQualityMode}
+                                        setYQualityMode={setDrawerYQualityMode}
+                                        chartMode={drawerChartMode}
+                                        setChartMode={setDrawerChartMode}
+                                        xQualityMode={drawerXQualityMode}
+                                        setXQualityMode={setDrawerXQualityMode}
+                                        costMode={drawerCostMode}
+                                        setCostMode={setDrawerCostMode}
+                                        showPerChip={drawerShowPerChip}
+                                        setShowPerChip={setDrawerShowPerChip}
+                                        showLabels={drawerShowLabels}
+                                        setShowLabels={setDrawerShowLabels}
+                                        showDataLabels={drawerShowDataLabels}
+                                        setShowDataLabels={setDrawerShowDataLabels}
+                                        showPareto={drawerShowPareto}
+                                        setShowPareto={setDrawerShowPareto}
+                                        qualityMetrics={qualityMetrics}
+                                        allModels={modelStats.map(m => m.model)}
+                                        selectedModels={selectedModels}
+                                        filteredData={filteredBySource}
+                                        getBenchmarkKey={getBenchmarkKey}
+                                        theme="dark"
+                                        isZoomEnabled={drawerIsZoomEnabled}
+                                        setIsZoomEnabled={setDrawerIsZoomEnabled}
+                                        zoomDomain={drawerZoomDomain}
+                                        setZoomDomain={setDrawerZoomDomain}
+                                        chartContainerRef={drawerChartContainerRef}
+                                        isDragging={drawerIsDragging}
+                                        setIsDragging={setDrawerIsDragging}
+                                        lastMouseRef={drawerLastMouseRef}
+                                        chartColorMode={drawerChartColorMode}
+                                        setChartColorMode={setDrawerChartColorMode}
+                                        metricAvailability={drawerMetricAvailability}
+                                        filteredBySource={filteredBySource}
+                                        xAxisMax={drawerXAxisMax}
+                                        setXAxisMax={setDrawerXAxisMax}
+                                        isLogScaleX={drawerIsLogScaleX}
+                                        setIsLogScaleX={setDrawerIsLogScaleX}
+                                        setLatType={setDrawerLatType}
+                                        selectedBenchmarks={selectedBenchmarks}
+                                        baselineBenchmarkKey={baselineBenchmarkKey}
+                                    />
+                                </div>
+                            ) : (
+                                <RunComparisonChart
+                                    filteredBySource={filteredBySource}
+                                    selectedBenchmarks={selectedBenchmarks}
+                                    getBenchmarkKey={getBenchmarkKey}
+                                    baselineBenchmarkKey={baselineBenchmarkKey}
+                                    brv02CustomLabels={brv02CustomLabels}
+                                    theme="dark"
+                                />
+                            )}
+                    </div>
+            </div>
+        </div>
         </div>
     );
 };

@@ -29,7 +29,8 @@ const port = process.env.PORT || 3000;
 
 // Enable gzip compression
 app.use(compression());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Trust the first proxy (Cloud Run Load Balancer) to properly resolve X-Forwarded-For
 app.set('trust proxy', 1);
@@ -195,6 +196,105 @@ app.get('/api/local/file/*', async (req, res) => {
         res.sendFile(filepath);
     } else {
         res.status(404).send('Not found');
+    }
+});
+
+app.post('/api/local/submit', async (req, res) => {
+    const fs = await import('fs');
+    const payload = req.body;
+    if (!payload.runId) {
+        return res.status(400).json({ error: 'Missing runId' });
+    }
+    
+    const baseDir = path.resolve(__dirname, '../private/benchmarks');
+    const runDir = path.join(baseDir, payload.runId);
+    
+    try {
+        if (!fs.existsSync(runDir)) {
+            fs.mkdirSync(runDir, { recursive: true });
+        }
+        
+        const filepath = path.join(runDir, 'prism_run_upload.json');
+        fs.writeFileSync(filepath, JSON.stringify(payload, null, 2), 'utf8');
+        console.log(`[Local API] Saved submission for run ${payload.runId} to ${filepath}`);
+        res.json({ success: true, path: filepath });
+    } catch (e) {
+        console.error("Failed to save submission:", e);
+        res.status(500).json({ error: 'Failed to write submission file', details: e.message });
+    }
+});
+
+app.post('/api/local/status', async (req, res) => {
+    const fs = await import('fs');
+    const { runId, status, feedback, reviewer } = req.body;
+    if (!runId || !status) {
+        return res.status(400).json({ error: 'Missing runId or status' });
+    }
+
+    const baseDir = path.resolve(__dirname, '../private/benchmarks');
+    const runDir = path.join(baseDir, runId);
+    const filepath = path.join(runDir, 'prism_run_upload.json');
+
+    try {
+        if (!fs.existsSync(filepath)) {
+            if (!fs.existsSync(runDir)) {
+                fs.mkdirSync(runDir, { recursive: true });
+            }
+            const initialData = {
+                runId,
+                status,
+                feedback: feedback || '',
+                model_name: req.body.model_name || 'Custom Model',
+                hardware: req.body.hardware || { hardware_name: 'Detected Hardware' },
+                timestamp: new Date().toISOString(),
+                review: {
+                    reviewer: reviewer || 'system',
+                    reviewedAt: new Date().toISOString(),
+                    history: [
+                        {
+                            status,
+                            changedAt: new Date().toISOString(),
+                            by: reviewer || 'system'
+                        }
+                    ]
+                }
+            };
+            fs.writeFileSync(filepath, JSON.stringify(initialData, null, 2), 'utf8');
+            console.log(`[Local API] Dynamically initialized run status file for run ${runId}`);
+            return res.json({ success: true, path: filepath, updatedData: initialData });
+        }
+
+        const raw = fs.readFileSync(filepath, 'utf8');
+        const data = JSON.parse(raw);
+
+        // Update status and optional fields
+        data.status = status;
+        if (feedback !== undefined) {
+            data.feedback = feedback;
+        }
+
+        // Initialize review metadata if not present
+        if (!data.review) {
+            data.review = {
+                history: []
+            };
+        }
+        if (reviewer) {
+            data.review.reviewer = reviewer;
+            data.review.reviewedAt = new Date().toISOString();
+        }
+        data.review.history.push({
+            status: status,
+            changedAt: new Date().toISOString(),
+            by: reviewer || 'system'
+        });
+
+        fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf8');
+        console.log(`[Local API] Updated status for run ${runId} to ${status}`);
+        res.json({ success: true, path: filepath, updatedData: data });
+    } catch (e) {
+        console.error("Failed to update submission status:", e);
+        res.status(500).json({ error: 'Failed to update status', details: e.message });
     }
 });
 
@@ -629,6 +729,83 @@ app.get('/api/regressions', async (req, res) => {
     } catch (err) {
         console.error('[Regressions API Error]', err);
         res.status(500).json({ error: 'Failed to fetch regressions', details: err.message });
+    }
+});
+
+// --- GitHub OAuth Integration ---
+app.get('/api/auth/github', (req, res) => {
+    const clientId = process.env.GITHUB_CLIENT_ID;
+    if (!clientId) {
+        console.log('[Auth] GITHUB_CLIENT_ID not configured. Redirecting to mock login.');
+        const mockRedirect = `/api/auth/github/callback?code=mock_code_developer`;
+        return res.redirect(mockRedirect);
+    }
+    
+    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/github/callback`;
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&scope=user:email&redirect_uri=${encodeURIComponent(redirectUri)}`;
+    res.redirect(githubAuthUrl);
+});
+
+app.get('/api/auth/github/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+        return res.redirect('/?view=manage-benchmarks&auth_error=missing_code');
+    }
+
+    try {
+        let username = 'mock-developer';
+        let fullName = 'Mock Developer';
+        let email = 'developer@mock.github.com';
+
+        const clientId = process.env.GITHUB_CLIENT_ID;
+        const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+
+        if (clientId && code !== 'mock_code_developer') {
+            const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    code
+                })
+            });
+            const tokenData = await tokenRes.json();
+            if (!tokenData.access_token) {
+                throw new Error('Failed to exchange authorization code for token');
+            }
+
+            const accessToken = tokenData.access_token;
+
+            const userRes = await fetch('https://api.github.com/user', {
+                headers: {
+                    'Authorization': `token ${accessToken}`,
+                    'User-Agent': 'LLM-d-Prism'
+                }
+            });
+            const userData = await userRes.json();
+            username = userData.login || 'unknown';
+            fullName = userData.name || username;
+
+            const emailsRes = await fetch('https://api.github.com/user/emails', {
+                headers: {
+                    'Authorization': `token ${accessToken}`,
+                    'User-Agent': 'LLM-d-Prism'
+                }
+            });
+            const emailsData = await emailsRes.json();
+            const primaryEmailObj = Array.isArray(emailsData) ? emailsData.find(e => e.primary) : null;
+            email = primaryEmailObj ? primaryEmailObj.email : (userData.email || 'no-email@github.com');
+        }
+
+        res.redirect(`/?view=manage-benchmarks&github_user=${encodeURIComponent(username)}&github_name=${encodeURIComponent(fullName)}&github_email=${encodeURIComponent(email)}&auth_success=true`);
+
+    } catch (err) {
+        console.error('[Auth Callback Error]', err);
+        res.redirect('/?view=manage-benchmarks&auth_error=' + encodeURIComponent(err.message));
     }
 });
 

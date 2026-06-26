@@ -56,7 +56,8 @@ const pct = (val) => {
 // implemented.
 const deriveRunId = (doc, filename) => {
     if (!filename || !filename.includes('/')) {
-        return doc.run?.uid || crypto.randomUUID();
+        const fallbackId = () => Math.random().toString(36).substring(2, 15);
+        return doc.run?.uid || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : fallbackId());
     }
     
     const parts = filename.split('/');
@@ -157,6 +158,7 @@ const extractComponents = (stack) => {
     const components = [];
     if (!Array.isArray(stack)) return components;
     for (const c of stack) {
+        if (!c) continue;
         const label = String(c.metadata?.label || '');
         const tool = String(c.standardized?.tool || '');
         const kind = String(c.standardized?.kind || '');

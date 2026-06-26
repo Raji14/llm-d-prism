@@ -20,12 +20,11 @@ import {
     BarChart, Bar, ReferenceDot, Label
 } from 'recharts';
 
-import { Activity, Clock, Zap, AlertCircle, ChevronDown, ChevronUp, FileJson, ExternalLink, Cloud, Loader, Filter, X, Plus, RefreshCw, Database, Check, CheckCircle, RotateCcw, Sun, Moon, Eye, EyeOff, Trash2, Edit2, Share2, MessageCircle, Target, ArrowLeft } from 'lucide-react';
+import { Activity, Clock, Zap, AlertCircle, ChevronDown, ChevronUp, FileJson, ExternalLink, Cloud, Loader, Filter, X, Plus, RefreshCw, Database, Check, CheckCircle, RotateCcw, Sun, Moon, Eye, EyeOff, Trash2, Edit2, Share2, MessageCircle, Target, ArrowLeft, Upload, FileClock, BarChart2, ArrowRight } from 'lucide-react';
 import { parseJsonEntry, parseLogFile, parseGiqData, normalizeModelName, normalizeHardware, parseLpgLifecycleMetrics, parseLpgRequestLog } from '../utils/dataParser';
 import { listFolderRecursive, fetchFileContent, parseDriveMetadata, findFolderByName } from '../utils/googleDrive';
 import { defaultState } from '../config/defaultState';
 
-import DataConnectionsPanel from './DataConnectionsPanel';
 import { CacheManager } from '../utils/cacheManager';
 import { QualityParser, normalizeQualityModelName } from '../utils/qualityParser';
 
@@ -35,6 +34,7 @@ import { UnifiedDataTable } from './Dashboard/UnifiedDataTable';
 import { ThroughputCostChart } from './Dashboard/ThroughputCostChart';
 import { RunComparisonChart } from './Dashboard/RunComparisonChart';
 import DataInspector from './DataInspector';
+import { UploadValidationDialog } from './DataConnections/UploadValidationDialog';
 import { useDashboardState } from '../hooks/useDashboardState';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { INTEGRATIONS, getBucket, getRatioType, getEffectiveTp, sortBuckets, findParetoPoint, getNodesAndType, getBenchmarkKey } from '../utils/dashboardHelpers';
@@ -149,7 +149,7 @@ const MOCK_FALLBACK_DATA_LEGACY = [
     }
 ];
 
-const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dashboardData: propData }) => {
+const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardState: propState, dashboardData: propData }) => {
 
     const localState = useDashboardState();
     const dashboardState = propState || localState;
@@ -223,8 +223,16 @@ const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dash
         API_KEY,
         expandedIntegration, setExpandedIntegration,
         awsBucketConfigs, handleAddAWSBucket, removeAWSBucket,
-        brv02Runs, brv02CustomLabels, setBrv02CustomLabels,
+        brv02Runs, brv02CustomLabels, setBrv02CustomLabels, removeBrv02Run,
+        handleValidatedUpload,
+        submissions, isLoadingSubmissions, loadSubmissions
     } = dashboardData;
+
+    const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+    const [initialStagedFiles, setInitialStagedFiles] = useState([]);
+    const [activeDashboardTab, setActiveDashboardTab] = useState('charts');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [kpiFilter, setKpiFilter] = useState(null); // null | 'pareto' | 'verified' | 'staged'
 
     const data = useMemo(() => {
         if (!liveData || liveData.length === 0) return MOCK_FALLBACK_DATA_LEGACY.map((d, i) => ({ ...d, id: i }));
@@ -1743,28 +1751,39 @@ const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dash
                     </div>
 
                     <div className="flex items-center">
-                        <h1 className="text-lg font-bold text-white tracking-wide">Benchmark browser</h1>
+                        <h1 className="text-lg font-bold text-white tracking-wide">
+                            {mode === 'manager' ? 'Manage benchmarks' : 'Benchmark browser'}
+                        </h1>
                         <span className="ml-3 px-2 py-0.5 rounded text-xs font-semibold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                            Expert mode
+                            {mode === 'manager' ? 'Data manager' : 'Expert mode'}
                         </span>
                     </div>
                 </div>
 
-                <div className="flex items-center space-x-4">
-                    <button
-                        onClick={() => onNavigate && onNavigate('manage-benchmarks')}
-                        className="px-4 py-2 text-sm font-medium rounded-md border text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700 transition-colors flex items-center"
-                    >
-                        <Database className="w-4 h-4 mr-2" /> Manage
-                    </button>
+                <div className="flex items-center space-x-3">
+                    {mode === 'browser' ? (
+                        <button
+                            onClick={() => onNavigate && onNavigate('manage-benchmarks')}
+                            className="px-3.5 py-2 text-xs font-semibold rounded-xl border text-slate-300 bg-slate-850 hover:bg-slate-750 border-slate-750 hover:text-white transition-colors flex items-center cursor-pointer"
+                        >
+                            <Database className="w-4 h-4 mr-2 text-cyan-400" /> Manage
+                        </button>
+                    ) : (
+                            <button
+                                onClick={() => setIsUploadDialogOpen(true)}
+                                className="px-3.5 py-2 text-xs font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-all flex items-center shadow-lg border border-emerald-500/30 cursor-pointer hover:shadow-emerald-500/20"
+                            >
+                                <Upload className="w-4 h-4 mr-2" /> Upload
+                            </button>
+                    )}
 
                     <a 
                         href={formatContactUrl(contactUrl)} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="px-4 py-2 text-sm font-medium rounded-md text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors flex items-center border border-slate-700"
+                        className="px-3.5 py-2 text-xs font-medium rounded-xl text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors flex items-center border border-slate-700 no-underline cursor-pointer"
                     >
-                        <MessageCircle className="w-4 h-4 mr-2" /> Contact us
+                        <MessageCircle className="w-4 h-4 mr-1.5" /> Contact us
                     </a>
 
                     <div className="relative group flex">
@@ -1782,7 +1801,7 @@ const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dash
                                     setTimeout(() => setShareToast(false), 2000); 
                                 });
                             }} 
-                            className={`px-4 py-2 text-sm font-medium rounded-md flex items-center border relative transition-colors ${hasLocalBenchmarks ? 'text-slate-500 bg-slate-800 border-slate-700 cursor-not-allowed' : 'text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700'}`}
+                            className={`px-3.5 py-2 text-xs font-medium rounded-xl flex items-center border relative transition-all cursor-pointer ${hasLocalBenchmarks ? 'text-slate-500 bg-slate-800 border-slate-700 cursor-not-allowed' : 'text-slate-300 bg-slate-800 hover:bg-slate-700 border-slate-700'}`}
                         >
                             <Share2 className="w-4 h-4 mr-2" /> Share view 
                             {shareToast && !hasLocalBenchmarks && (
@@ -1802,61 +1821,97 @@ const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dash
 
             <main className="w-full px-8 py-6 pl-28 flex flex-col transition-colors duration-200">
 
-            {/* Helper to generate config object */}
-            {(() => {
-                // Define copy config handler in render scope (or move to component body if preferred, but this works for inserting button code later)
-                // Actually, let's just use an inline function for the button below.
-            })()}
-
-            {/* Configuration Area */}
-            <div className="space-y-4 mb-4">
-
-                {/* Data Connections Section - Moved to Slide-over */}
+                {mode === 'browser' ? (
+                    <>
 
 
-                {/* Integrated Benchmark Explorer */}
-                <FilterPanel
-                    {...{
-                        showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
-                        selectedModels, modelStats, filteredBySource, showSelectedOnly, setShowSelectedOnly,
-                        selectedBenchmarks, setSelectedBenchmarks, setActiveFilters, expandedModels,
-                        toggleBenchmark, toggleModelExpansion,
-                        baselineBenchmarkKey, setBaselineBenchmarkKey,
-                        UnifiedDataTable
-                    }}
-                />
+                        {/* Integrated Benchmark Explorer & Staging List */}
+                        <div className="space-y-4 mb-6">
+                            <FilterPanel
+                                {...{
+                                    showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
+                                    selectedModels, modelStats, filteredBySource, showSelectedOnly, setShowSelectedOnly,
+                                    selectedBenchmarks, setSelectedBenchmarks, setActiveFilters, expandedModels,
+                                    toggleBenchmark, toggleModelExpansion,
+                                    baselineBenchmarkKey, setBaselineBenchmarkKey,
+                                    UnifiedDataTable,
+                                    brv02Runs, brv02CustomLabels, setBrv02CustomLabels, removeBrv02Run,
+                                    setShowDataPanel,
+                                    searchTerm, setSearchTerm, kpiFilter, setKpiFilter
+                                }}
+                            />
+                        </div>
 
+                        {selectedBenchmarks.size === 0 ? (
+                            <div className="flex flex-col items-center justify-center p-12 bg-slate-900/40 border border-slate-800/80 rounded-2xl text-center space-y-4 backdrop-blur-sm mb-6">
+                                <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full">
+                                    <BarChart2 className="w-8 h-8" />
+                                </div>
+                                <div className="space-y-1.5 max-w-md">
+                                    <h3 className="text-sm font-bold text-white">No Benchmarks Selected</h3>
+                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                        Select benchmark runs in the explorer table above to begin plotting and comparing throughput, latency, and cost efficiency metrics.
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4 mb-6">
+                                <ThroughputCostChart
+                                    {...{
+                                        tputType, setTputType, yQualityMode, setYQualityMode, chartMode, setChartMode,
+                                        xQualityMode, setXQualityMode, costMode, setCostMode, showPerChip, setShowPerChip,
+                                        showLabels, setShowLabels, showDataLabels, setShowDataLabels, showPareto, setShowPareto,
+                                        qualityMetrics, allModels, selectedModels, filteredData, getBenchmarkKey, theme,
+                                        isZoomEnabled, setIsZoomEnabled, zoomDomain, setZoomDomain, chartContainerRef,
+                                        isDragging, setIsDragging, lastMouseRef, chartColorMode, setChartColorMode,
+                                        metricAvailability, filteredBySource, xAxisMax, setXAxisMax, setDebugInfo,
+                                        isLogScaleX, setIsLogScaleX, setLatType, selectedBenchmarks,
+                                        baselineBenchmarkKey
+                                    }}
+                                />
 
+                                <RunComparisonChart
+                                    filteredBySource={filteredBySource}
+                                    selectedBenchmarks={selectedBenchmarks}
+                                    getBenchmarkKey={getBenchmarkKey}
+                                    baselineBenchmarkKey={baselineBenchmarkKey}
+                                    brv02CustomLabels={brv02CustomLabels}
+                                    theme={theme}
+                                />
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        {/* Section Header: Manage Benchmarks */}
+                        <div className="mb-4">
+                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                                Manage Benchmarks & Data Connections
+                            </h3>
+                            <p className="text-[11px] text-slate-400 mt-1">
+                                Sync remote storage buckets, upload raw benchmark directories, and choose which runs to plot in the active comparison dashboards.
+                            </p>
+                        </div>
 
-
-
-
-
-
-
-
-                <ThroughputCostChart
-                    {...{
-                        tputType, setTputType, yQualityMode, setYQualityMode, chartMode, setChartMode,
-                        xQualityMode, setXQualityMode, costMode, setCostMode, showPerChip, setShowPerChip,
-                        showLabels, setShowLabels, showDataLabels, setShowDataLabels, showPareto, setShowPareto,
-                        qualityMetrics, allModels, selectedModels, filteredData, getBenchmarkKey, theme,
-                        isZoomEnabled, setIsZoomEnabled, zoomDomain, setZoomDomain, chartContainerRef,
-                        isDragging, setIsDragging, lastMouseRef, chartColorMode, setChartColorMode,
-                        metricAvailability, filteredBySource, xAxisMax, setXAxisMax, setDebugInfo,
-                        isLogScaleX, setIsLogScaleX, setLatType, selectedBenchmarks,
-                        baselineBenchmarkKey
-                    }}
-                />
-
-                <RunComparisonChart
-                    filteredBySource={filteredBySource}
-                    selectedBenchmarks={selectedBenchmarks}
-                    getBenchmarkKey={getBenchmarkKey}
-                    baselineBenchmarkKey={baselineBenchmarkKey}
-                    brv02CustomLabels={brv02CustomLabels}
-                    theme={theme}
-                />
+                        {/* Integrated Benchmark Explorer & Staging List */}
+                        <div className="space-y-4 mb-4">
+                            <FilterPanel
+                                {...{
+                                    showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
+                                    selectedModels, modelStats, filteredBySource, showSelectedOnly, setShowSelectedOnly,
+                                    selectedBenchmarks, setSelectedBenchmarks, setActiveFilters, expandedModels,
+                                    toggleBenchmark, toggleModelExpansion,
+                                    baselineBenchmarkKey, setBaselineBenchmarkKey,
+                                    UnifiedDataTable,
+                                    brv02Runs, brv02CustomLabels, setBrv02CustomLabels, removeBrv02Run,
+                                    setShowDataPanel,
+                                    submissions, isLoadingSubmissions, loadSubmissions,
+                                    searchTerm, setSearchTerm, kpiFilter, setKpiFilter
+                                }}
+                            />
+                        </div>
+                    </>
+                )}
 
 
 
@@ -1912,96 +1967,26 @@ const Dashboard = ({ onNavigateBack, onNavigate, dashboardState: propState, dash
                     onClose={() => setIsInspectorOpen(false)}
                 />
 
-                {/* Application Layer */}
-
-            </div>
-            </main>
-
-            {/* Data Connections Panel — rendered outside <main> so flex/overflow
-                inside main cannot affect its fixed positioning or stacking context */}
-                {showDataPanel && (
-                    <div
-                        className="fixed inset-0 bg-black/50 z-[55] backdrop-blur-sm transition-opacity"
-                        onClick={() => setShowDataPanel(false)}
+                {/* Upload Validation Dialog */}
+                {isUploadDialogOpen && (
+                    <UploadValidationDialog
+                        isOpen={isUploadDialogOpen}
+                        onClose={() => setIsUploadDialogOpen(false)}
+                        onCommit={handleValidatedUpload}
+                        initialFiles={initialStagedFiles}
+                        addToast={addToast}
+                        loadSubmissions={loadSubmissions}
+                        publicBenchmarks={data}
+                        baselineBenchmarkKey={baselineBenchmarkKey}
+                        setBaselineBenchmarkKey={setBaselineBenchmarkKey}
                     />
                 )}
-                <DataConnectionsPanel
-                    {...dashboardData}
-                    addToast={addToast}
-                    showDataPanel={showDataPanel}
-                    setShowDataPanel={setShowDataPanel}
-                    INTEGRATIONS={INTEGRATIONS}
-                    availableSources={availableSources}
-                    showSampleData={showSampleData}
-                    enableLLMDResults={enableLLMDResults}
-                    setEnableLLMDResults={setEnableLLMDResults}
-                    expandedIntegration={expandedIntegration}
-                    setExpandedIntegration={setExpandedIntegration}
-                    setApiError={setApiError}
-                    setGcsError={setGcsError}
-                    setLpgError={setLpgError}
-                    removeSampleData={removeSampleData}
-                    removeLLMDData={removeLLMDData}
-                    restoreSampleData={restoreSampleData}
-                    driveLoading={driveLoading}
-                    driveStatus={driveStatus}
-                    driveProgress={driveProgress}
-                    driveError={driveError}
-                    refreshSource={refreshSource}
-                    setApiConfigs={setApiConfigs}
-                    setData={setData}
-                    setSelectedSources={setSelectedSources}
-                    setAvailableSources={setAvailableSources}
-                    newProjectId={newProjectId}
-                    setNewProjectId={setNewProjectId}
-                    newAuthToken={newAuthToken}
-                    setNewAuthToken={setNewAuthToken}
-                    handleAddApiSource={handleAddApiSource}
-                    gcsLoading={gcsLoading}
-                    gcsError={gcsError}
-                    apiError={apiError}
-                    lpgError={lpgError}
-                    handleLpgFileUpload={handleLpgFileUpload}
-                    handleLpgGcsScan={handleLpgGcsScan}
-                    handleLpgGcsLoad={handleLpgGcsLoad}
-                    lpgLoading={lpgLoading}
-                    lpgPasteText={lpgPasteText}
-                    setLpgPasteText={setLpgPasteText}
-                    setLpgLoading={setLpgLoading}
-                    parseLogFile={parseLogFile}
-                    gcsSuccess={gcsSuccess}
-                    setGcsSuccess={setGcsSuccess}
-                    connectionType={connectionType}
-                    setConnectionType={setConnectionType}
-                    gcsProfiles={gcsProfiles}
-                    selectedSources={selectedSources}
-                    removeBucket={removeBucket}
-                    newBucketAlias={newBucketAlias}
-                    setNewBucketAlias={setNewBucketAlias}
-                    newBucketName={newBucketName}
-                    setNewBucketName={setNewBucketName}
-                    handleAddBucket={handleAddBucket}
-                    chartMode={chartMode}
-                    tputType={tputType}
-                    costMode={costMode}
-                    latType={latType}
-                    selectedModels={selectedBenchmarks}
-                    activeFilters={activeFilters}
-                    xAxisMax={xAxisMax}
-                    showPerChip={showPerChip}
-                    showSelectedOnly={showSelectedOnly}
-                    showPareto={showPareto}
-                    showLabels={showLabels}
-                    showDataLabels={showDataLabels}
-                    setIsInspectorOpen={setIsInspectorOpen}
-                    qualityMetrics={qualityMetrics}
-                    setQualityInspectOpen={setQualityInspectOpen}
-                    fetchQualityData={fetchQualityData}
-                    state={dashboardState}
-                    awsBucketConfigs={awsBucketConfigs}
-                    handleAddAWSBucket={handleAddAWSBucket}
-                    removeAWSBucket={removeAWSBucket}
-                />
+
+                {/* Application Layer */}
+
+            </main>
+
+
         </div>
 
     );

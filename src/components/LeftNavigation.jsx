@@ -13,7 +13,8 @@ import {
     FileCode,
     Activity,
     TrendingUp,
-    Zap
+    Zap,
+    Settings
 } from 'lucide-react';
 
 const MENU_GROUPS = [
@@ -36,6 +37,7 @@ const MENU_GROUPS = [
         title: "Utility suite",
         items: [
             { id: 'benchmark-browser', label: 'Benchmark browser', icon: BarChart2, view: 'benchmark-browser' },
+            { id: 'manage-benchmarks', label: 'Manage benchmarks', icon: Settings, view: 'manage-benchmarks' },
             { id: 'schema-browser', label: 'Schema explorer', icon: FileCode, view: 'schema-explorer', disabled: false },
             { id: 'workload-catalog', label: 'Workload catalog', icon: Zap, view: 'workload-catalog', disabled: false },
             { id: 'regressions-analysis', label: 'Regressions & analysis', icon: Activity, view: 'regressions-analysis' },

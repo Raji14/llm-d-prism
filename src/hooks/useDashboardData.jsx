@@ -1770,6 +1770,66 @@ export const useDashboardData = (initialState, dashboardState) => {
         }
     };
 
+    const [submissions, setSubmissions] = useState([]);
+    const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
+
+    const loadSubmissions = useCallback(async () => {
+        setIsLoadingSubmissions(true);
+        try {
+            const res = await fetch('/api/local/list');
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const listData = await res.json();
+            
+            const uploadFiles = (listData.items || []).filter(item => 
+                item.name.endsWith('prism_run_upload.json')
+            );
+
+            const serverSubmissions = [];
+            if (uploadFiles.length > 0) {
+                const fetchPromises = uploadFiles.map(async (file) => {
+                    try {
+                        const fileRes = await fetch(file.mediaLink);
+                        if (fileRes.ok) {
+                            const runPayload = await fileRes.json();
+                            return {
+                                id: runPayload.runId || file.name.split('/')[0],
+                                runId: runPayload.runId || file.name.split('/')[0],
+                                model: runPayload.model_name || "Custom Model",
+                                hardware: runPayload.hardware?.hardware_name || runPayload.run_metadata?.accelerator || "Detected Hardware",
+                                wellLitPath: runPayload.wellLitPath || runPayload.well_lit_path || "none / custom",
+                                submittedAt: runPayload.timestamp || runPayload.run_metadata?.timestamp || new Date().toISOString().split('T')[0],
+                                status: runPayload.status || "staged",
+                                feedback: runPayload.feedback || "",
+                                attribution: runPayload.attribution || null
+                            };
+                        }
+                    } catch (err) {
+                        console.error("Failed to parse local upload file details:", err);
+                    }
+                    return null;
+                });
+                
+                const resolved = await Promise.all(fetchPromises);
+                resolved.forEach(r => {
+                    if (r) serverSubmissions.push(r);
+                });
+            }
+
+            // Sort chronologically
+            serverSubmissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+            setSubmissions(serverSubmissions);
+
+        } catch (error) {
+            console.error("Failed to load submissions:", error);
+        } finally {
+            setIsLoadingSubmissions(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSubmissions();
+    }, [loadSubmissions]);
+
     return {
         data, setData,
         loading, setLoading,
@@ -1815,6 +1875,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         brv02Runs, brv02Error, setBrv02Error, brv02Loading, handleBrv02Upload, handleValidatedUpload, removeBrv02Run,
         brv02CustomLabels, setBrv02CustomLabels,
         brv02BaselineRunId, setBrv02BaselineRunId,
-        brv02SelectedStages, setBrv02SelectedStages
+        brv02SelectedStages, setBrv02SelectedStages,
+        submissions, isLoadingSubmissions, loadSubmissions
     };
 };

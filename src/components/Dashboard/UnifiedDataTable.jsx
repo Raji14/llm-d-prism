@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React from 'react';
-import { RotateCcw, ChevronDown, ChevronUp, Star } from 'lucide-react';
+import { RotateCcw, ChevronDown, ChevronUp, Pin } from 'lucide-react';
 import { getEffectiveTp, getBucket, getSourceTag } from '../../utils/dashboardHelpers';
 
 export const UnifiedDataTable = (props) => {
@@ -79,8 +79,8 @@ export const UnifiedDataTable = (props) => {
                                             }} />
                                        )}
                                    </th>
-                                   <th className="px-1 py-3 w-8 text-center" title="Baseline — click ★ on a row to compare other selected runs against it">
-                                       <Star size={11} className="mx-auto text-slate-400" />
+                                   <th className="px-1 py-3 w-8 text-center" title="Baseline — click 📌 on a row to compare other selected runs against it">
+                                       <Pin size={11} className="mx-auto text-slate-400" />
                                    </th>
                                    <th className="px-2 py-3">Model</th>
                                    <th className="px-2 py-3">Accelerator</th>
@@ -181,7 +181,7 @@ export const UnifiedDataTable = (props) => {
                                                                     : 'text-slate-300 dark:text-slate-600 hover:text-cyan-500 dark:hover:text-cyan-400'
                                                             }`}
                                                         >
-                                                            <Star size={12} fill={isBaseline ? 'currentColor' : 'none'} />
+                                                            <Pin size={11} className={`transition-transform duration-300 ${isBaseline ? 'rotate-[45deg]' : '-rotate-45 opacity-60'}`} fill={isBaseline ? 'currentColor' : 'none'} />
                                                         </button>
                                                     );
                                                 })()}

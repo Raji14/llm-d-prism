@@ -1,587 +1,648 @@
 import React, { useState } from 'react';
-import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Upload, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Upload, Sliders, Layers, Terminal, Compass, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
 
 const PrismHome = ({ onNavigate }) => {
     const [isComingSoonExpanded, setIsComingSoonExpanded] = useState(false);
+    const [hoveredRole, setHoveredRole] = useState(null);
+
+    // Map roles to active pipeline stages
+    const getActiveStages = (role) => {
+        if (!role) return [];
+        switch (role) {
+            case 'feature_dev':
+                return ['report', 'prism'];
+            case 'benchmark_dev':
+                return ['catalog', 'harness', 'report'];
+            case 'solutions_arch':
+                return ['catalog', 'prism'];
+            case 'stack_operator':
+                return ['store', 'prism'];
+            default:
+                return [];
+        }
+    };
+
+    const activeStages = getActiveStages(hoveredRole);
+
     return (
-        <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
-            {/* Pulsing Vibrant Neon Glow Background Shapes */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
-            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
+        <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+            {/* Background Dot Grid */}
+            <div className="absolute inset-0 pointer-events-none z-0 opacity-[0.08]">
+                <svg width="100%" height="100%">
+                    <defs>
+                        <pattern id="bg-grid-dots" width="20" height="20" patternUnits="userSpaceOnUse">
+                            <circle cx="2" cy="2" r="1" fill="#cbd5e1" />
+                        </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#bg-grid-dots)" />
+                </svg>
+            </div>
+
+            {/* Pulsing Ambient Glow Background Shapes */}
+            <div className="absolute top-1/4 left-10 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-1/4 right-10 w-96 h-96 bg-emerald-600/5 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Technical Blueprint Layout Borders */}
+            <div className="absolute left-6 top-0 bottom-0 border-l border-slate-900 border-dashed pointer-events-none z-0" />
+            <div className="absolute right-6 top-0 bottom-0 border-r border-slate-900 border-dashed pointer-events-none z-0" />
+            <div className="absolute left-0 right-0 top-6 border-t border-slate-900 border-dashed pointer-events-none z-0" />
+            <div className="absolute left-0 right-0 bottom-6 border-b border-slate-900 border-dashed pointer-events-none z-0" />
+
+            {/* Blueprint Junction Crosshairs */}
+            <span className="absolute left-5 top-5 font-mono text-slate-700 text-xs select-none pointer-events-none">+</span>
+            <span className="absolute right-5 top-5 font-mono text-slate-700 text-xs select-none pointer-events-none">+</span>
+            <span className="absolute left-5 bottom-5 font-mono text-slate-700 text-xs select-none pointer-events-none">+</span>
+            <span className="absolute right-5 bottom-5 font-mono text-slate-700 text-xs select-none pointer-events-none">+</span>
 
             <div className="max-w-6xl w-full z-10 flex flex-col items-center">
                 {/* Hero Header */}
-                <header className="mb-10 text-center relative pt-6 flex flex-col items-center">
-                    <div className="flex items-center justify-center mb-2 space-x-3">
-                        <a href="https://llm-d.ai" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
-                            <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-9 object-contain" />
+                <header className="mb-14 text-center relative pt-8 flex flex-col items-center">
+                    <div className="flex items-center justify-center mb-3 space-x-3">
+                        <a href="https://llm-d.ai" target="_blank" rel="noopener noreferrer" className="hover:opacity-85 transition-opacity">
+                            <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-8 object-contain" />
                         </a>
-                        <a href="https://github.com/llm-d/llm-d-prism" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
-                            <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
-                                Prism
+                        <div className="h-6 w-px bg-slate-800" />
+                        <a href="https://github.com/llm-d/llm-d-prism" target="_blank" rel="noopener noreferrer" className="hover:opacity-85 transition-opacity">
+                            <h1 className="text-3xl font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 font-mono">
+                                PRISM
                             </h1>
                         </a>
                     </div>
-                    <p className="text-xl text-slate-400 max-w-3xl leading-relaxed font-light tracking-wide mb-4">
-                        Performance analysis for distributed inference systems and agentic workflows
+                    <p className="text-sm text-slate-400 max-w-2xl leading-relaxed font-mono uppercase tracking-wider">
+                        Distributed Inference Systems & Agentic Serving Benchmarks Portal
                     </p>
                 </header>
 
-
-
-
-                {/* Results Store landing Front Door */}
-                <section className="mb-16 w-full max-w-5xl bg-gradient-to-br from-slate-900 via-[#0d1527] to-slate-950 p-6 rounded-2xl border border-cyan-500/20 shadow-[0_4px_30px_rgba(6,182,212,0.08)] relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+                {/* Section 01: Results Store landing Front Door */}
+                <section className="mb-16 w-full max-w-5xl bg-slate-900/20 border border-slate-800/80 rounded-xl relative overflow-hidden backdrop-blur-xl shadow-xl">
+                    {/* Corner Tag */}
+                    <div className="absolute top-0 left-0 bg-slate-800/80 px-3 py-1 font-mono text-[9px] text-slate-400 uppercase tracking-widest border-r border-b border-slate-700/50 rounded-br">
+                        [01 // RESULTS STORE GATEWAY]
+                    </div>
                     
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-6">
-                        <div>
-                            <div className="flex items-center gap-2.5 mb-1.5">
-                                <Database className="h-6 w-6 text-cyan-400 animate-pulse" />
-                                <h2 className="text-xl font-bold tracking-wider text-white uppercase font-mono">Results Store</h2>
+                    <div className="p-8 pt-10">
+                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+                            <div>
+                                <div className="flex items-center gap-2.5 mb-2">
+                                    <Database className="h-5 w-5 text-cyan-400" />
+                                    <h2 className="text-lg font-black tracking-wider text-white uppercase font-mono">Results Store</h2>
+                                </div>
+                                <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
+                                    The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
+                                </p>
                             </div>
-                            <p className="text-[12px] text-slate-400 max-w-xl leading-relaxed">
-                                The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
+                            <div className="flex items-center gap-2 font-mono text-[9px] text-slate-400 border border-slate-800 px-3 py-1.5 rounded bg-slate-950/40 select-none">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Schema Sync (v0.2)
+                            </div>
+                        </div>
+
+                        {/* 3-Column Split Layout with border dividers */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 border border-slate-800 rounded-lg overflow-hidden bg-slate-950/20">
+                            {/* Action 1: Browse Results */}
+                            <div 
+                                onClick={() => onNavigate('benchmark-browser')}
+                                className="hover:bg-slate-950/80 p-5 cursor-pointer group transition-all duration-300 flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3 text-slate-300 group-hover:text-cyan-400 transition-colors">
+                                        <BarChart2 className="h-4 w-4" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Browse Results</h3>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-6">
+                                        Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
+                                    </p>
+                                </div>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
+                                    Open Browser <ArrowRight className="h-3 w-3" />
+                                </div>
+                            </div>
+
+                            {/* Action 2: Add/Submit */}
+                            <div 
+                                onClick={() => onNavigate('manage-benchmarks')}
+                                className="border-t md:border-t-0 md:border-l md:border-r border-slate-800 hover:bg-slate-950/80 p-5 cursor-pointer group transition-all duration-305 flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3 text-slate-300 group-hover:text-cyan-400 transition-colors">
+                                        <Upload className="h-4 w-4" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Add Benchmark</h3>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-6">
+                                        Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
+                                    </p>
+                                </div>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
+                                    Submit Run <ArrowRight className="h-3 w-3" />
+                                </div>
+                            </div>
+
+                            {/* Action 3: Manage Submissions */}
+                            <div 
+                                onClick={() => onNavigate('manage-benchmarks')}
+                                className="hover:bg-slate-950/80 p-5 cursor-pointer group transition-all duration-300 flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3 text-slate-300 group-hover:text-cyan-400 transition-colors">
+                                        <Sliders className="h-4 w-4" />
+                                        <h3 className="text-xs font-bold uppercase tracking-wider font-mono">Manage Submissions</h3>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-6">
+                                        Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
+                                    </p>
+                                </div>
+                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
+                                    Track Progress <ArrowRight className="h-3 w-3" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Section 02: Well-lit paths */}
+                <section className="mb-20 w-full max-w-5xl bg-slate-900/20 border border-slate-800/80 rounded-xl relative overflow-hidden backdrop-blur-xl shadow-xl">
+                    {/* Corner Tag */}
+                    <div className="absolute top-0 left-0 bg-slate-800/80 px-3 py-1 font-mono text-[9px] text-slate-400 uppercase tracking-widest border-r border-b border-slate-700/50 rounded-br">
+                        [02 // ACTIVE SERVING ARCHITECTURES]
+                    </div>
+
+                    <div className="p-8 pt-10">
+                        <div className="text-center mb-8">
+                            <h2 className="text-lg font-black tracking-wider text-white uppercase font-mono mb-1">
+                                Well-lit paths
+                            </h2>
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-mono uppercase tracking-wide">Live benchmarked serving configurations and architectural templates</p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full items-stretch">
+                            {/* Path 1: Inference scheduling */}
+                            <div 
+                                onClick={() => onNavigate('inference-scheduling')}
+                                className="group relative bg-slate-950/40 hover:bg-slate-950/80 shadow-lg hover:shadow-2xl rounded-xl p-5 transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-cyan-500/35 h-full overflow-hidden"
+                            >
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">
+                                            Intelligent routing
+                                        </h3>
+                                        <span className="font-mono text-[8px] text-slate-500">[PATH-A]</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 mb-3">
+                                        <span className="text-[9px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded font-mono border border-cyan-500/20">Prefix-cache</span>
+                                        <span className="text-[9px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded font-mono border border-cyan-500/20">Load balance</span>
+                                    </div>
+                                    <p className="text-slate-450 text-[11px] leading-relaxed mb-4">
+                                        Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
+                                    </p>
+                                    
+                                    {/* Visual Preview / Metrics */}
+                                    <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 mb-4 font-mono">
+                                        <div className="space-y-1 mb-2">
+                                            <div className="flex justify-between text-[10px]">
+                                                <span className="text-slate-500">SLA COMPLIANCE:</span>
+                                                <span className="text-cyan-400 font-bold">98.5%</span>
+                                            </div>
+                                            <div className="flex justify-between text-[10px]">
+                                                 <span className="text-slate-500">CONTEXT SCALE:</span>
+                                                 <span className="text-cyan-400 font-bold">163k TOK</span>
+                                            </div>
+                                        </div>
+                                        {/* Monochromatic Preview Chart */}
+                                        <div className="h-7 flex items-end justify-between space-x-0.5 border-b border-slate-800 pb-px">
+                                            <div className="w-full bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                            <div className="w-full bg-cyan-500 h-3 rounded-t-sm opacity-40"></div>
+                                            <div className="w-full bg-cyan-500 h-4.5 rounded-t-sm opacity-70"></div>
+                                            <div className="w-full bg-cyan-500 h-3.5 rounded-t-sm opacity-55"></div>
+                                            <div className="w-full bg-cyan-500 h-6 rounded-t-sm opacity-95"></div>
+                                        </div>
+                                    </div>
+                                </div>
+     
+                                <div className="flex gap-2 mt-auto pt-2">
+                                    <button className="flex-1 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded font-mono font-bold text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 transition-all uppercase tracking-wider">
+                                        Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
+                                        className="px-3 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 hover:text-white rounded font-mono text-[10px] flex items-center justify-center transition-colors uppercase tracking-wider"
+                                        title="View GKE config template to reproduce this optimized routing schema in your cluster"
+                                    >
+                                        Reproduce
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Path 2: Agentic Serving */}
+                            <div 
+                                onClick={() => onNavigate('agentic-serving')}
+                                className="group relative bg-slate-950/40 hover:bg-slate-950/80 shadow-lg hover:shadow-2xl rounded-xl p-5 transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-cyan-500/35 h-full overflow-hidden"
+                            >
+                                <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-xs font-bold text-white group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">
+                                            Agentic serving
+                                        </h3>
+                                        <span className="font-mono text-[8px] text-slate-500">[PATH-B]</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5 mb-3">
+                                        <span className="text-[9px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded font-mono border border-cyan-500/20">Multi-turn</span>
+                                        <span className="text-[9px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded font-mono border border-cyan-500/20">Tool use</span>
+                                    </div>
+                                    <p className="text-slate-450 text-[11px] leading-relaxed mb-4">
+                                        Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
+                                    </p>
+                                    
+                                    {/* Visual Preview / Metrics */}
+                                    <div className="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3 mb-4 font-mono">
+                                        <div className="space-y-1 mb-2">
+                                            <div className="flex justify-between text-[10px]">
+                                                <span className="text-slate-500">WORKLOAD:</span>
+                                                <span className="text-cyan-400 font-bold">CODE GEN</span>
+                                            </div>
+                                            <div className="flex justify-between text-[10px]">
+                                                <span className="text-slate-500">NUM TURNS:</span>
+                                                <span className="text-cyan-400 font-bold">230</span>
+                                            </div>
+                                        </div>
+                                        <div className="h-7 flex items-end justify-between space-x-0.5 px-0.5 relative border-b border-slate-800 pb-px">
+                                             <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                             <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                             <div className="w-2/6 bg-cyan-500 h-4.5 rounded-t-sm relative opacity-90">
+                                                 <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Active</span>
+                                             </div>
+                                             <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                             <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                             <div className="w-2/6 bg-cyan-500 h-4.5 rounded-t-sm opacity-90 relative">
+                                                 <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wider">Offload</span>
+                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+     
+                                <div className="flex gap-2 mt-auto pt-2">
+                                    <button className="flex-1 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded font-mono font-bold text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 transition-all uppercase tracking-wider">
+                                        Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
+                                        className="px-3 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800/85 hover:text-white rounded font-mono text-[10px] flex items-center justify-center transition-colors uppercase tracking-wider"
+                                        title="View GKE config template to reproduce this optimized routing schema in your cluster"
+                                    >
+                                        Reproduce
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Consolidated Roadmap (Coming Soon Stack) */}
+                            <div 
+                                onClick={() => setIsComingSoonExpanded(!isComingSoonExpanded)}
+                                className={`group relative bg-slate-950/40 border border-slate-800 rounded-xl p-5 transition-all duration-300 cursor-pointer flex flex-col justify-between overflow-hidden ${
+                                    isComingSoonExpanded 
+                                    ? 'shadow-[0_0_30px_rgba(168,85,247,0.12)] border-purple-500/35 h-auto' 
+                                    : 'hover:border-purple-500/30 hover:shadow-[0_4px_25px_rgba(168,85,247,0.06)] h-full min-h-[280px]'
+                                }`}
+                            >
+                                {/* Layered Cards background visual effect when collapsed */}
+                                {!isComingSoonExpanded && (
+                                    <>
+                                        <div className="absolute bottom-2 left-6 right-6 h-10 bg-slate-950 border border-slate-905 rounded-lg -z-10 translate-y-3 opacity-60 scale-95 transition-all duration-300 group-hover:translate-y-4" />
+                                        <div className="absolute bottom-2 left-4 right-4 h-10 bg-slate-900 border border-slate-800 rounded-lg -z-10 translate-y-1.5 opacity-80 scale-98 transition-all duration-300 group-hover:translate-y-2" />
+                                    </>
+                                )}
+
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <Layers className="h-4 w-4 text-purple-400" />
+                                            <h3 className="text-xs font-bold text-white group-hover:text-purple-400 transition-colors uppercase font-mono tracking-wider">Roadmap</h3>
+                                        </div>
+                                        <span className="text-[8.5px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400 uppercase font-black tracking-wider">
+                                            {isComingSoonExpanded ? 'Active' : 'Roadmap'}
+                                        </span>
+                                    </div>
+                                    <p className="text-slate-400 text-[11px] leading-relaxed mb-4">
+                                        Upcoming performance optimizations and architectural templates on the Prism roadmap.
+                                    </p>
+
+                                    {isComingSoonExpanded ? (
+                                        <div className="space-y-2.5 my-2 animate-fadeIn font-mono">
+                                            {/* Roadmap Item 1 */}
+                                            <div className="p-2.5 bg-slate-950/60 border border-slate-850 rounded flex items-start gap-2.5">
+                                                <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20 mt-0.5">
+                                                    <Database className="w-3 h-3 text-emerald-400" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-tight">Prefix Cache Offloading</h4>
+                                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">Tiered KV cache offloading to host CPU memory, expanding accelerator capacity bounds.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Roadmap Item 2 */}
+                                            <div className="p-2.5 bg-slate-950/60 border border-slate-850 rounded flex items-start gap-2.5">
+                                                <div className="p-1 rounded bg-purple-500/10 border border-purple-500/20 mt-0.5">
+                                                    <Activity className="w-3 h-3 text-purple-400" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-tight">Prefill/Decode Disagg</h4>
+                                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">Separating prefill and decode nodes to eliminate queue interference for multi-tenant pipelines.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Roadmap Item 3 */}
+                                            <div className="p-2.5 bg-slate-950/60 border border-slate-850 rounded flex items-start gap-2.5">
+                                                <div className="p-1 rounded bg-pink-500/10 border border-pink-500/20 mt-0.5">
+                                                    <Layers className="w-3 h-3 text-pink-400" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-tight">Wide Expert Parallelism</h4>
+                                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">Scaling Mixture-of-Experts (MoE) workloads across large multi-node GPU clusters dynamically.</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Roadmap Item 4 */}
+                                            <div className="p-2.5 bg-slate-950/60 border border-slate-850 rounded flex items-start gap-2.5">
+                                                <div className="p-1 rounded bg-cyan-500/10 border border-cyan-500/20 mt-0.5">
+                                                    <TrendingUp className="w-3 h-3 text-cyan-400" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-[10px] font-bold text-slate-200 uppercase tracking-tight">Value Analysis (TCO)</h4>
+                                                    <p className="text-[9px] text-slate-400 leading-tight mt-0.5">Dynamic cost vs. performance optimization reports, estimating dollar savings per Chip hour.</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1.5 select-none mt-3 opacity-40">
+                                            <div className="h-6.5 bg-slate-950 border border-slate-900 rounded" />
+                                            <div className="h-6.5 bg-slate-950 border border-slate-800 rounded" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button className="w-full mt-4 py-2 bg-slate-900 hover:bg-slate-850 text-slate-300 rounded font-mono text-[9px] flex items-center justify-center border border-slate-800 transition-colors uppercase tracking-wider">
+                                    {isComingSoonExpanded ? 'Collapse Deck' : 'Expand Roadmap'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                {/* Section 03: Utility Suite */}
+                <section className="mb-20 w-full max-w-5xl bg-slate-900/20 border border-slate-800/80 rounded-xl relative overflow-hidden backdrop-blur-xl shadow-xl">
+                    {/* Corner Tag */}
+                    <div className="absolute top-0 left-0 bg-slate-800/80 px-3 py-1 font-mono text-[9px] text-slate-400 uppercase tracking-widest border-r border-b border-slate-700/50 rounded-br">
+                        [03 // ANALYTICS & UTILITY SUITE]
+                    </div>
+
+                    <div className="p-8 pt-10">
+                        <div className="text-center mb-8">
+                            <h2 className="text-lg font-black tracking-wider text-white uppercase font-mono mb-1">
+                                Utility suite
+                            </h2>
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-mono uppercase tracking-wide">Access specialized tools for deeper analysis and schema browsing</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                            {/* Card 1: Benchmark Browser */}
+                            <div 
+                                onClick={() => onNavigate('benchmark-browser')}
+                                className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4.5 hover:bg-slate-950/80 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                            >
+                                <div>
+                                    <div className="flex items-center mb-2.5">
+                                        <BarChart2 className="h-4 w-4 text-cyan-400 mr-2" />
+                                        <h3 className="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">Benchmark Browser</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-normal mb-5">Browse and compare benchmark results across runs and configurations.</p>
+                                </div>
+                                <button className="w-full py-1.5 bg-slate-900 hover:bg-cyan-600 text-white rounded font-mono text-[9px] flex items-center justify-center transition-colors uppercase tracking-wider">
+                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
+                            </div>
+
+                            {/* Card 2: Schema Explorer */}
+                            <div 
+                                onClick={() => onNavigate('schema-explorer')}
+                                className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4.5 hover:bg-slate-950/80 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                            >
+                                <div>
+                                    <div className="flex items-center mb-2.5">
+                                        <FileCode className="h-4 w-4 text-cyan-400 mr-2" />
+                                        <h3 className="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">Schema Explorer</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-normal mb-5">Explore unified schema standards and metrics definitions.</p>
+                                </div>
+                                <button className="w-full py-1.5 bg-slate-900 hover:bg-cyan-600 text-white rounded font-mono text-[9px] flex items-center justify-center transition-colors uppercase tracking-wider">
+                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
+                            </div>
+
+                            {/* Card 3: Workload Catalog */}
+                            <div 
+                                onClick={() => onNavigate('workload-catalog')}
+                                className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4.5 hover:bg-slate-950/80 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                            >
+                                <div>
+                                    <div className="flex items-center mb-2.5">
+                                        <Zap className="h-4 w-4 text-cyan-400 mr-2" />
+                                        <h3 className="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">Workload Catalog</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-normal mb-5">Explore standardized workload shapes and resource requests.</p>
+                                </div>
+                                <button className="w-full py-1.5 bg-slate-900 hover:bg-cyan-600 text-white rounded font-mono text-[9px] flex items-center justify-center transition-colors uppercase tracking-wider">
+                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
+                            </div>
+
+                            {/* Card 4: Regressions & Analysis */}
+                            <div 
+                                onClick={() => onNavigate('regressions-analysis')}
+                                className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4.5 hover:bg-slate-950/80 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                            >
+                                <div>
+                                    <div className="flex items-center mb-2.5">
+                                        <Activity className="h-4 w-4 text-cyan-400 mr-2" />
+                                        <h3 className="text-xs font-bold text-slate-200 group-hover:text-cyan-400 transition-colors uppercase font-mono tracking-wider">Regressions</h3>
+                                    </div>
+                                    <p className="text-[10.5px] text-slate-400 leading-normal mb-5">Track nightly benchmark runs and detect regressions across models.</p>
+                                </div>
+                                <button className="w-full py-1.5 bg-slate-900 hover:bg-cyan-600 text-white rounded font-mono text-[9px] flex items-center justify-center transition-colors uppercase tracking-wider">
+                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {/* Section 04: How it works - Interactive Blueprint Schematic */}
+                <section className="mb-20 w-full max-w-5xl bg-slate-900/20 border border-slate-800/80 rounded-xl relative overflow-hidden backdrop-blur-xl shadow-xl">
+                    {/* Corner Tag */}
+                    <div className="absolute top-0 left-0 bg-slate-800/80 px-3 py-1 font-mono text-[9px] text-slate-400 uppercase tracking-widest border-r border-b border-slate-700/50 rounded-br">
+                        [04 // LIFECYCLE SCHEMATIC & PIPELINE]
+                    </div>
+
+                    <div className="p-8 pt-10">
+                        <div className="text-center mb-10">
+                            <h2 className="text-lg font-black tracking-wider text-white uppercase font-mono mb-1">
+                                Benchmark Lifecycle
+                            </h2>
+                            <p className="text-[11px] text-slate-400 leading-relaxed font-mono uppercase tracking-wide">
+                                Automated ingestion, compliance validation, and visualization flow
                             </p>
                         </div>
-                        <div className="flex items-center gap-2 font-mono text-[9px] text-slate-500 border border-slate-800/80 px-2.5 py-1 rounded bg-slate-950/40 select-none">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Schema Sync (v0.2)
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Action 1: Browse Results */}
-                        <div 
-                            onClick={() => onNavigate('benchmark-browser')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <BarChart2 className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Browse Results</h3>
-                                </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
-                                </p>
-                            </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Open Browser <ArrowRight className="h-3 w-3" />
-                            </div>
-                        </div>
-
-                        {/* Action 2: Add/Submit */}
-                        <div 
-                            onClick={() => onNavigate('manage-benchmarks')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <Upload className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Add Benchmark</h3>
-                                </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
-                                </p>
-                            </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Submit Run <ArrowRight className="h-3 w-3" />
-                            </div>
-                        </div>
-
-                        {/* Action 3: Manage Submissions */}
-                        <div 
-                            onClick={() => onNavigate('manage-benchmarks')}
-                            className="bg-slate-950/60 hover:bg-slate-950/95 border border-slate-850 hover:border-cyan-500/35 p-4 rounded-xl cursor-pointer group transition-all duration-300 flex flex-col justify-between"
-                        >
-                            <div>
-                                <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                    <Sliders className="h-4.5 w-4.5" />
-                                    <h3 className="text-xs xl:text-sm font-bold uppercase tracking-wider font-mono">Manage Submissions</h3>
-                                </div>
-                                <p className="text-[10.5px] text-slate-400 leading-relaxed mb-4">
-                                    Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
-                                </p>
-                            </div>
-                            <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono">
-                                Track Progress <ArrowRight className="h-3 w-3" />
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* Well-lit paths */}
-                <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-bold mb-2 text-center text-slate-100">
-                        Well-lit paths
-                    </h2>
-                    <p className="text-xs text-slate-500 leading-relaxed text-center mb-8">Live benchmarked serving configurations and architectural templates</p>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full items-stretch">
-                        {/* Path 1: Inference scheduling */}
-                        <div 
-                            onClick={() => onNavigate('inference-scheduling')}
-                            className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
-                        >
-                            <div>
-                                <h3 className="text-xs xl:text-sm font-bold mb-1.5 text-white group-hover:text-cyan-400 transition-colors leading-tight uppercase font-mono tracking-wide">
-                                    Intelligent routing
-                                </h3>
-                                <div className="flex flex-wrap gap-1 mb-2">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Prefix-cache</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Load balance</span>
-                                </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-3">
-                                    Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
-                                </p>
+                        
+                        {/* Interactive Blueprint Flow Structure */}
+                        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.5fr_1fr] gap-6 items-stretch relative">
+                            {/* Left Column: Roles (Developer side) */}
+                            <div className="flex flex-col gap-6 justify-center">
+                                <div className="text-center lg:text-right font-mono text-[9px] uppercase tracking-widest text-cyan-400 mb-1 font-bold">Input Operators</div>
                                 
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-800/50 border border-slate-700/40 rounded-lg p-2.5 mb-3">
-                                    <div className="space-y-0.5 mb-1.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">SLA compliance</span>
-                                            <span className="text-cyan-400 font-mono font-bold">98.5%</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Context scale</span>
-                                             <span className="text-cyan-400 font-mono font-bold">163k Tok</span>
-                                        </div>
-                                    </div>
-                                    {/* Monochromatic Preview Chart */}
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 border-b border-slate-700/30 pb-px">
-                                        <div className="w-full bg-cyan-500 h-1.5 rounded-t-sm opacity-30"></div>
-                                        <div className="w-full bg-cyan-500 h-3 rounded-t-sm opacity-50"></div>
-                                        <div className="w-full bg-cyan-500 h-4.5 rounded-t-sm opacity-80"></div>
-                                        <div className="w-full bg-cyan-500 h-3.5 rounded-t-sm opacity-60"></div>
-                                        <div className="w-full bg-cyan-500 h-6 rounded-t-sm"></div>
-                                    </div>
-                                </div>
-                            </div>
- 
-                            <div className="flex gap-2 mt-auto pt-2">
-                                <button className="flex-1 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all">
-                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
-                                </button>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
-                                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750 hover:text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors"
-                                    title="View GKE config template to reproduce this optimized routing schema in your cluster"
+                                {/* Feature Developer Card */}
+                                <div 
+                                    onMouseEnter={() => setHoveredRole('feature_dev')}
+                                    onMouseLeave={() => setHoveredRole(null)}
+                                    className={`bg-slate-950/60 p-4 border rounded-lg transition-all duration-300 relative ${
+                                        hoveredRole === 'feature_dev' ? 'border-cyan-500 bg-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.1)]' : 'border-slate-800'
+                                    }`}
                                 >
-                                    Reproduce This
-                                </button>
-                            </div>
-                        </div>
+                                    {/* Responsive CSS Bridge Line */}
+                                    <div className={`hidden lg:block absolute left-full top-1/2 w-6 h-px transition-all duration-300 ${
+                                        hoveredRole === 'feature_dev' ? 'bg-cyan-500 shadow-[0_0_8px_#06b6d4]' : 'bg-slate-800'
+                                    }`} />
 
-                        {/* Path 2: Agentic Workloads */}
-                        <div 
-                            onClick={() => onNavigate('agentic-serving')}
-                            className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
-                        >
-                            <div>
-                                <h3 className="text-xs xl:text-sm font-bold mb-1.5 text-white group-hover:text-cyan-400 transition-colors leading-tight uppercase font-mono tracking-wide">
-                                    Agentic serving
-                                </h3>
-                                <div className="flex flex-wrap gap-1 mb-2">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Multi-turn</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Tool use</span>
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono mb-1.5">Feature Developer</h4>
+                                    <ul className="text-[10px] text-slate-400 space-y-1 font-mono">
+                                        <li>• Run benchmarks against baseline specs</li>
+                                        <li>• Analyze isolated system bottlenecks</li>
+                                        <li>• Generate v0.2 structured reports</li>
+                                    </ul>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-3">
-                                    Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
-                                </p>
-                                
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-800/50 border border-slate-700/40 rounded-lg p-2.5 mb-3">
-                                    <div className="space-y-0.5 mb-1.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">Workload</span>
-                                            <span className="text-cyan-400 font-mono font-bold">Code Generation</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">Num Turns</span>
-                                            <span className="text-cyan-400 font-mono font-bold">230</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 px-0.5 relative border-b border-slate-700/30 pb-px">
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-cyan-500 h-4 rounded-t-sm relative opacity-90">
-                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wide">Active</span>
-                                         </div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-cyan-500 h-4 rounded-t-sm opacity-90 relative">
-                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wide">Offload</span>
-                                         </div>
-                                    </div>
-                                </div>
-                            </div>
- 
-                            <div className="flex gap-2 mt-auto pt-2">
-                                <button className="flex-1 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all">
-                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
-                                </button>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
-                                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750 hover:text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors"
-                                    title="View GKE config template to reproduce this optimized routing schema in your cluster"
+
+                                {/* Benchmark Developer Card */}
+                                <div 
+                                    onMouseEnter={() => setHoveredRole('benchmark_dev')}
+                                    onMouseLeave={() => setHoveredRole(null)}
+                                    className={`bg-slate-950/60 p-4 border rounded-lg transition-all duration-300 relative ${
+                                        hoveredRole === 'benchmark_dev' ? 'border-cyan-500 bg-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.1)]' : 'border-slate-800'
+                                    }`}
                                 >
-                                    Reproduce This
-                                </button>
-                            </div>
-                        </div>
+                                    {/* Responsive CSS Bridge Line */}
+                                    <div className={`hidden lg:block absolute left-full top-1/2 w-6 h-px transition-all duration-300 ${
+                                        hoveredRole === 'benchmark_dev' ? 'bg-cyan-500 shadow-[0_0_8px_#06b6d4]' : 'bg-slate-800'
+                                    }`} />
 
-                        {/* Card 3: Consolidated Roadmap (Coming Soon Stack) */}
-                        <div 
-                            onClick={() => setIsComingSoonExpanded(!isComingSoonExpanded)}
-                            className={`group relative bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-4 transition-all duration-305 cursor-pointer flex flex-col justify-between overflow-hidden ${
-                                isComingSoonExpanded 
-                                ? 'shadow-[0_0_30px_rgba(168,85,247,0.12)] border-purple-500/35 h-auto' 
-                                : 'hover:border-purple-500/20 hover:shadow-[0_4px_20px_rgba(168,85,247,0.06)] h-full min-h-[280px]'
-                            }`}
-                        >
-                            {/* Layered Cards background visual effect when collapsed */}
-                            {!isComingSoonExpanded && (
-                                <>
-                                    <div className="absolute bottom-2 left-6 right-6 h-10 bg-slate-950 border border-slate-850 rounded-lg -z-10 translate-y-3 opacity-60 scale-95 transition-all duration-300 group-hover:translate-y-4" />
-                                    <div className="absolute bottom-2 left-4 right-4 h-10 bg-slate-900 border border-slate-800 rounded-lg -z-10 translate-y-1.5 opacity-80 scale-98 transition-all duration-300 group-hover:translate-y-2" />
-                                </>
-                            )}
-
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Layers className="h-4.5 w-4.5 text-purple-400" />
-                                        <h3 className="text-xs xl:text-sm font-bold text-white group-hover:text-purple-400 transition-colors uppercase font-mono tracking-wide">Roadmap</h3>
-                                    </div>
-                                    <span className="text-[8.5px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400 uppercase font-black tracking-wider">
-                                        {isComingSoonExpanded ? 'Active Deck' : 'Expand (4 Items)'}
-                                    </span>
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono mb-1.5">Benchmark Developer</h4>
+                                    <ul className="text-[10px] text-slate-400 space-y-1 font-mono">
+                                        <li>• Author standardized workload models</li>
+                                        <li>• Publish configurations to GCS Staging</li>
+                                        <li>• Audit data compliance logs</li>
+                                    </ul>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-4">
-                                    Upcoming performance optimizations and architectural templates on the Prism roadmap.
-                                </p>
-
-                                {isComingSoonExpanded ? (
-                                    <div className="space-y-2.5 my-2 animate-fadeIn">
-                                        {/* Roadmap Item 1 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20 mt-0.5">
-                                                <Database className="w-3 h-3 text-emerald-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Prefix Cache Offloading</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Tiered KV cache offloading to host CPU memory, expanding accelerator context capacity bounds.</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Roadmap Item 2 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-purple-500/10 border border-purple-500/20 mt-0.5">
-                                                <Activity className="w-3 h-3 text-purple-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Prefill/Decode Disaggregation</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Separating prefill and decode nodes to eliminate queue interference for multi-tenant pipelines.</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Roadmap Item 3 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-pink-500/10 border border-pink-500/20 mt-0.5">
-                                                <Layers className="w-3 h-3 text-pink-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Wide Expert Parallelism</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Scaling Mixture-of-Experts (MoE) workloads across large multi-node GPU clusters dynamically.</p>
-                                            </div>
-                                        </div>
-
-                                        {/* Roadmap Item 4 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-cyan-500/10 border border-cyan-500/20 mt-0.5">
-                                                <TrendingUp className="w-3 h-3 text-cyan-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Value Analysis (Cost/TCO)</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Dynamic cost vs. performance optimization reports, estimating dollar savings per Chip hour.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1.5 select-none mt-2 opacity-50">
-                                        <div className="h-6.5 bg-slate-950 border border-slate-850 rounded-md" />
-                                        <div className="h-6.5 bg-slate-950 border border-slate-850 rounded-md" />
-                                    </div>
-                                )}
                             </div>
 
-                            <button className="w-full mt-3 py-1.5 bg-slate-850 hover:bg-slate-800 text-slate-300 rounded-lg font-medium text-[10px] flex items-center justify-center border border-slate-800 transition-colors">
-                                {isComingSoonExpanded ? 'Collapse Deck' : 'Expand Roadmap Deck'}
-                            </button>
+                            {/* Center Column: Pipeline Path Box */}
+                            <div className="flex flex-col gap-4 items-center justify-center bg-slate-950/30 border border-slate-800 rounded-lg p-5">
+                                <div className="font-mono text-[9px] uppercase tracking-widest text-slate-500 mb-1">Central Pipeline</div>
+
+                                {/* Step 1: Workload Catalog */}
+                                <div className={`w-full p-3 bg-slate-900/60 border rounded-lg text-center transition-all duration-300 ${
+                                    activeStages.includes('catalog') ? 'border-cyan-500 bg-slate-900 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]' : 'border-slate-800 text-slate-400'
+                                }`}>
+                                    <div className="text-[9px] font-mono text-slate-500 mb-0.5">[STEP 01 // WORKLOAD CATALOG]</div>
+                                    <h5 className="text-xs font-bold font-mono uppercase">Workload Specification</h5>
+                                </div>
+
+                                {/* Connecting Down Arrow */}
+                                <div className="h-4 w-px border-l border-dashed border-slate-700" />
+
+                                {/* Step 2: Ingestion & Validation */}
+                                <div className={`w-full p-3 bg-slate-900/60 border rounded-lg text-center transition-all duration-300 ${
+                                    activeStages.includes('report') ? 'border-cyan-500 bg-slate-900 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.08)]' : 'border-slate-800 text-slate-400'
+                                }`}>
+                                    <div className="text-[9px] font-mono text-slate-500 mb-0.5">[STEP 02 // VALIDATION HOOKS]</div>
+                                    <h5 className="text-xs font-bold font-mono uppercase">Compliance Reporting</h5>
+                                </div>
+
+                                {/* Connecting Down Arrow */}
+                                <div className="h-4 w-px border-l border-dashed border-slate-700" />
+
+                                {/* Step 3: Central OSS Store */}
+                                <div className={`w-full p-3 bg-slate-900/60 border rounded-lg text-center transition-all duration-300 ${
+                                    activeStages.includes('store') ? 'border-purple-500 bg-slate-900 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.08)]' : 'border-slate-800 text-slate-400'
+                                }`}>
+                                    <div className="text-[9px] font-mono text-slate-500 mb-0.5">[STEP 03 // DATA REPOSITORY]</div>
+                                    <h5 className="text-xs font-bold font-mono uppercase">llm-d Results Store</h5>
+                                </div>
+
+                                {/* Connecting Down Arrow */}
+                                <div className="h-4 w-px border-l border-dashed border-slate-700" />
+
+                                {/* Step 4: Prism Portal */}
+                                <div className={`w-full p-3 bg-slate-900/60 border rounded-lg text-center transition-all duration-300 ${
+                                    activeStages.includes('prism') ? 'border-purple-500 bg-slate-900 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.08)]' : 'border-slate-800 text-slate-400'
+                                }`}>
+                                    <div className="text-[9px] font-mono text-slate-500 mb-0.5">[STEP 04 // VISUALIZATION PORTAL]</div>
+                                    <h5 className="text-xs font-bold font-mono uppercase">Prism Analytics</h5>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Roles (Consumer / Architect side) */}
+                            <div className="flex flex-col gap-6 justify-center">
+                                <div className="text-center lg:text-left font-mono text-[9px] uppercase tracking-widest text-purple-450 mb-1 font-bold">Consumers</div>
+
+                                {/* Solutions Architect Card */}
+                                <div 
+                                    onMouseEnter={() => setHoveredRole('solutions_arch')}
+                                    onMouseLeave={() => setHoveredRole(null)}
+                                    className={`bg-slate-950/60 p-4 border rounded-lg transition-all duration-300 relative ${
+                                        hoveredRole === 'solutions_arch' ? 'border-purple-500 bg-slate-950 shadow-[0_0_20px_rgba(168,85,247,0.1)]' : 'border-slate-800'
+                                    }`}
+                                >
+                                    {/* Responsive CSS Bridge Line */}
+                                    <div className={`hidden lg:block absolute right-full top-1/2 w-6 h-px transition-all duration-300 ${
+                                        hoveredRole === 'solutions_arch' ? 'bg-purple-500 shadow-[0_0_8px_#a855f7]' : 'bg-slate-800'
+                                    }`} />
+
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono mb-1.5">Solutions Architect</h4>
+                                    <ul className="text-[10px] text-slate-400 space-y-1 font-mono">
+                                        <li>• Analyze performance metrics profiles</li>
+                                        <li>• Reference optimized deployment shapes</li>
+                                        <li>• Select ideal hardware architectures</li>
+                                    </ul>
+                                </div>
+
+                                {/* Stack Operator Card */}
+                                <div 
+                                    onMouseEnter={() => setHoveredRole('stack_operator')}
+                                    onMouseLeave={() => setHoveredRole(null)}
+                                    className={`bg-slate-950/60 p-4 border rounded-lg transition-all duration-300 relative ${
+                                        hoveredRole === 'stack_operator' ? 'border-purple-500 bg-slate-950 shadow-[0_0_20px_rgba(168,85,247,0.1)]' : 'border-slate-800'
+                                    }`}
+                                >
+                                    {/* Responsive CSS Bridge Line */}
+                                    <div className={`hidden lg:block absolute right-full top-1/2 w-6 h-px transition-all duration-300 ${
+                                        hoveredRole === 'stack_operator' ? 'border-purple-500 shadow-[0_0_8px_#a855f7] bg-purple-500' : 'bg-slate-800'
+                                    }`} />
+
+                                    <h4 className="text-xs font-bold text-white uppercase tracking-wider font-mono mb-1.5">Stack Operator</h4>
+                                    <ul className="text-[10px] text-slate-400 space-y-1 font-mono">
+                                        <li>• Inspect price vs performance curves</li>
+                                        <li>• Reproduce benchmarks in test environments</li>
+                                        <li>• Validate cluster node serving counts</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </section>
-                
-
-{/* Section: Utility Suite */}
-                <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-bold mb-2 text-center text-slate-100">
-                          Utility suite
-                    </h2>
-                    <p className="text-xs text-slate-500 text-center mb-8 font-mono">Access specialized tools for deeper analysis and schema browsing.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-                        {/* Card 1: Benchmark Browser */}
-                        <div 
-                            onClick={() => onNavigate('benchmark-browser')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <BarChart2 className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Benchmark browser</h3>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Browse and compare benchmark results across runs.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 2: Schema Explorer */}
-                        <div 
-                            onClick={() => onNavigate('schema-explorer')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <FileCode className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Schema explorer</h3>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Explore data schemas and metric definitions.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 3: Workload Catalog */}
-                        <div 
-                            onClick={() => onNavigate('workload-catalog')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <Zap className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Workload catalog</h3>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Explore standardized workloads for evaluation.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 4: Regressions & Analysis */}
-                        <div 
-                            onClick={() => onNavigate('regressions-analysis')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <Activity className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-xs xl:text-sm font-bold text-slate-100 group-hover:text-emerald-400 transition-colors uppercase font-mono tracking-wide">Regressions & analysis</h3>
-                                </div>
-                                <p className="text-[10px] text-slate-400 mb-4">Track nightly benchmark runs and detect regressions across well-lit paths.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-                    </div>
-                </section>
-                
-
-
-
-                {/* Section: How it works */}
-                <section className="mb-20 w-full max-w-6xl mx-auto pl-20">
-                     <h2 className="text-3xl font-bold mb-2 text-center text-slate-100">
-                          How it works: the full benchmark lifecycle
-                     </h2>
-                     <p className="text-sm text-slate-400 text-center mb-12 max-w-2xl mx-auto">
-                          Designed for human insight and agent automation. Standardizing the end-to-end lifecycle from routing optimization to high-fidelity reproduction.
-                     </p>
-                     
-                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-6">
-                         
-                         {/* Ambient glowing background in center */}
-                         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-
-                         {/* Left Column: Roles & Actions */}
-                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
-                             <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-cyan-400/90 uppercase tracking-widest mb-2">User & agent roles</div>
-                             
-                             {/* Feature Developer */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Feature developer</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Isolate component and system benchmarks.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Evaluate performance with established baselines.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Format results for publication and reproduction.</span>
-                                     </div>
-                                 </div>
-                             </div>
-
-                             {/* Benchmark Developer */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Benchmark developer</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Publish reproducible workloads to the open catalog.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Configure cloud infrastructure for distributed testing.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-cyan-400">•</span>
-                                         <span>Validate benchmark results for accuracy and correctness.</span>
-                                     </div>
-                                 </div>
-                             </div>
-
-                         </div>
-
-                         {/* Center Column: Core Pipeline */}
-                         <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
-                             
-                             {/* Prism */}
-                             <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
-                                 <h4 className="text-sm font-bold text-purple-400 mb-0.5">Prism</h4>
-                                 <p className="text-sm text-slate-400">Visualize and compare metrics across benchmarks.</p>
-                             </div>
-
-                             {/* Llm-d Results Store */}
-                             <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-3 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-blue-500/50 transition-all">
-                                 <h4 className="text-sm font-bold text-blue-400 mb-0.5">llm-d results store</h4>
-                                 <p className="text-sm text-slate-400">Scalable OSS store for unified schema results.</p>
-                             </div>
-
-                             {/* Standard Benchmark Format / Report */}
-                             <a 
-                                 href="https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                              >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Standard benchmark report
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Unified JSON schema guarantees data interoperability.</p>
-                             </a>
-
-                             {/* Test Harness */}
-                             <a 
-                                 href="https://github.com/kubernetes-sigs/inference-perf/"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                             >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Test harness
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Stress distributed systems with agentic serving workloads.</p>
-                             </a>
-
-                             {/* Real World Workload Catalog */}
-                             <a 
-                                 href="https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog"
-                                 target="_blank"
-                                 rel="noopener noreferrer"
-                                 className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                             >
-                                 <h4 className="text-sm font-bold text-cyan-400 mb-0.5 flex items-center justify-center gap-1">
-                                     Real world workload catalog
-                                     <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                 </h4>
-                                 <p className="text-sm text-slate-400">Access standardized workloads for evaluation.</p>
-                             </a>
-
-                         </div>
-
-                         {/* Right Column: Roles & Actions */}
-                         <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
-                             <div className="w-full max-w-[320px] text-center text-xs font-extrabold text-purple-400/90 uppercase tracking-widest mb-2">User & agent roles</div>
-                             
-                             {/* Solutions Architect */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Solutions architect</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Analyze features for optimal architectural fit.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Architect full stack distributed inference solutions.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Fork and run new custom benchmarks dynamically.</span>
-                                     </div>
-                                 </div>
-                             </div>
-
-                             {/* Stack Operator */}
-                             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                 <div className="mb-2">
-                                     <h4 className="text-sm font-bold text-white">Stack operator</h4>
-                                 </div>
-                                 <div className="space-y-1 text-sm text-slate-400">
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Compare price vs performance of serving stacks.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Select optimal configurations for production use.</span>
-                                     </div>
-                                     <div className="flex items-start gap-1">
-                                         <span className="text-purple-400">•</span>
-                                         <span>Reproduce benchmarks to validate performance gain.</span>
-                                     </div>
-                                 </div>
-                             </div>
-
-                         </div>
-                     </div>
                 </section>
 
                 {/* Secondary Actions / Footer */}
-                <div className="flex space-x-4 mb-16">
+                <div className="flex space-x-4 mb-16 relative z-10">
                     <a 
                         href="https://llm-d.ai/" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="px-6 py-2 bg-transparent hover:bg-slate-800 text-slate-400 rounded-lg transition-colors flex items-center text-sm font-medium"
+                        className="px-5 py-2.5 bg-slate-900/50 hover:bg-slate-850 text-slate-400 border border-slate-800 rounded font-mono text-[10px] uppercase tracking-widest transition-all"
                     >
-                        llm-d.ai docs
+                        llm-d.ai documentation
                     </a>
                 </div>
             </div>

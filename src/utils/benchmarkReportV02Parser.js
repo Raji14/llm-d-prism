@@ -328,7 +328,9 @@ export function groupStagesIntoRuns(stageRecords) {
                 stages: [],
                 run_metadata: record.run_metadata || null,
                 config: record.config || null,
-                summary: record.summary || null
+                summary: record.summary || null,
+                wellLitPath: record.wellLitPath || record.well_lit_path || null,
+                targetDashboards: record.targetDashboards || []
             });
         }
         const runObj = map.get(record.runId);
@@ -337,6 +339,8 @@ export function groupStagesIntoRuns(stageRecords) {
         if (!runObj.run_metadata && record.run_metadata) runObj.run_metadata = record.run_metadata;
         if (!runObj.config && record.config) runObj.config = record.config;
         if (!runObj.summary && record.summary) runObj.summary = record.summary;
+        if (!runObj.wellLitPath && (record.wellLitPath || record.well_lit_path)) runObj.wellLitPath = record.wellLitPath || record.well_lit_path;
+        if (!runObj.targetDashboards && record.targetDashboards) runObj.targetDashboards = record.targetDashboards;
     }
     
     // Sort stages within each run

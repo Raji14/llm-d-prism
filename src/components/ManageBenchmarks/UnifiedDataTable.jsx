@@ -25,7 +25,7 @@ const getCleanModelName = (name) => {
 
 const getKpiFilterLabel = (filter) => {
     switch (filter) {
-        case 'my-uploads': return 'My Uploads';
+        case 'my-uploads': return 'My Submissions';
         case 'verified': return 'Production Ready';
         case 'staged': return 'Staged';
         case 'processing': return 'Pending Processing';
@@ -315,6 +315,20 @@ export const UnifiedDataTable = (props) => {
         setShowSelectedOnly(false);
     };
 
+    const toggleGroup = (stats, isAllSelected) => {
+        setSelectedBenchmarks(prev => {
+            const next = new Set(prev);
+            stats.forEach(s => {
+                if (isAllSelected) {
+                    next.delete(s.benchmarkKey);
+                } else {
+                    next.add(s.benchmarkKey);
+                }
+            });
+            return next;
+        });
+    };
+
     const filteredStats = React.useMemo(() => {
         let stats = modelStats;
 
@@ -411,7 +425,7 @@ export const UnifiedDataTable = (props) => {
         }
 
         return stats;
-    }, [modelStats, showSelectedOnly, selectedBenchmarks, kpiFilter, searchTerm, paretoKeys, baselineBenchmarkKey]);
+    }, [modelStats, showSelectedOnly, selectedBenchmarks, kpiFilter, searchTerm, paretoKeys, baselineBenchmarkKey, submissionsMap]);
 
     const sortedStats = React.useMemo(() => {
         return [...filteredStats].sort((a, b) => {
@@ -542,6 +556,20 @@ export const UnifiedDataTable = (props) => {
     const clearSelected = () => {
         setSelectedBenchmarks(new Set());
     };
+
+    const hasPromotableSelected = React.useMemo(() => {
+        return Array.from(selectedBenchmarks).some(key => {
+            const stat = modelStats.find(s => s.benchmarkKey === key);
+            const src = stat?.data?.[0]?.source || '';
+            if (src.startsWith('brv02:')) {
+                const runId = src.replace('brv02:', '');
+                const sub = submissionsMap ? submissionsMap[runId] : null;
+                const status = sub?.status || 'staged';
+                return status !== 'public' && status !== 'approved';
+            }
+            return false;
+        });
+    }, [selectedBenchmarks, modelStats, submissionsMap]);
 
     // Computes metric-specific empty state messaging, icons, colors and actions
     const getEmptyStateConfig = () => {
@@ -788,8 +816,8 @@ export const UnifiedDataTable = (props) => {
                             : "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
                         }
                     >
-                        <Eye className="w-3.5 h-3.5" />
-                        Visualize & Inspect ({selectedBenchmarks.size})
+                        <Sliders className="w-3.5 h-3.5" />
+                        {hasPromotableSelected ? `Compare & Promote (${selectedBenchmarks.size})` : `Compare & Inspect (${selectedBenchmarks.size})`}
                     </button>
 
                     {/* Select All Visible */}
@@ -932,7 +960,7 @@ export const UnifiedDataTable = (props) => {
                         return (
                         <div key={groupKey} className="flex flex-col gap-2">
                             {groupBy !== 'None' && (
-                                <div className="sticky top-0 z-10 bg-slate-100/90 dark:bg-slate-800/90 backdrop-blur py-1.5 px-3 rounded text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-y border-slate-200 dark:border-slate-700/50 flex items-center gap-3">
+                                <div className="sticky top-0 z-10 bg-slate-150 dark:bg-slate-900 py-1.5 px-3 rounded text-xs font-bold text-slate-550 dark:text-slate-400 uppercase tracking-wider border-y border-slate-200 dark:border-slate-800/60 flex items-center gap-3">
                                     <div 
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -1286,21 +1314,7 @@ export const UnifiedDataTable = (props) => {
                                                                                         )}
                                                                                     </div>
                                                                             )}
-                                                                            <button
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    toggleBaseline(stat.benchmarkKey);
-                                                                                }}
-                                                                                title={isBaseline ? 'Clear baseline' : 'Set as baseline'}
-                                                                                className={`px-2.5 py-1 rounded-xl transition-all flex-shrink-0 flex items-center gap-1.5 cursor-pointer select-none text-[10px] font-extrabold uppercase tracking-wider ${
-                                                                                    isBaseline
-                                                                                        ? 'text-cyan-400 bg-cyan-500/10 border border-cyan-500/30'
-                                                                                        : 'text-slate-400 border border-slate-800/80 bg-[#0b0f17] hover:text-cyan-400 hover:border-cyan-500/30 hover:bg-[#101622]'
-                                                                                }`}
-                                                                            >
-                                                                                <Pin size={11} className={`transition-transform duration-300 ${isBaseline ? 'rotate-[45deg]' : '-rotate-45'}`} fill={isBaseline ? 'currentColor' : 'none'} />
-                                                                                <span>{isBaseline ? 'Baseline' : 'Set Baseline'}</span>
-                                                                            </button>
+
                                                                             {isBrv02 && (
                                                                                 <div className="flex flex-col items-end gap-1.5 relative">
                                                                                     <div className="flex items-center gap-2">
@@ -1427,15 +1441,15 @@ export const UnifiedDataTable = (props) => {
                                                                             {(isBrv02 || benchmarkData[0]?.source?.startsWith('llm-d:')) ? (
                                                                                 <span 
                                                                                     title="High-fidelity v0.2 report manifest containing detailed observability metrics"
-                                                                                    className="px-2 py-0.5 text-[10px] font-mono tracking-wider font-bold uppercase rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center gap-1.5 shadow-[0_0_10px_rgba(34,211,238,0.2)] cursor-help"
+                                                                                    className="px-2 py-0.5 text-[9px] font-mono tracking-wider font-bold uppercase rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 flex items-center gap-1 cursor-help"
                                                                                 >
-                                                                                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                                                                                    <ShieldCheck className="w-3 h-3 text-cyan-400" />
                                                                                     v0.2 Verified
                                                                                 </span>
                                                                             ) : (
                                                                                 <span 
                                                                                     title="Legacy JSON run profile derived from steady-state approximations"
-                                                                                    className="px-2 py-0.5 text-[10px] font-mono tracking-wider uppercase rounded-full bg-slate-800 border border-slate-700 text-slate-400 cursor-help"
+                                                                                    className="px-2 py-0.5 text-[9px] font-mono tracking-wider uppercase rounded bg-slate-900/50 border border-slate-800 text-slate-500 cursor-help"
                                                                                 >
                                                                                     v0.1 Legacy
                                                                                 </span>
@@ -1448,42 +1462,42 @@ export const UnifiedDataTable = (props) => {
                                                                                     const status = sub?.status || 'staged';
                                                                                     if (status === 'staged') {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-500/10 text-amber-400 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20">
                                                                                                 <FileClock className="w-3 h-3 text-amber-400" /> Staged
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (status === 'submitted_pending_processing') {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-yellow-500/10 text-yellow-400 px-2.5 py-0.5 rounded-full border border-yellow-500/20">
-                                                                                                <Activity className="w-3 h-3 text-yellow-400 animate-pulse" /> Processing
+                                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                                                                <Activity className="w-3 h-3 text-yellow-400" /> Processing
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (status === 'submitted_pending_review' || status === 'in_review') {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-500/10 text-purple-400 px-2.5 py-0.5 rounded-full border border-purple-500/20 animate-pulse">
+                                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20">
                                                                                                 <Eye className="w-3 h-3 text-purple-400" /> In Review
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (status === 'public' || status === 'promoted' || status === 'approved') {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20">
                                                                                                 <Check className="w-3 h-3 text-emerald-400 font-extrabold" /> Public
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                     if (status === 'rejected' || status === 'changes_requested') {
                                                                                         return (
-                                                                                            <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-500/10 text-red-400 px-2.5 py-0.5 rounded-full border border-red-500/20">
+                                                                                            <span className="inline-flex items-center gap-1 text-[9px] font-bold bg-red-500/10 text-red-400 px-2 py-0.5 rounded border border-red-500/20">
                                                                                                 <AlertCircle className="w-3 h-3 text-red-400" /> Rejected
                                                                                             </span>
                                                                                         );
                                                                                     }
                                                                                 } else {
                                                                                     return (
-                                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/5 text-emerald-400/90 px-2.5 py-0.5 rounded-full border border-emerald-500/10">
+                                                                                        <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-emerald-500/5 text-emerald-400/80 px-2 py-0.5 rounded border border-emerald-500/10">
                                                                                             Official
                                                                                         </span>
                                                                                     );
@@ -1715,36 +1729,20 @@ export const UnifiedDataTable = (props) => {
                 )}
                 
                 {/* Sub-Panel Animating from the Right */}
-                <div className={`relative w-full sm:w-[720px] xl:w-[860px] h-full bg-slate-950/95 border-l border-cyan-500/40 p-6 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-y-auto z-10 transform transition-transform duration-300 pointer-events-auto ${showComparisonDrawer ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className={`relative w-full sm:w-[864px] xl:w-[1030px] h-full bg-slate-950/95 border-l border-cyan-500/40 p-6 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-y-auto z-10 transform transition-transform duration-300 pointer-events-auto ${showComparisonDrawer ? 'translate-x-0' : 'translate-x-full'}`}>
                         <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
                         
-                        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-800 flex-shrink-0">
+                        <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-805 flex-shrink-0">
                             <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-3">
-                                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+                                <div className="flex items-center gap-2">
                                     <span className="font-mono text-xs sm:text-sm font-bold uppercase tracking-wider text-cyan-400">
-                                        Visualize & Inspect Submissions ({selectedBenchmarks.size} Runs)
+                                        {hasPromotableSelected 
+                                            ? `Compare & Promote (${selectedBenchmarks.size} Runs)` 
+                                            : `Compare & Inspect (${selectedBenchmarks.size} Runs)`}
                                     </span>
                                 </div>
-                                <span className="text-[10px] text-slate-500 font-medium">
-                                    Inspect throughput, latency, and cost trends of your staged or review submissions against production baselines.
-                                </span>
                             </div>
                             <div className="flex items-center gap-4">
-                                <div className="flex bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold">
-                                    <button
-                                        onClick={() => setComparisonTab('scatter')}
-                                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${comparisonTab === 'scatter' ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                                    >
-                                        Scatter Trade-offs
-                                    </button>
-                                    <button
-                                        onClick={() => setComparisonTab('bar')}
-                                        className={`px-3 py-1 rounded-md transition-all cursor-pointer ${comparisonTab === 'bar' ? 'bg-cyan-500 text-slate-950 font-extrabold shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                                    >
-                                        Direct Comparison
-                                    </button>
-                                </div>
                                 <button
                                     onClick={() => setShowComparisonDrawer(false)}
                                     className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
@@ -1754,17 +1752,8 @@ export const UnifiedDataTable = (props) => {
                             </div>
                         </div>
 
-                        {/* Active Submissions Status & Actions Panel */}
-                        <div className="mb-6 p-4 rounded-xl border border-slate-800 bg-[#070b12]/50 flex-shrink-0">
-                            <div className="flex items-center justify-between mb-3 border-b border-slate-900 pb-2">
-                                <div className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                    <Sliders className="w-3.5 h-3.5 text-cyan-500" /> Active Submissions Status & Actions
-                                </div>
-                                <div className="text-[9px] text-slate-500 font-mono">
-                                    Manage staging pipeline states directly
-                                </div>
-                            </div>
-                            
+                        {/* Active Submissions Actions */}
+                        <div className="mb-6 p-4 rounded-xl border border-slate-800/80 bg-[#070b12]/30 flex-shrink-0">
                             <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
                                 {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => {
                                     const src = stat.data?.[0]?.source || '';
@@ -1793,10 +1782,10 @@ export const UnifiedDataTable = (props) => {
                                                         {stat.configuration || 'Default Settings'}
                                                     </div>
                                                 </div>
-                                                
-                                                <div className="flex items-center gap-2 flex-wrap">                                                    {/* Status Badge */}
+                                                                                                <div className="flex items-center gap-3 flex-wrap">
+                                                    {/* Status Badge */}
                                                     {isBrv02 ? (
-                                                        <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+                                                        <span className={`text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border ${
                                                             (status === 'public' || status === 'promoted' || status === 'approved') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
                                                             status === 'submitted_pending_processing' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse' :
                                                             (status === 'submitted_pending_review' || status === 'in_review') ? 'bg-purple-500/10 text-purple-400 border-purple-500/20 animate-pulse' :
@@ -1810,44 +1799,44 @@ export const UnifiedDataTable = (props) => {
                                                              status}
                                                         </span>
                                                     ) : (
-                                                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                                                        <span className="text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/25">
                                                             Verified
                                                         </span>
                                                     )}
-                                                    
+
                                                     {/* Actions */}
                                                     {isBrv02 && (
                                                         <div className="flex items-center gap-1.5">
                                                             {status === 'staged' && (
                                                                 <button
                                                                     onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
-                                                                    className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                    className="px-2.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
                                                                 >
-                                                                    Submit for Review
+                                                                    Run Format Checks
                                                                 </button>
                                                             )}
                                                             {status === 'submitted_pending_processing' && (
                                                                 <button
                                                                     onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware)}
-                                                                    className="px-2 py-1 bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-355 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                    className="px-2.5 py-1.5 bg-purple-500 hover:bg-purple-400 text-white text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
                                                                 >
-                                                                    Promote to Review
+                                                                    Submit for Review
                                                                 </button>
                                                             )}
                                                             {(status === 'submitted_pending_review' || status === 'in_review') && (
                                                                 <>
                                                                     <button
                                                                         onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware)}
-                                                                        className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                        className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
                                                                     >
-                                                                        Approve
+                                                                        Publish Run
                                                                     </button>
                                                                     <button
                                                                         onClick={() => {
                                                                             setDrawerRejectingRunId(runId);
                                                                             setDrawerRejectionFeedback('');
                                                                         }}
-                                                                        className="px-2 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                        className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
                                                                     >
                                                                         Reject
                                                                     </button>
@@ -1856,16 +1845,15 @@ export const UnifiedDataTable = (props) => {
                                                             {(status === 'rejected' || status === 'changes_requested') && (
                                                                 <button
                                                                     onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
-                                                                    className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/25 text-purple-400 text-[9px] font-extrabold uppercase tracking-wide rounded-md transition-colors cursor-pointer"
+                                                                    className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer animate-pulse"
                                                                 >
-                                                                    Re-Submit
+                                                                    Resubmit Validation
                                                                 </button>
                                                             )}
                                                         </div>
                                                     )}
                                                 </div>
-                                            </div>
-                                            
+                                            </div>   
                                             {/* Drawer Rejection inline input */}
                                             {drawerRejectingRunId === runId && (
                                                 <div className="w-full mt-3 p-3 bg-slate-900 border border-red-500/20 rounded-lg animate-fadeIn flex flex-col gap-2">

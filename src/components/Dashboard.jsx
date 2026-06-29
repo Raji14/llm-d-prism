@@ -34,7 +34,6 @@ import { UnifiedDataTable } from './Dashboard/UnifiedDataTable';
 import { ThroughputCostChart } from './Dashboard/ThroughputCostChart';
 import { RunComparisonChart } from './Dashboard/RunComparisonChart';
 import DataInspector from './DataInspector';
-import { UploadValidationDialog } from './DataConnections/UploadValidationDialog';
 import { useDashboardState } from '../hooks/useDashboardState';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { INTEGRATIONS, getBucket, getRatioType, getEffectiveTp, sortBuckets, findParetoPoint, getNodesAndType, getBenchmarkKey } from '../utils/dashboardHelpers';
@@ -228,8 +227,6 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
         submissions, isLoadingSubmissions, loadSubmissions
     } = dashboardData;
 
-    const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
-    const [initialStagedFiles, setInitialStagedFiles] = useState([]);
     const [activeDashboardTab, setActiveDashboardTab] = useState('charts');
     const [searchTerm, setSearchTerm] = useState('');
     const [kpiFilter, setKpiFilter] = useState(null); // null | 'pareto' | 'verified' | 'staged'
@@ -1720,7 +1717,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
     const hasLocalBenchmarks = Array.from(selectedSources || []).some(source => source === 'local' || source.startsWith('brv02:'));
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-16">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0">
             {/* Toast Stack */}
             <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
                 {toasts.map(t => (
@@ -1734,27 +1731,27 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                     </div>
                 ))}
             </div>
-            <header className="w-full h-16 border-b border-slate-800 flex justify-between items-center px-6 bg-slate-900 fixed top-0 left-0 right-0 z-[9999]">
+            <header className="w-full h-16 border-b border-slate-900/65 flex justify-between items-center px-6 bg-slate-950/20 backdrop-blur-md sticky top-0 z-[49]">
                 <div className="flex items-center gap-4">
                     {onNavigateBack && (
-                        <button onClick={onNavigateBack} className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+                        <button onClick={onNavigateBack} className="p-1.5 rounded-xl hover:bg-slate-900/60 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800/60">
                             <ArrowLeft className="h-5 w-5" />
                         </button>
                     )}
                     
                     {/* Compact Prism Logo & Name */}
-                    <div className="flex items-center gap-2.5 border-r border-slate-500 pr-4">
+                    <div className="flex items-center gap-2.5 border-r border-slate-800 pr-4">
                         <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
+                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none">
                             Prism{siteName ? ` - ${siteName}` : ''}
                         </span>
                     </div>
 
                     <div className="flex items-center">
-                        <h1 className="text-lg font-bold text-white tracking-wide">
+                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">
                             {mode === 'manager' ? 'Manage benchmarks' : 'Benchmark browser'}
                         </h1>
-                        <span className="ml-3 px-2 py-0.5 rounded text-xs font-semibold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                        <span className="ml-3 px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-wider font-mono">
                             {mode === 'manager' ? 'Data manager' : 'Expert mode'}
                         </span>
                     </div>
@@ -1764,14 +1761,14 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                     {mode === 'browser' ? (
                         <button
                             onClick={() => onNavigate && onNavigate('manage-benchmarks')}
-                            className="px-3.5 py-2 text-xs font-semibold rounded-xl border text-slate-300 bg-slate-850 hover:bg-slate-750 border-slate-750 hover:text-white transition-colors flex items-center cursor-pointer"
+                            className="px-3.5 py-2 text-xs font-semibold rounded-xl border text-slate-350 bg-slate-900/40 hover:bg-slate-900/80 border-slate-800 hover:border-slate-700 transition-all flex items-center cursor-pointer"
                         >
                             <Database className="w-4 h-4 mr-2 text-cyan-400" /> Manage
                         </button>
                     ) : (
                             <button
-                                onClick={() => setIsUploadDialogOpen(true)}
-                                className="px-3.5 py-2 text-xs font-semibold rounded-xl text-white bg-emerald-600 hover:bg-emerald-500 transition-all flex items-center shadow-lg border border-emerald-500/30 cursor-pointer hover:shadow-emerald-500/20"
+                                onClick={() => onNavigate && onNavigate('upload-benchmarks')}
+                                className="px-3.5 py-2 text-xs font-semibold rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all flex items-center shadow-lg border border-emerald-500/20 cursor-pointer hover:shadow-emerald-500/20"
                             >
                                 <Upload className="w-4 h-4 mr-2" /> Upload
                             </button>
@@ -1781,7 +1778,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                         href={formatContactUrl(contactUrl)} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="px-3.5 py-2 text-xs font-medium rounded-xl text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors flex items-center border border-slate-700 no-underline cursor-pointer"
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 no-underline cursor-pointer"
                     >
                         <MessageCircle className="w-4 h-4 mr-1.5" /> Contact us
                     </a>
@@ -1967,20 +1964,6 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                     onClose={() => setIsInspectorOpen(false)}
                 />
 
-                {/* Upload Validation Dialog */}
-                {isUploadDialogOpen && (
-                    <UploadValidationDialog
-                        isOpen={isUploadDialogOpen}
-                        onClose={() => setIsUploadDialogOpen(false)}
-                        onCommit={handleValidatedUpload}
-                        initialFiles={initialStagedFiles}
-                        addToast={addToast}
-                        loadSubmissions={loadSubmissions}
-                        publicBenchmarks={data}
-                        baselineBenchmarkKey={baselineBenchmarkKey}
-                        setBaselineBenchmarkKey={setBaselineBenchmarkKey}
-                    />
-                )}
 
                 {/* Application Layer */}
 

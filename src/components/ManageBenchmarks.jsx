@@ -13,18 +13,19 @@
 // limitations under the License.
 
 import React, { useMemo } from 'react';
-import { Database, Eye, ArrowLeft, MessageCircle, X, Loader } from 'lucide-react';
+import { Database, Eye, ArrowLeft, ArrowRight, MessageCircle, X, Loader, HelpCircle } from 'lucide-react';
 import { FilterPanel } from './ManageBenchmarks/FilterPanel';
 import { UnifiedDataTable } from './ManageBenchmarks/UnifiedDataTable';
 import { INTEGRATIONS, getSourceTag, getBenchmarkKey, getBucket, getRatioType, getAcceleratorCount, getEffectiveTp, sortBuckets } from '../utils/dashboardHelpers';
 
-import { UploadValidationDialog } from './DataConnections/UploadValidationDialog';
 import { Upload } from 'lucide-react';
 
 const getCleanModelName = (name) => {
     if (!name) return '';
     return name.replace(/\s*\[.*?\]/g, '').replace(/\s*\(.*?\)/g, '').trim();
 };
+
+
 
 export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboardState, dashboardData }) {
     const {
@@ -57,11 +58,42 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
         qualityMetrics
     } = dashboardData;
 
+
     const [githubSession, setGithubSession] = React.useState(() => {
         try {
             const saved = localStorage.getItem('prism_github_session');
             return saved ? JSON.parse(saved) : null;
         } catch { return null; }
+    });
+
+    const [stagedBundles, setStagedBundles] = React.useState(() => {
+        try {
+            const saved = localStorage.getItem('prism_active_staged_bundles');
+            return saved ? JSON.parse(saved) : [];
+        } catch { return []; }
+    });
+    const [activeTab, setActiveTab] = React.useState('all'); // 'all' or 'submissions'
+    const [searchTerm, setSearchTerm] = React.useState('');
+
+    const [kpiFilter, setKpiFilter] = React.useState(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const urlKpi = params.get('kpiFilter');
+            if (urlKpi) return urlKpi;
+
+            const triggerStaged = localStorage.getItem('prism_activate_staged_filter');
+            if (triggerStaged === 'true') {
+                localStorage.removeItem('prism_activate_staged_filter');
+                return 'staged';
+            }
+
+            const triggerMySubs = localStorage.getItem('prism_activate_my_submissions_filter');
+            if (triggerMySubs === 'true') {
+                localStorage.removeItem('prism_activate_my_submissions_filter');
+                return 'my-uploads';
+            }
+        } catch {}
+        return null;
     });
 
     React.useEffect(() => {
@@ -89,15 +121,9 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
             const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
             window.history.replaceState({}, '', newUrl);
             
-            setIsUploadDialogOpen(true);
+            onNavigate('upload-benchmarks');
         }
-    }, [addToast]);
-
-    const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false);
-    const [initialStagedFiles, setInitialStagedFiles] = React.useState([]);
-    const [activeTab, setActiveTab] = React.useState('all'); // 'all' or 'submissions'
-    const [searchTerm, setSearchTerm] = React.useState('');
-    const [kpiFilter, setKpiFilter] = React.useState(null);
+    }, [addToast, onNavigate]);
 
     const [submissions, setSubmissions] = React.useState([]);
     const [isLoadingSubmissions, setIsLoadingSubmissions] = React.useState(false);
@@ -255,23 +281,13 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
         return map;
     }, [submissions]);
 
-    const openUploadDialogWithFiles = (files) => {
-        let fileList = [];
-        if (files && files.target && files.target.files) {
-            fileList = Array.from(files.target.files);
-        } else if (Array.isArray(files)) {
-            fileList = files;
-        } else if (files) {
-            fileList = Array.from(files);
-        }
-        setInitialStagedFiles(fileList);
-        setIsUploadDialogOpen(true);
-    };
+
 
 // Filtered by source
     const filteredBySource = useMemo(() => {
-        return data.filter(d => {
-            if (!selectedSources.has(d.source || 'local')) return false;
+        const res = data.filter(d => {
+            const hasSource = selectedSources.has(d.source || 'local');
+            if (!hasSource) return false;
 
             // Apply Connection/Source filter
             if (activeFilters.connectionNames && activeFilters.connectionNames.size > 0) {
@@ -382,6 +398,7 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
 
             return true;
         });
+        return res;
     }, [data, selectedSources, activeFilters]);
 
     // Local copy of modelStats computation
@@ -765,7 +782,10 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
 
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-16">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0 bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
+            {/* Pulsing Vibrant Neon Glow Background Shapes */}
+            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
+            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
             {/* Toast Stack */}
             <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
                 {toasts.map(t => (
@@ -780,51 +800,52 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
                 ))}
             </div>
 
-            <header className="w-full h-16 border-b border-slate-800 flex justify-between items-center px-6 bg-slate-900 fixed top-0 left-0 right-0 z-[9999]">
+            <header className="w-full h-16 border-b border-slate-900/65 flex justify-between items-center px-6 bg-slate-950/20 backdrop-blur-md sticky top-0 z-[49]">
                 <div className="flex items-center gap-4">
                     {onNavigateBack && (
-                        <button onClick={onNavigateBack} className="p-1.5 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition-colors">
+                        <button onClick={onNavigateBack} className="p-1.5 rounded-xl hover:bg-slate-900/60 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800/60">
                             <ArrowLeft className="h-5 w-5" />
                         </button>
                     )}
                     
-                    <div className="flex items-center gap-2.5 border-r border-slate-500 pr-4">
+                    <div className="flex items-center gap-2.5 border-r border-slate-800 pr-4">
                         <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
+                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none inline-block pl-0.5 py-0.5">
                             Prism
                         </span>
                     </div>
 
                     <div className="flex items-center">
-                        <h1 className="text-lg font-bold text-white tracking-wide">Manage Benchmarks</h1>
+                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">Manage Benchmarks</h1>
                     </div>
                 </div>
 
                 <div className="flex items-center space-x-4">
 
                     <button
-                        onClick={() => setIsUploadDialogOpen(true)}
-                        className="px-4 py-2 text-sm font-medium rounded-md border transition-colors flex items-center shadow-lg text-white bg-emerald-600 hover:bg-emerald-500 border-emerald-500/20"
+                        id="manage-tour-add-btn"
+                        onClick={() => onNavigate('upload-benchmarks')}
+                        className="px-4 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center shadow-lg text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border-emerald-500/20 hover:shadow-emerald-500/20 cursor-pointer"
                     >
                         <Upload className="w-4 h-4 mr-2" /> Upload Benchmark
                     </button>
+
+
 
 
                     <a 
                         href="https://llm-d.ai/community" 
                         target="_blank" 
                         rel="noreferrer"
-                        className="px-4 py-2 text-sm font-medium rounded-md text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors flex items-center border border-slate-700"
+                        className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 cursor-pointer"
                     >
                         <MessageCircle className="w-4 h-4 mr-2" /> Contact us
                     </a>
                 </div>
             </header>
 
-            <main className="w-full px-8 py-6 pl-28 flex flex-col transition-colors duration-200">
-
-
-                <div className="space-y-4 mb-4 relative">
+            <main className="w-full px-8 py-6 pl-28 flex flex-col transition-colors duration-200 z-10 relative">
+                <div className="relative bg-[#0b0f19] border border-slate-900 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
                     <FilterPanel
                         {...{
                             showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
@@ -842,33 +863,17 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
                             qualityMetrics,
                             gcsProfiles: dashboardData.gcsProfiles,
                             loadingConnections: dashboardData.gcsProfiles?.some(p => p.loading) || dashboardData.loading,
-                            onOpenUploadDialog: () => setIsUploadDialogOpen(true),
+                            onOpenUploadDialog: () => onNavigate('upload-benchmarks'),
                             showDataPanel,
                             setShowDataPanel
                         }}
                     />
                 </div>
-
             </main>
 
 
             
-            <UploadValidationDialog 
-                isOpen={isUploadDialogOpen}
-                onClose={() => setIsUploadDialogOpen(false)}
-                onCommit={(validFiles) => {
-                    handleValidatedUpload(validFiles);
-                }}
-                existingRunIds={brv02Runs.map(r => r.runId)}
-                initialFiles={initialStagedFiles}
-                addToast={addToast}
-                loadSubmissions={loadSubmissions}
-                publicBenchmarks={dashboardData?.data || []}
-                baselineBenchmarkKey={baselineBenchmarkKey}
-                setBaselineBenchmarkKey={setBaselineBenchmarkKey}
-                githubSession={githubSession}
-                setGithubSession={setGithubSession}
-            />
+
         </div>
     );
 }

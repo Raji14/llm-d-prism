@@ -56,6 +56,7 @@ const FILTER_FIELD_LABELS = {
 
 const getKpiFilterLabel = (filter) => {
     switch (filter) {
+        case 'my-uploads': return 'My Submissions';
         case 'staged': return 'Staged';
         case 'processing': return 'Pending Processing';
         case 'in_review': return 'In Review';
@@ -97,6 +98,16 @@ export const FilterPanel = ({
 }) => {
     const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
     const [draftFilters, setDraftFilters] = useState(null);
+    const [openSections, setOpenSections] = useState({
+        stack: true,
+        infra: false,
+        load: false,
+        conn: false
+    });
+
+    const toggleSection = (section) => {
+        setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
 
     // Sync draft filters with activeFilters when the drawer opens
     useEffect(() => {
@@ -294,8 +305,8 @@ export const FilterPanel = ({
     const [isFiltersExpanded, setIsFiltersExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('prism_manage_filters_expanded');
-            return saved !== null ? saved === 'true' : false;
-        } catch { return false; }
+            return saved !== null ? saved === 'true' : true;
+        } catch { return true; }
     });
 
     const [visibleSpecs, setVisibleSpecs] = useState(() => {
@@ -438,18 +449,21 @@ export const FilterPanel = ({
     return (
         <div className="flex flex-col mb-4">
                 {/* Hero Category KPI Cards */}
-                <div className="flex flex-col xl:flex-row gap-4 mb-6">
+                <div className="flex flex-col xl:flex-row gap-4 mb-6 relative z-[20]">
                     {/* Combined Group: Database & Ingestion Overview */}
                     {/* Group 1: Submissions Pipeline */}
-                    <div className="flex-1 xl:flex-[4.5] flex flex-col justify-start p-3.5 rounded-2xl bg-[#112a4d] border border-blue-400/40 min-h-[118px] w-full shadow-[0_4px_25px_rgba(59,130,246,0.06)]">
+                    <div className="flex-1 xl:flex-[4.5] flex flex-col justify-start p-3.5 rounded-2xl bg-[#09101d] border border-[#0d2a4a] w-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] hover:border-cyan-500/40 hover:shadow-[0_10px_30px_rgba(6,182,212,0.06)] transition-all duration-300 min-h-[118px]">
                         {/* Header */}
-                        <div className="text-[11px] font-black text-white uppercase tracking-wider pb-1.5 border-b border-blue-900/45 flex items-center justify-between select-none mb-2.5">
-                            <span className="flex items-center gap-1.5">
-                                <Database className="w-3.5 h-3.5 text-cyan-400" /> Submissions Pipeline
-                            </span>
+                        <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-1.5 border-b border-slate-900/60 flex items-center justify-between select-none mb-2.5">
+                            <div className="flex flex-col">
+                                <span className="flex items-center gap-1.5">
+                                    Submissions Pipeline
+                                </span>
+                                <span className="text-[9px] text-slate-500 font-medium normal-case tracking-normal mt-0.5">Click metrics below to filter results</span>
+                            </div>
                             <div className="relative group/tooltip inline-block cursor-help shrink-0">
                                 <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-cyan-400 transition-colors" />
-                                <div className="absolute right-0 top-5 px-3.5 py-3 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[300px] pointer-events-none leading-relaxed normal-case tracking-normal backdrop-blur-md space-y-2">
+                                <div className="absolute right-0 top-5 mt-1.5 px-3.5 py-3 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[300px] pointer-events-none leading-relaxed normal-case tracking-normal backdrop-blur-md space-y-2">
                                     <div className="font-bold text-xs text-white border-b border-slate-800 pb-1 mb-1 font-sans">Pipeline & Registry:</div>
                                     <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-cyan-400" /> <strong>Global Registry</strong>: Total verified runs loaded into global database.</p>
                                     <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-amber-500" /> <strong>Staged</strong>: Contributor telemetries staged locally in browser session.</p>
@@ -461,35 +475,35 @@ export const FilterPanel = ({
                             </div>
                         </div>
 
-                        <div className="flex flex-col md:flex-row gap-5 items-start w-full mt-1">
+                        <div id="manage-tour-summary" className="flex flex-col md:flex-row gap-5 items-start w-full mt-1">
                             {/* Left Side: DB Summary Stats */}
-                            <div className="flex flex-row shrink-0 gap-6 md:border-r border-blue-900/35 md:pr-6 select-none pt-1">
+                            <div className="flex flex-row shrink-0 gap-6 md:border-r border-slate-900/60 md:pr-6 select-none pt-1">
                                 {/* Card 1a: Global Registry */}
                                 <div 
                                     onClick={() => setKpiFilter(null)}
                                     className="flex flex-col cursor-pointer select-none group/item relative min-w-[75px]"
                                 >
-                                    <span className="text-[10.5px] font-black uppercase text-slate-400 tracking-wider mb-0.5 group-hover/item:text-white transition-colors">Global Registry</span>
-                                    <span className={`text-xl font-black font-mono tracking-tight transition-all duration-300 ${
+                                    <span className="text-[10.5px] font-black uppercase text-slate-400 tracking-wider mb-1 group-hover/item:text-white transition-colors">Global Registry</span>
+                                    <span className={`text-xl font-black font-mono tracking-tight transition-all duration-300 border-b border-dashed ${
                                         kpiFilter === null 
-                                        ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.35)] scale-105' 
-                                        : 'text-white group-hover/item:text-cyan-400'
-                                    }`}>
+                                        ? 'text-cyan-400 border-cyan-400/50 drop-shadow-[0_0_10px_rgba(6,182,212,0.35)] scale-105' 
+                                        : 'text-white border-slate-700/60 group-hover/item:border-cyan-400/55 group-hover/item:text-cyan-400'
+                                    } pb-0.5 self-start`}>
                                         {totalCount}
                                     </span>
                                 </div>
 
-                                {/* Card 1b: My Uploads */}
+                                {/* Card 1b: My Submissions */}
                                 <div 
                                     onClick={() => setKpiFilter(kpiFilter === 'my-uploads' ? null : 'my-uploads')}
                                     className="flex flex-col cursor-pointer select-none group/item relative min-w-[70px]"
                                 >
-                                    <span className="text-[10.5px] font-black uppercase text-slate-400 tracking-wider mb-0.5 group-hover/item:text-white transition-colors">My Uploads</span>
-                                    <span className={`text-xl font-black font-mono tracking-tight transition-all duration-300 ${
+                                    <span className="text-[10.5px] font-black uppercase text-slate-400 tracking-wider mb-1 group-hover/item:text-white transition-colors">My Submissions</span>
+                                    <span className={`text-xl font-black font-mono tracking-tight transition-all duration-300 border-b border-dashed ${
                                         kpiFilter === 'my-uploads' 
-                                        ? 'text-cyan-400 drop-shadow-[0_0_10px_rgba(6,182,212,0.35)] scale-105' 
-                                        : 'text-white group-hover/item:text-cyan-400'
-                                    }`}>
+                                        ? 'text-cyan-400 border-cyan-400/50 drop-shadow-[0_0_10px_rgba(6,182,212,0.35)] scale-105' 
+                                        : 'text-white border-slate-700/60 group-hover/item:border-cyan-400/55 group-hover/item:text-cyan-400'
+                                    } pb-0.5 self-start`}>
                                         {verifiedCount}
                                     </span>
                                 </div>
@@ -508,9 +522,9 @@ export const FilterPanel = ({
                                     const pRejected = totalSubmissions > 0 ? (rejected / totalSubmissions) * 100 : 0;
 
                                     return (
-                                        <div className="space-y-1.5 w-full bg-slate-900/20 dark:bg-slate-950/30 border border-blue-900/10 dark:border-blue-950/40 p-2 rounded-xl shadow-inner">
+                                        <div className="space-y-1.5 w-full bg-slate-900/10 dark:bg-slate-950/20 border border-slate-900/40 p-2 rounded-xl shadow-inner">
                                             {/* Segmented ratio bar */}
-                                            <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-slate-900 shadow-inner border border-slate-800/80">
+                                            <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-slate-950 shadow-inner border border-slate-900/40">
                                                 {totalSubmissions === 0 ? (
                                                     <div className="w-full h-full bg-slate-800" />
                                                 ) : (
@@ -644,10 +658,10 @@ export const FilterPanel = ({
                     </div>
 
                     {/* Group 2: Format Compliance */}
-                    <div className="flex-1 xl:flex-[2] flex flex-col justify-start p-3.5 rounded-2xl bg-[#112a4d] border border-blue-400/40 min-h-[118px] w-full shadow-[0_4px_25px_rgba(59,130,246,0.06)]">
+                    <div className="flex-1 xl:flex-[2] flex flex-col justify-start p-3.5 rounded-2xl bg-[#09150e] border border-[#0d3420] w-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] hover:border-emerald-500/40 hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] transition-all duration-300 min-h-[118px]">
                         {/* Group Header inside card */}
-                        <div className="text-[11px] font-black text-white uppercase tracking-wider pb-1.5 border-b border-blue-900/45 flex items-center gap-1.5 select-none mb-2.5">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Format Compliance
+                        <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider pb-1.5 border-b border-slate-900/60 flex items-center justify-between select-none mb-2.5">
+                            Format Compliance
                         </div>
 
                         <div className="flex items-center gap-2 w-full mt-2 pt-0.5">
@@ -660,22 +674,22 @@ export const FilterPanel = ({
                                     <span className="text-[10.5px] font-bold uppercase tracking-widest text-slate-350 select-none group-hover/item:text-white transition-colors">v0.2 Compliant</span>
                                     <div className="relative group/tooltip inline-block cursor-help shrink-0">
                                         <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-emerald-400 transition-colors" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
+                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 mt-1.5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
                                             Filters runs validated under v0.2 production criteria, certified safe to run in production.
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 mt-1 ${
+                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 border-b border-dashed ${
                                     kpiFilter === 'verified' 
-                                    ? 'text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.35)] scale-105' 
-                                    : 'text-white group-hover/item:text-emerald-400'
-                                }`}>
+                                    ? 'text-emerald-400 border-emerald-400/50 drop-shadow-[0_0_10px_rgba(16,185,129,0.35)] scale-105' 
+                                    : 'text-white border-slate-700/60 group-hover/item:border-emerald-400/55 group-hover/item:text-emerald-400'
+                                } pb-0.5 mt-1 self-start`}>
                                     {verifiedCount}
                                 </div>
                             </div>
 
                             {/* Divider */}
-                            <div className="w-px h-8 bg-blue-900/40 shrink-0" />
+                            <div className="w-px h-8 bg-slate-900/65 shrink-0" />
 
                             {/* Card 3: Legacy Formats */}
                             <div 
@@ -686,16 +700,16 @@ export const FilterPanel = ({
                                     <span className="text-[10.5px] font-bold uppercase tracking-widest text-slate-350 select-none group-hover/item:text-white transition-colors">v0.1 Legacy</span>
                                     <div className="relative group/tooltip inline-block cursor-help shrink-0">
                                         <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-slate-400 transition-colors" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
+                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 mt-1.5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
                                             Filters runs loaded using historical v0.1 schema formats or legacy benchmark steady-state assumptions.
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 mt-1 ${
+                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 border-b border-dashed ${
                                     kpiFilter === 'legacy' 
-                                    ? 'text-slate-400 drop-shadow-[0_0_10px_rgba(148,163,184,0.35)] scale-105' 
-                                    : 'text-white group-hover/item:text-slate-400'
-                                }`}>
+                                    ? 'text-slate-400 border-slate-400/50 drop-shadow-[0_0_10px_rgba(148,163,184,0.35)] scale-105' 
+                                    : 'text-white border-slate-700/60 group-hover/item:border-slate-400/55 group-hover/item:text-slate-400'
+                                } pb-0.5 mt-1 self-start`}>
                                     {legacyCount}
                                 </div>
                             </div>
@@ -703,10 +717,10 @@ export const FilterPanel = ({
                     </div>
 
                     {/* Group 3: Performance & Drift */}
-                    <div className="flex-1 xl:flex-[2] flex flex-col justify-start p-3.5 rounded-2xl bg-[#112a4d] border border-blue-400/40 min-h-[118px] w-full shadow-[0_4px_25px_rgba(59,130,246,0.06)]">
+                    <div className="flex-1 xl:flex-[2] flex flex-col justify-start p-3.5 rounded-2xl bg-[#10091b] border border-[#240d3c] w-full shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] hover:border-purple-500/40 hover:shadow-[0_10px_30px_rgba(168,85,247,0.06)] transition-all duration-300 min-h-[118px]">
                         {/* Group Header inside card */}
-                        <div className="text-[11px] font-black text-white uppercase tracking-wider pb-1.5 border-b border-blue-900/45 flex items-center gap-1.5 select-none mb-2.5">
-                            <TrendingUp className="w-3.5 h-3.5 text-purple-400" /> Performance & Drift
+                        <div className="text-[11px] font-bold text-purple-400 uppercase tracking-wider pb-1.5 border-b border-slate-900/60 flex items-center justify-between select-none mb-2.5">
+                            Performance & Drift
                         </div>
 
                         <div className="flex items-center gap-2 w-full mt-2 pt-0.5">
@@ -719,22 +733,22 @@ export const FilterPanel = ({
                                     <span className="text-[10.5px] font-bold uppercase tracking-widest text-slate-350 select-none group-hover/item:text-white transition-colors">Pareto Frontier</span>
                                     <div className="relative group/tooltip inline-block cursor-help shrink-0">
                                         <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-purple-400 transition-colors" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
+                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 mt-1.5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
                                             Filters runs to show only cost/performance optimal configurations on the Pareto front.
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 mt-1 ${
+                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 border-b border-dashed ${
                                     kpiFilter === 'pareto' 
-                                    ? 'text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.35)] scale-105' 
-                                    : 'text-white group-hover/item:text-purple-400'
-                                }`}>
+                                    ? 'text-purple-400 border-purple-400/50 drop-shadow-[0_0_10px_rgba(168,85,247,0.35)] scale-105' 
+                                    : 'text-white border-slate-700/60 group-hover/item:border-purple-400/55 group-hover/item:text-purple-400'
+                                } pb-0.5 mt-1 self-start`}>
                                     {paretoCount}
                                 </div>
                             </div>
 
                             {/* Divider */}
-                            <div className="w-px h-8 bg-blue-900/40 shrink-0" />
+                            <div className="w-px h-8 bg-slate-900/65 shrink-0" />
 
                             {/* Card 5: Performance Regressions */}
                             <div 
@@ -751,18 +765,20 @@ export const FilterPanel = ({
                                     <span className="text-[10.5px] font-bold uppercase tracking-widest text-slate-350 select-none group-hover/item:text-white transition-colors">Active Regressions</span>
                                     <div className="relative group/tooltip inline-block cursor-help shrink-0">
                                         <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-red-400 transition-colors" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
+                                        <div className="absolute left-1/2 -translate-x-1/2 top-5 mt-1.5 px-3 py-2 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[200px] pointer-events-none leading-relaxed font-sans normal-case tracking-normal backdrop-blur-md">
                                             Filters to show runs suffering performance regression (more than 5% throughput drop) compared to the active baseline.
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 mt-1 ${
+                                <div className={`text-2xl font-black font-mono tracking-tight transition-all duration-300 ${
+                                    baselineBenchmarkKey ? 'border-b border-dashed' : ''
+                                } ${
                                     !baselineBenchmarkKey 
                                     ? 'text-slate-500 text-xs font-semibold' 
                                     : kpiFilter === 'regressions'
-                                    ? 'text-red-400 drop-shadow-[0_0_10px_rgba(239,68,68,0.35)] scale-105' 
-                                    : 'text-white group-hover/item:text-red-400'
-                                }`}>
+                                    ? 'text-red-400 border-red-400/50 drop-shadow-[0_0_10px_rgba(239,68,68,0.35)] scale-105' 
+                                    : 'text-white border-slate-700/60 group-hover/item:border-red-400/55 group-hover/item:text-red-400'
+                                } pb-0.5 mt-1 self-start`}>
                                     {baselineBenchmarkKey ? (
                                         regressionCount
                                     ) : (
@@ -775,9 +791,9 @@ export const FilterPanel = ({
                 </div>
 
                 {/* Primary Row Controls (Always Visible) */}
-                <div className="flex flex-wrap items-center gap-3 bg-slate-900/40 p-4 border border-slate-800 dark:border-slate-800/80 rounded-2xl mb-4">
+                <div className="flex flex-wrap items-center gap-3 bg-[#0d1527] backdrop-blur-xl p-4 border border-slate-800/80 rounded-2xl mb-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] relative z-30">
                     {/* Search Bar */}
-                    <div className="relative flex-1 min-w-[240px]">
+                    <div id="manage-tour-search" className="relative flex-1 min-w-[240px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         <input
                             type="text"
@@ -813,7 +829,7 @@ export const FilterPanel = ({
                     <div className="flex items-center gap-1.5">
                         <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Group:</span>
                         <select 
-                            className="text-xs bg-[#0b0f17] border border-slate-800/40 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-300 hover:border-slate-700/45 hover:bg-[#101622] transition-all duration-200 font-semibold cursor-pointer"
+                            className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
                             value={groupBy}
                             onChange={(e) => setGroupBy(e.target.value)}
                         >
@@ -826,10 +842,10 @@ export const FilterPanel = ({
                     </div>
 
                     {/* Sorting Selector */}
-                    <div className="flex items-center gap-1 border-r border-slate-800/40 pr-3 mr-1">
+                    <div className="flex items-center gap-1 border-r border-slate-900/60 pr-3 mr-1">
                         <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Sort:</span>
                         <select 
-                            className="text-xs bg-[#0b0f17] border border-slate-800/40 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-300 hover:border-slate-700/45 hover:bg-[#101622] transition-all duration-200 font-semibold cursor-pointer"
+                            className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
                             value={sortByField}
                             onChange={(e) => setSortByField(e.target.value)}
                         >
@@ -852,7 +868,7 @@ export const FilterPanel = ({
                         <button
                             onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
                             title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                            className="p-2 text-slate-400 hover:text-slate-200 bg-[#0b0f17] rounded-xl border border-slate-800/40 hover:border-slate-700/45 hover:bg-[#101622] transition-colors cursor-pointer flex items-center justify-center"
+                            className="p-2 text-slate-400 hover:text-slate-200 bg-slate-950/60 rounded-xl border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 transition-colors cursor-pointer flex items-center justify-center"
                         >
                             {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
                         </button>
@@ -862,14 +878,14 @@ export const FilterPanel = ({
                     <div className="relative">
                         <button 
                             onClick={() => setShowSpecsDropdown(!showSpecsDropdown)}
-                            className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer flex items-center gap-1.5 transition-colors"
+                            className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-900/60 bg-slate-950/60 hover:border-slate-850 hover:bg-slate-900/40 text-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors"
                         >
                             <Sliders className="w-3.5 h-3.5" /> Metrics ({Object.values(visibleSpecs).filter(Boolean).length})
                         </button>
                         {showSpecsDropdown && (
                             <>
                                 <div className="fixed inset-0 z-20" onClick={() => setShowSpecsDropdown(false)} />
-                                <div className="absolute right-0 mt-2 w-72 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-4 z-30 grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
+                                <div className="absolute right-0 mt-2 w-72 bg-slate-950/95 border border-slate-900 rounded-xl shadow-2xl p-4 z-[100] grid grid-cols-1 gap-2 max-h-96 overflow-y-auto backdrop-blur-md">
                                     <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-1">Toggle visible columns</div>
                                     {Object.entries(SPEC_LABELS).map(([key, label]) => {
                                         const isSelected = visibleSpecs[key];
@@ -879,7 +895,7 @@ export const FilterPanel = ({
                                                 onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
                                                 className={`w-full text-left px-2 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
                                             >
-                                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-700 bg-slate-950'}`}>
+                                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-slate-950'}`}>
                                                     {isSelected && <Check size={10} strokeWidth={3} />}
                                                 </div>
                                                 {label}
@@ -893,8 +909,9 @@ export const FilterPanel = ({
 
                     {/* Advanced Toggle */}
                     <button 
+                        id="manage-tour-filter-toggle"
                         onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
-                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-[#0b0f17] text-slate-300 border border-slate-800/40 hover:border-slate-700/45 hover:bg-[#101622] cursor-pointer flex items-center gap-1 transition-colors"
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950/60 text-slate-200 border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 cursor-pointer flex items-center gap-1 transition-colors"
                     >
                         {isAdvancedExpanded ? <><ChevronUp size={14} /> Basic Filters</> : <><ChevronDown size={14} /> Advanced Filters</>}
                     </button>
@@ -935,16 +952,16 @@ export const FilterPanel = ({
                 )}
 
                 {/* Advanced Filters Drawer */}
-                <div className={`fixed inset-y-0 right-0 w-[420px] bg-slate-900 border-l border-slate-800 shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 ${isAdvancedExpanded ? 'translate-x-0' : 'translate-x-full'}`}>
+                <div className={`fixed inset-y-0 right-0 w-[420px] bg-slate-950/95 border-l border-slate-900 shadow-2xl z-[60] flex flex-col transform transition-transform duration-300 backdrop-blur-xl ${isAdvancedExpanded ? 'translate-x-0' : 'translate-x-full'}`}>
                     {/* Header */}
-                    <div className="bg-slate-950/60 p-4 border-b border-slate-800/60 flex items-center justify-between select-none">
+                    <div className="bg-slate-950/40 p-4 border-b border-slate-900/60 flex items-center justify-between select-none">
                         <div className="flex items-center gap-2">
                             <Sliders className="w-4 h-4 text-cyan-400" />
                             <span className="text-sm font-bold text-white tracking-wide">Advanced Filters</span>
                         </div>
                         <button 
                             onClick={() => setIsAdvancedExpanded(false)}
-                            className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-all cursor-pointer"
+                            className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-slate-900 transition-all cursor-pointer"
                         >
                             <X className="w-4 h-4" />
                         </button>
@@ -953,7 +970,7 @@ export const FilterPanel = ({
                     {/* Scrollable Content */}
                     <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                         {/* Saved Presets Section */}
-                        <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/80 shadow-md shadow-slate-950/20 space-y-3.5 mb-2">
+                        <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-900/60 shadow-md shadow-slate-950/20 space-y-3.5 mb-2">
                             <h4 className="text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800/60 pb-1.5 flex items-center gap-1.5 select-none">
                                 <Bookmark className="w-3.5 h-3.5" /> Saved Filter Presets
                             </h4>
@@ -1155,141 +1172,173 @@ export const FilterPanel = ({
                         <div className="space-y-5">
                             {/* Section 1: Serving Stack & Framework */}
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
-                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 flex items-center gap-1.5"><Activity className="w-3 h-3 text-cyan-500" /> Serving Stack & Framework</h4>
-                                <div className="flex flex-col gap-2">
-                                    <MultiSelectDropdown 
-                                        label="Serving Stack"
-                                        options={filterOptions.servingStack || []}
-                                        selected={draftFilters ? draftFilters.servingStack : (activeFilters.servingStack || new Set())}
-                                        onChange={(val) => toggleDraftFilter('servingStack', val)}
-                                        counts={facetCounts.servingStack || {}}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Model Server"
-                                        options={filterOptions.modelServer}
-                                        selected={draftFilters ? draftFilters.modelServer : (activeFilters.modelServer || new Set())}
-                                        onChange={(val) => toggleDraftFilter('modelServer', val)}
-                                        counts={facetCounts.modelServer}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Optimizations"
-                                        options={[
-                                            "Atomic / Gang Scheduling",
-                                            "Topology Aware Scheduling",
-                                            "P/D Disaggregation",
-                                            "Horizontal Pod Autoscaling",
-                                            "Body based routing",
-                                            "Approximate prefix aware routing",
-                                            "Precise prefix aware routing"
-                                        ]}
-                                        selected={draftFilters ? draftFilters.optimizations : (activeFilters.optimizations || new Set())}
-                                        onChange={(val) => toggleDraftFilter('optimizations', val)}
-                                        counts={facetCounts.optimizations}
-                                    />
-                                </div>
+                                <button 
+                                    onClick={() => toggleSection('stack')}
+                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                >
+                                    <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-cyan-500" /> Serving Stack & Framework</span>
+                                    {openSections.stack ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {openSections.stack && (
+                                    <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
+                                        <MultiSelectDropdown 
+                                            label="Serving Stack"
+                                            options={filterOptions.servingStack || []}
+                                            selected={draftFilters ? draftFilters.servingStack : (activeFilters.servingStack || new Set())}
+                                            onChange={(val) => toggleDraftFilter('servingStack', val)}
+                                            counts={facetCounts.servingStack || {}}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Model Server"
+                                            options={filterOptions.modelServer}
+                                            selected={draftFilters ? draftFilters.modelServer : (activeFilters.modelServer || new Set())}
+                                            onChange={(val) => toggleDraftFilter('modelServer', val)}
+                                            counts={facetCounts.modelServer}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Optimizations"
+                                            options={[
+                                                "Atomic / Gang Scheduling",
+                                                "Topology Aware Scheduling",
+                                                "P/D Disaggregation",
+                                                "Horizontal Pod Autoscaling",
+                                                "Body based routing",
+                                                "Approximate prefix aware routing",
+                                                "Precise prefix aware routing"
+                                            ]}
+                                            selected={draftFilters ? draftFilters.optimizations : (activeFilters.optimizations || new Set())}
+                                            onChange={(val) => toggleDraftFilter('optimizations', val)}
+                                            counts={facetCounts.optimizations}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             {/* Section 2: Infrastructure Spec */}
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
-                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 flex items-center gap-1.5"><Database className="w-3 h-3 text-cyan-500" /> Infrastructure Specs</h4>
-                                <div className="flex flex-col gap-2">
-                                    <MultiSelectDropdown 
-                                        label="Machine Type"
-                                        options={filterOptions.machines}
-                                        selected={draftFilters ? draftFilters.machines : (activeFilters.machines || new Set())}
-                                        onChange={(val) => toggleDraftFilter('machines', val)}
-                                        counts={facetCounts.machines}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Accelerator Count"
-                                        options={filterOptions.acc_count}
-                                        selected={draftFilters ? draftFilters.acc_count : (activeFilters.acc_count || new Set())}
-                                        onChange={(val) => toggleDraftFilter('acc_count', val)}
-                                        counts={facetCounts.acc_count}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Tensor Parallelism (TP)"
-                                        options={filterOptions.tp || []}
-                                        selected={draftFilters ? draftFilters.tp : (activeFilters.tp || new Set())}
-                                        onChange={(val) => toggleDraftFilter('tp', val)}
-                                        counts={facetCounts.tp}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="P/D Node Ratio"
-                                        options={filterOptions.pdRatio}
-                                        selected={draftFilters ? draftFilters.pdRatio : (activeFilters.pdRatio || new Set())}
-                                        onChange={(val) => toggleDraftFilter('pdRatio', val)}
-                                        counts={facetCounts.pdRatio}
-                                    />
-                                </div>
+                                <button 
+                                    onClick={() => toggleSection('infra')}
+                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                >
+                                    <span className="flex items-center gap-1.5"><Database className="w-3 h-3 text-cyan-500" /> Infrastructure Specs</span>
+                                    {openSections.infra ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {openSections.infra && (
+                                    <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
+                                        <MultiSelectDropdown 
+                                            label="Machine Type"
+                                            options={filterOptions.machines}
+                                            selected={draftFilters ? draftFilters.machines : (activeFilters.machines || new Set())}
+                                            onChange={(val) => toggleDraftFilter('machines', val)}
+                                            counts={facetCounts.machines}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Accelerator Count"
+                                            options={filterOptions.acc_count}
+                                            selected={draftFilters ? draftFilters.acc_count : (activeFilters.acc_count || new Set())}
+                                            onChange={(val) => toggleDraftFilter('acc_count', val)}
+                                            counts={facetCounts.acc_count}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Tensor Parallelism (TP)"
+                                            options={filterOptions.tp || []}
+                                            selected={draftFilters ? draftFilters.tp : (activeFilters.tp || new Set())}
+                                            onChange={(val) => toggleDraftFilter('tp', val)}
+                                            counts={facetCounts.tp}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="P/D Node Ratio"
+                                            options={filterOptions.pdRatio}
+                                            selected={draftFilters ? draftFilters.pdRatio : (activeFilters.pdRatio || new Set())}
+                                            onChange={(val) => toggleDraftFilter('pdRatio', val)}
+                                            counts={facetCounts.pdRatio}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             {/* Section 3: Benchmark Load */}
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
-                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-cyan-500" /> Benchmark Load</h4>
-                                <div className="flex flex-col gap-2">
-                                    <MultiSelectDropdown 
-                                        label="Input (ISL)"
-                                        options={filterOptions.isl}
-                                        selected={draftFilters ? draftFilters.isl : (activeFilters.isl || new Set())}
-                                        onChange={(val) => toggleDraftFilter('isl', val)}
-                                        counts={facetCounts.isl}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Output (OSL)"
-                                        options={filterOptions.osl}
-                                        selected={draftFilters ? draftFilters.osl : (activeFilters.osl || new Set())}
-                                        onChange={(val) => toggleDraftFilter('osl', val)}
-                                        counts={facetCounts.osl}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Workload Type"
-                                        options={filterOptions.ratio}
-                                        selected={draftFilters ? draftFilters.ratio : (activeFilters.ratio || new Set())}
-                                        onChange={(val) => toggleDraftFilter('ratio', val)}
-                                        counts={facetCounts.ratio}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Use Case"
-                                        options={filterOptions.useCase}
-                                        selected={draftFilters ? draftFilters.useCase : (activeFilters.useCase || new Set())}
-                                        onChange={(val) => toggleDraftFilter('useCase', val)}
-                                        counts={facetCounts.useCase}
-                                        formatLabel={(opt) => {
-                                            const meta = USE_CASE_META[opt];
-                                            return meta ? `${opt} ${meta}` : opt;
-                                        }}
-                                    />
-                                </div>
+                                <button 
+                                    onClick={() => toggleSection('load')}
+                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                >
+                                    <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-cyan-500" /> Benchmark Load</span>
+                                    {openSections.load ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {openSections.load && (
+                                    <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
+                                        <MultiSelectDropdown 
+                                            label="Input (ISL)"
+                                            options={filterOptions.isl}
+                                            selected={draftFilters ? draftFilters.isl : (activeFilters.isl || new Set())}
+                                            onChange={(val) => toggleDraftFilter('isl', val)}
+                                            counts={facetCounts.isl}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Output (OSL)"
+                                            options={filterOptions.osl}
+                                            selected={draftFilters ? draftFilters.osl : (activeFilters.osl || new Set())}
+                                            onChange={(val) => toggleDraftFilter('osl', val)}
+                                            counts={facetCounts.osl}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Workload Type"
+                                            options={filterOptions.ratio}
+                                            selected={draftFilters ? draftFilters.ratio : (activeFilters.ratio || new Set())}
+                                            onChange={(val) => toggleDraftFilter('ratio', val)}
+                                            counts={facetCounts.ratio}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Use Case"
+                                            options={filterOptions.useCase}
+                                            selected={draftFilters ? draftFilters.useCase : (activeFilters.useCase || new Set())}
+                                            onChange={(val) => toggleDraftFilter('useCase', val)}
+                                            counts={facetCounts.useCase}
+                                            formatLabel={(opt) => {
+                                                const meta = USE_CASE_META[opt];
+                                                return meta ? `${opt} ${meta}` : opt;
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             {/* Section 4: Connections & Precision */}
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
-                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 flex items-center gap-1.5"><Sliders className="w-3 h-3 text-cyan-500" /> Connections & Precision</h4>
-                                <div className="flex flex-col gap-2">
-                                    <MultiSelectDropdown 
-                                        label="Connection / Source"
-                                        options={filterOptions.connectionNames || []}
-                                        selected={draftFilters ? draftFilters.connectionNames : (activeFilters.connectionNames || new Set())}
-                                        onChange={(val) => toggleDraftFilter('connectionNames', val)}
-                                        counts={facetCounts.connectionNames || {}}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Origin / Folder"
-                                        options={filterOptions.origins || []}
-                                        selected={draftFilters ? draftFilters.origins : (activeFilters.origins || new Set())}
-                                        onChange={(val) => toggleDraftFilter('origins', val)}
-                                        counts={facetCounts.origins || {}}
-                                        formatLabel={formatOriginLabel}
-                                    />
-                                    <MultiSelectDropdown 
-                                        label="Precisions"
-                                        options={filterOptions.precisions}
-                                        selected={draftFilters ? draftFilters.precisions : (activeFilters.precisions || new Set())}
-                                        onChange={(val) => toggleDraftFilter('precisions', val)}
-                                        counts={facetCounts.precisions}
-                                    />
-                                </div>
+                                <button 
+                                    onClick={() => toggleSection('conn')}
+                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                >
+                                    <span className="flex items-center gap-1.5"><Sliders className="w-3 h-3 text-cyan-500" /> Connections & Precision</span>
+                                    {openSections.conn ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+                                {openSections.conn && (
+                                    <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
+                                        <MultiSelectDropdown 
+                                            label="Connection / Source"
+                                            options={filterOptions.connectionNames || []}
+                                            selected={draftFilters ? draftFilters.connectionNames : (activeFilters.connectionNames || new Set())}
+                                            onChange={(val) => toggleDraftFilter('connectionNames', val)}
+                                            counts={facetCounts.connectionNames || {}}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Origin / Folder"
+                                            options={filterOptions.origins || []}
+                                            selected={draftFilters ? draftFilters.origins : (activeFilters.origins || new Set())}
+                                            onChange={(val) => toggleDraftFilter('origins', val)}
+                                            counts={facetCounts.origins || {}}
+                                            formatLabel={formatOriginLabel}
+                                        />
+                                        <MultiSelectDropdown 
+                                            label="Precisions"
+                                            options={filterOptions.precisions}
+                                            selected={draftFilters ? draftFilters.precisions : (activeFilters.precisions || new Set())}
+                                            onChange={(val) => toggleDraftFilter('precisions', val)}
+                                            counts={facetCounts.precisions}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -1321,6 +1370,7 @@ export const FilterPanel = ({
             {/* Spacer */}
             <div className="h-4" />
 
+              <div id="manage-tour-table">
               <UnifiedDataTable
                 groupBy={groupBy}
                 sortByField={sortByField}
@@ -1346,6 +1396,7 @@ export const FilterPanel = ({
                 submissionsMap={submissionsMap}
                 updateSubmissionStatus={updateSubmissionStatus}
             />
+              </div>
         </div>
     );
 };

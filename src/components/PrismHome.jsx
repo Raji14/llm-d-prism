@@ -1,13 +1,63 @@
-import React, { useState } from 'react';
-import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Upload, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Upload, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const PrismHome = ({ onNavigate }) => {
-    const [isComingSoonExpanded, setIsComingSoonExpanded] = useState(false);
+    const [currentRoadmapIndex, setCurrentRoadmapIndex] = useState(0);
+    const [isHoveringRoadmap, setIsHoveringRoadmap] = useState(false);
+
+    const roadmapItems = [
+        {
+            title: "Prefix Cache Offloading",
+            description: "Tiered KV cache offloading to host CPU memory, expanding accelerator context capacity bounds.",
+            icon: Database,
+            colorClass: "text-emerald-400",
+            bgClass: "bg-emerald-500/10",
+            borderClass: "border-emerald-500/20",
+            badge: "KV-cache"
+        },
+        {
+            title: "Prefill/Decode Disagg",
+            description: "Separating prefill and decode nodes to eliminate queue interference for multi-tenant pipelines.",
+            icon: Activity,
+            colorClass: "text-purple-400",
+            bgClass: "bg-purple-500/10",
+            borderClass: "border-purple-500/20",
+            badge: "Large models"
+        },
+        {
+            title: "Wide Expert Parallelism",
+            description: "Scaling Mixture-of-Experts (MoE) workloads across large multi-node GPU clusters dynamically.",
+            icon: Layers,
+            colorClass: "text-pink-400",
+            bgClass: "bg-pink-500/10",
+            borderClass: "border-pink-500/20",
+            badge: "MoE scale"
+        },
+        {
+            title: "Value Analysis (Cost/TCO)",
+            description: "Dynamic cost vs. performance optimization reports, estimating dollar savings per Chip hour.",
+            icon: TrendingUp,
+            colorClass: "text-cyan-400",
+            bgClass: "bg-cyan-500/10",
+            borderClass: "border-cyan-500/20",
+            badge: "Cost/TCO"
+        }
+    ];
+
+    useEffect(() => {
+        if (isHoveringRoadmap) return;
+        const timer = setInterval(() => {
+            setCurrentRoadmapIndex((prev) => (prev + 1) % 4);
+        }, 3500);
+        return () => clearInterval(timer);
+    }, [isHoveringRoadmap]);
+
     return (
-        <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
             {/* Pulsing Vibrant Neon Glow Background Shapes */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" />
-            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/15 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
+            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
+            <div className="absolute top-1/3 -right-1/4 w-1/2 h-1/2 bg-purple-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
+            <div className="absolute bottom-0 -left-1/4 w-1/2 h-1/2 bg-emerald-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
 
             <div className="max-w-6xl w-full z-10 flex flex-col items-center">
                 {/* Hero Header */}
@@ -34,77 +84,79 @@ const PrismHome = ({ onNavigate }) => {
                     <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
                     
                     <div className="relative p-6 md:p-8 z-10">
-                        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
-                            <div>
-                                <div className="flex items-center gap-2.5 mb-1.5">
-                                    <Database className="h-5 w-5 text-cyan-400" />
-                                    <h2 className="text-2xl font-extrabold tracking-tight text-white">Results Store</h2>
-                                </div>
-                                <p className="text-xs text-slate-400 max-w-xl leading-relaxed">
-                                    The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
-                                </p>
-                            </div>
+                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-8">
+                            <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">Results Store</h2>
+                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
+                                The open-source repository for system and workload telemetry. Compare, validate, and reproduce distributed inference performance benchmark reports.
+                            </p>
                             <div className="flex items-center gap-2 font-mono text-[9px] text-slate-400 border border-slate-800/80 px-2.5 py-1 rounded bg-slate-950/40 select-none">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live Schema Sync (v0.2)
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Action 1: Browse Results */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                            {/* Action 1: Browse & Manage Benchmarks */}
                             <div 
-                                onClick={() => onNavigate('benchmark-browser')}
-                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
+                                onClick={() => onNavigate('manage-benchmarks')}
+                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-purple-500/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(168,85,247,0.05)] relative overflow-hidden h-full min-h-[300px]"
                             >
                                 <div>
                                     {/* Tech Illustration */}
-                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/10 transition-colors">
-                                        <div className="absolute inset-0 bg-[linear-gradient(to_right,#090d16_1px,transparent_1px),linear-gradient(to_bottom,#090d16_1px,transparent_1px)] bg-[size:10px_10px]" />
+                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-purple-500/10 transition-colors">
+                                        <div className="absolute inset-0 bg-[radial-gradient(#0c1322_1px,transparent_1px)] bg-[size:8px_8px] opacity-40" />
                                         <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
-                                            <line x1="15" y1="10" x2="15" y2="70" stroke="#1e293b" strokeWidth="1" strokeDasharray="2 2" />
-                                            <line x1="15" y1="70" x2="185" y2="70" stroke="#1e293b" strokeWidth="1" strokeDasharray="2 2" />
-                                            <path d="M15 65 Q 50 30, 80 50 T 140 25 T 185 15" stroke="rgba(34, 211, 238, 0.08)" strokeWidth="6" strokeLinecap="round" fill="none" />
+                                            {/* Grid backdrop */}
+                                            <line x1="15" y1="10" x2="15" y2="70" stroke="#1e293b" strokeWidth="0.8" strokeDasharray="2 2" />
+                                            <line x1="15" y1="70" x2="185" y2="70" stroke="#1e293b" strokeWidth="0.8" strokeDasharray="2 2" />
+                                            
+                                            {/* Glowing Chart Curve */}
                                             <path 
-                                                d="M15 65 Q 50 30, 80 50 T 140 25 T 185 15" 
-                                                stroke="url(#chart-cyan-grad)" 
-                                                strokeWidth="1.5" 
+                                                d="M15 62 Q 55 25, 95 48 T 155 18" 
+                                                stroke="url(#combined-gradient)" 
+                                                strokeWidth="2.0" 
                                                 strokeLinecap="round" 
                                                 fill="none"
                                             />
-                                            <circle cx="80" cy="50" r="3" fill="#22d3ee" className="animate-ping opacity-60" />
-                                            <circle cx="80" cy="50" r="1.5" fill="#22d3ee" />
-                                            <circle cx="140" cy="25" r="3" fill="#06b6d4" className="animate-ping opacity-60" style={{ animationDelay: '0.4s' }} />
-                                            <circle cx="140" cy="25" r="1.5" fill="#06b6d4" />
+                                            <circle cx="95" cy="48" r="3.5" fill="#c084fc" className="animate-ping opacity-60" />
+                                            <circle cx="95" cy="48" r="1.5" fill="#c084fc" />
+
+                                            {/* Timeline stepper indicators at right */}
+                                            <line x1="155" y1="18" x2="175" y2="35" stroke="#4f46e5" strokeWidth="1" strokeDasharray="3 3" />
+                                            <circle cx="175" cy="35" r="7" fill="#1e152a" stroke="#a855f7" strokeWidth="1" />
+                                            <circle cx="175" cy="35" r="2.5" fill="#c084fc" className="animate-pulse" />
+                                            <text x="175" y="49" textAnchor="middle" fill="#7c3aed" className="font-mono text-[5.5px] uppercase tracking-wider font-extrabold">In Review</text>
+
                                             <defs>
-                                                <linearGradient id="chart-cyan-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                                                    <stop offset="0%" stopColor="#0891b2" />
-                                                    <stop offset="50%" stopColor="#22d3ee" />
-                                                    <stop offset="100%" stopColor="#6366f1" />
+                                                <linearGradient id="combined-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                    <stop offset="0%" stopColor="#06b6d4" />
+                                                    <stop offset="50%" stopColor="#6366f1" />
+                                                    <stop offset="100%" stopColor="#a855f7" />
                                                 </linearGradient>
                                             </defs>
                                         </svg>
                                     </div>
-                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                        <BarChart2 className="h-4 w-4" />
-                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Browse Results</h3>
+                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-purple-400 transition-colors">
+                                        <Sliders className="h-4.5 w-4.5" />
+                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Browse & Manage Benchmarks</h3>
                                     </div>
                                     <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
-                                        Analyze live benchmark runs. Filter by hardware (H100, L4), TPU topology, model servers, and workload context.
+                                        Explore live run telemetries and track compliance submissions through Staged, Processing, Review, and Public states.
                                     </p>
                                 </div>
-                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
-                                    Open Browser <ArrowRight className="h-3 w-3" />
-                                </div>
+                                <button className="w-full py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-purple-400 hover:to-indigo-500 shadow-[0_0_15px_rgba(168,85,247,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
+                                    Explore & Track <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
                             </div>
 
-                            {/* Action 2: Add/Submit */}
+                            {/* Action 2: Upload Benchmark */}
                             <div 
-                                onClick={() => onNavigate('manage-benchmarks')}
-                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
+                                onClick={() => onNavigate('upload-benchmarks')}
+                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-cyan-500/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.05)] relative overflow-hidden h-full min-h-[300px]"
                             >
                                 <div>
                                     {/* Tech Illustration */}
-                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-blue-500/10 transition-colors">
-                                        <div className="absolute inset-0 bg-[radial-gradient(#0c1322_1px,transparent_1px)] bg-[size:8px_8px]" />
+                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/10 transition-colors">
+                                        <div className="absolute inset-0 bg-[radial-gradient(#0c1322_1px,transparent_1px)] bg-[size:8px_8px] opacity-40" />
                                         <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
                                             <rect x="65" y="45" width="70" height="20" rx="3" fill="#0b0f19" stroke="#1e293b" strokeWidth="1" />
                                             <line x1="72" y1="51" x2="82" y2="51" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
@@ -123,51 +175,15 @@ const PrismHome = ({ onNavigate }) => {
                                     </div>
                                     <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
                                         <Upload className="h-4.5 w-4.5" />
-                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Add Benchmark</h3>
+                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Upload Benchmark</h3>
                                     </div>
                                     <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
                                         Onboard and submit run telemetries. Validates files against standard schemas before uploading to staging GCS bucket.
                                     </p>
                                 </div>
-                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
-                                    Submit Run <ArrowRight className="h-3 w-3" />
-                                </div>
-                            </div>
-
-                            {/* Action 3: Manage Submissions */}
-                            <div 
-                                onClick={() => onNavigate('manage-benchmarks')}
-                                className="bg-gradient-to-b from-slate-950/40 to-slate-950/80 p-5 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-slate-800/80 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] relative overflow-hidden h-full min-h-[300px]"
-                            >
-                                <div>
-                                    {/* Tech Illustration */}
-                                    <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900/80 overflow-hidden flex items-center justify-center group-hover:border-purple-500/10 transition-colors">
-                                        <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(168,85,247,0.01)_1px,transparent_1px)] bg-[size:100%_4px]" />
-                                        <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
-                                            <line x1="45" y1="36" x2="100" y2="36" stroke="#1e293b" strokeWidth="1" />
-                                            <line x1="100" y1="36" x2="155" y2="36" stroke="#1e293b" strokeWidth="1" />
-                                            <circle cx="45" cy="36" r="6" fill="#111827" stroke="#4f46e5" strokeWidth="1" />
-                                            <circle cx="45" cy="36" r="2.5" fill="#818cf8" />
-                                            <circle cx="100" cy="36" r="9" fill="#1e152a" stroke="#a855f7" strokeWidth="1" />
-                                            <circle cx="100" cy="36" r="3.5" fill="#c084fc" className="animate-pulse" />
-                                            <circle cx="155" cy="36" r="6" fill="#111827" stroke="#059669" strokeWidth="1" />
-                                            <circle cx="155" cy="36" r="2.5" fill="#34d399" />
-                                            <text x="45" y="55" textAnchor="middle" fill="#475569" className="font-mono text-[6px] uppercase tracking-wider font-bold">Staged</text>
-                                            <text x="100" y="58" textAnchor="middle" fill="#c084fc" className="font-mono text-[6.5px] uppercase tracking-wider font-bold">Review</text>
-                                            <text x="155" y="55" textAnchor="middle" fill="#475569" className="font-mono text-[6px] uppercase tracking-wider font-bold">Public</text>
-                                        </svg>
-                                    </div>
-                                    <div className="flex items-center gap-2 mb-2 text-slate-200 group-hover:text-cyan-400 transition-colors">
-                                        <Sliders className="h-4.5 w-4.5" />
-                                        <h3 className="text-sm font-bold text-slate-250 tracking-wide">Manage Submissions</h3>
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 leading-relaxed mb-4">
-                                        Track compliance transitions. Monitor run submissions through Staged, Processing, Review, and Public states.
-                                    </p>
-                                </div>
-                                <div className="text-[10px] font-bold text-cyan-400 group-hover:translate-x-1 transition-transform flex items-center gap-1 uppercase tracking-wider font-mono mt-auto">
-                                    Track Progress <ArrowRight className="h-3 w-3" />
-                                </div>
+                                <button className="w-full py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
+                                    Upload Benchmark <ArrowRight className="ml-1 h-3 w-3" />
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -180,26 +196,26 @@ const PrismHome = ({ onNavigate }) => {
                     </h2>
                     <p className="text-xs text-slate-450 leading-relaxed text-center mb-8">Live benchmarked serving configurations and architectural templates</p>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full items-stretch">
-                        {/* Path 1: Inference scheduling */}
+                    <div className="flex flex-row overflow-x-auto gap-5 pb-5 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
+                        {/* Path 1: Intelligent routing */}
                         <div 
                             onClick={() => onNavigate('inference-scheduling')}
-                            className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
+                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-cyan-500/50 w-[290px] shrink-0 min-h-[320px] overflow-hidden"
                         >
                             <div>
                                 <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
                                     Intelligent routing
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mb-2.5">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Prefix-cache</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Load balance</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Prefix-cache</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Load balance</span>
                                 </div>
                                 <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
                                     Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
                                 </p>
                                 
                                 {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-800/50 border border-slate-700/40 rounded-lg p-2.5 mb-3">
+                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 mb-3">
                                     <div className="space-y-0.5 mb-1.5">
                                         <div className="flex justify-between text-[10px]">
                                             <span className="text-slate-400">SLA compliance</span>
@@ -211,176 +227,151 @@ const PrismHome = ({ onNavigate }) => {
                                         </div>
                                     </div>
                                     {/* Monochromatic Preview Chart */}
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 border-b border-slate-700/30 pb-px">
-                                        <div className="w-full bg-cyan-500 h-1.5 rounded-t-sm opacity-30"></div>
-                                        <div className="w-full bg-cyan-500 h-3 rounded-t-sm opacity-50"></div>
-                                        <div className="w-full bg-cyan-500 h-4.5 rounded-t-sm opacity-80"></div>
-                                        <div className="w-full bg-cyan-500 h-3.5 rounded-t-sm opacity-60"></div>
-                                        <div className="w-full bg-cyan-500 h-6 rounded-t-sm"></div>
+                                    <div className="h-6 flex items-end justify-between space-x-0.5 border-b border-slate-800/40 pb-px">
+                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-1.5 rounded-t-sm opacity-35"></div>
+                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-3 rounded-t-sm opacity-55"></div>
+                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-4.5 rounded-t-sm opacity-85"></div>
+                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-3.5 rounded-t-sm opacity-70"></div>
+                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-6 rounded-t-sm"></div>
                                     </div>
                                 </div>
                             </div>
  
-                            <div className="flex gap-2 mt-auto pt-2">
-                                <button className="flex-1 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all">
-                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
-                                </button>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
-                                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750 hover:text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors"
-                                    title="View GKE config template to reproduce this optimized routing schema in your cluster"
-                                >
-                                    Reproduce This
-                                </button>
-                            </div>
+                            <button className="w-full py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
+                                Launch <ArrowRight className="ml-1 h-3 w-3" />
+                            </button>
                         </div>
 
-                        {/* Path 2: Agentic Workloads */}
+                        {/* Path 2: Agentic serving */}
                         <div 
                             onClick={() => onNavigate('agentic-serving')}
-                            className="group relative bg-slate-900/80 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/50 hover:border-cyan-500/30 h-full overflow-hidden"
+                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(16,185,129,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-emerald-500/50 w-[290px] shrink-0 min-h-[320px] overflow-hidden"
                         >
                             <div>
-                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
+                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-emerald-450">
                                     Agentic serving
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mb-2.5">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Multi-turn</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-full font-medium border border-cyan-500/20 whitespace-nowrap">Tool use</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Multi-turn</span>
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Tool use</span>
                                 </div>
                                 <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
                                     Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
                                 </p>
                                 
                                 {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-800/50 border border-slate-700/40 rounded-lg p-2.5 mb-3">
+                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 mb-3">
                                     <div className="space-y-0.5 mb-1.5">
                                         <div className="flex justify-between text-[10px]">
                                             <span className="text-slate-400">Workload</span>
-                                            <span className="text-cyan-400 font-mono font-bold">Code Generation</span>
+                                            <span className="text-emerald-400 font-mono font-bold">Code Generation</span>
                                         </div>
                                         <div className="flex justify-between text-[10px]">
                                             <span className="text-slate-400">Num Turns</span>
-                                            <span className="text-cyan-400 font-mono font-bold">230</span>
+                                            <span className="text-emerald-400 font-mono font-bold">230</span>
                                         </div>
                                     </div>
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 px-0.5 relative border-b border-slate-700/30 pb-px">
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-cyan-500 h-4 rounded-t-sm relative opacity-90">
+                                    <div className="h-6 flex items-end justify-between space-x-0.5 px-0.5 relative border-b border-slate-800/40 pb-px">
+                                         <div className="w-1/6 bg-emerald-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                         <div className="w-1/6 bg-emerald-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                         <div className="w-2/6 bg-gradient-to-t from-cyan-600 to-cyan-400 h-4 rounded-t-sm relative opacity-90">
                                              <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wide">Active</span>
                                          </div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-cyan-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-cyan-500 h-4 rounded-t-sm opacity-90 relative">
-                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wide">Offload</span>
+                                         <div className="w-1/6 bg-emerald-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                         <div className="w-1/6 bg-emerald-500 h-1.5 rounded-t-sm opacity-20"></div>
+                                         <div className="w-2/6 bg-gradient-to-t from-emerald-600 to-emerald-400 h-4 rounded-t-sm opacity-90 relative">
+                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-emerald-400 uppercase tracking-wide">Offload</span>
                                          </div>
                                     </div>
                                 </div>
                             </div>
  
-                            <div className="flex gap-2 mt-auto pt-2">
-                                <button className="flex-1 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all">
-                                    Launch <ArrowRight className="ml-1 h-3 w-3" />
-                                </button>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); onNavigate('workload-catalog'); }}
-                                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-750 hover:text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors"
-                                    title="View GKE config template to reproduce this optimized routing schema in your cluster"
-                                >
-                                    Reproduce This
-                                </button>
-                            </div>
+                            <button className="w-full py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-emerald-400 hover:to-cyan-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
+                                Launch <ArrowRight className="ml-1 h-3 w-3" />
+                            </button>
                         </div>
 
-                        {/* Card 3: Consolidated Roadmap (Coming Soon Stack) */}
+                        {/* Card 3: Consolidated Roadmap */}
                         <div 
-                            onClick={() => setIsComingSoonExpanded(!isComingSoonExpanded)}
-                            className={`group relative bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-4 transition-all duration-305 cursor-pointer flex flex-col justify-between overflow-hidden ${
-                                isComingSoonExpanded 
-                                ? 'shadow-[0_0_30px_rgba(168,85,247,0.12)] border-purple-500/35 h-auto' 
-                                : 'hover:border-purple-500/20 hover:shadow-[0_4px_20px_rgba(168,85,247,0.06)] h-full min-h-[280px]'
-                            }`}
+                            onMouseEnter={() => setIsHoveringRoadmap(true)}
+                            onMouseLeave={() => setIsHoveringRoadmap(false)}
+                            className="group relative bg-slate-900/95 backdrop-blur-xl border border-slate-800/80 rounded-xl p-4 transition-all duration-300 flex flex-col justify-between opacity-95 w-[290px] shrink-0 min-h-[320px] overflow-hidden hover:border-purple-500/50 hover:shadow-[0_0_30px_rgba(168,85,247,0.25)]"
                         >
-                            {/* Layered Cards background visual effect when collapsed */}
-                            {!isComingSoonExpanded && (
-                                <>
-                                    <div className="absolute bottom-2 left-6 right-6 h-10 bg-slate-950 border border-slate-850 rounded-lg -z-10 translate-y-3 opacity-60 scale-95 transition-all duration-300 group-hover:translate-y-4" />
-                                    <div className="absolute bottom-2 left-4 right-4 h-10 bg-slate-900 border border-slate-800 rounded-lg -z-10 translate-y-1.5 opacity-80 scale-98 transition-all duration-300 group-hover:translate-y-2" />
-                                </>
-                            )}
-
                             <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <Layers className="h-4.5 w-4.5 text-purple-400" />
-                                        <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400">Roadmap</h3>
-                                    </div>
-                                    <span className="text-[8.5px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400 uppercase font-black tracking-wider">
-                                        {isComingSoonExpanded ? 'Active Deck' : 'Expand (4 Items)'}
-                                    </span>
+                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-purple-400">
+                                    Roadmap
+                                </h3>
+                                <div className="flex flex-wrap gap-1 mb-2.5">
+                                    <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded-full font-medium border border-purple-500/30 whitespace-nowrap">Coming soon</span>
                                 </div>
-                                <p className="text-slate-400 text-[11px] leading-relaxed mb-4">
+                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-4">
                                     Upcoming performance optimizations and architectural templates on the Prism roadmap.
                                 </p>
 
-                                {isComingSoonExpanded ? (
-                                    <div className="space-y-2.5 my-2 animate-fadeIn">
-                                        {/* Roadmap Item 1 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-emerald-500/10 border border-emerald-500/20 mt-0.5">
-                                                <Database className="w-3 h-3 text-emerald-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Prefix Cache Offloading</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Tiered KV cache offloading to host CPU memory, expanding accelerator context capacity bounds.</p>
-                                            </div>
-                                        </div>
+                                {/* Slideshow Item Container */}
+                                <div className="relative p-2.5 bg-slate-950/70 rounded-xl flex items-start gap-2.5 mt-2 min-h-[110px] group/item transition-all duration-300">
+                                    {/* Left/Right manual controls inside the carousel */}
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCurrentRoadmapIndex((prev) => (prev - 1 + 4) % 4);
+                                        }}
+                                        className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-slate-900 border border-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800 opacity-0 group-hover/item:opacity-100 transition-opacity z-10 cursor-pointer"
+                                    >
+                                        <ChevronLeft className="w-3.5 h-3.5" />
+                                    </button>
 
-                                        {/* Roadmap Item 2 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-purple-500/10 border border-purple-500/20 mt-0.5">
-                                                <Activity className="w-3 h-3 text-purple-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Prefill/Decode Disaggregation</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Separating prefill and decode nodes to eliminate queue interference for multi-tenant pipelines.</p>
-                                            </div>
-                                        </div>
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCurrentRoadmapIndex((prev) => (prev + 1) % 4);
+                                        }}
+                                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-slate-900 border border-slate-800/60 text-slate-400 hover:text-white hover:bg-slate-800 opacity-0 group-hover/item:opacity-100 transition-opacity z-10 cursor-pointer"
+                                    >
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                    </button>
 
-                                        {/* Roadmap Item 3 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-pink-500/10 border border-pink-500/20 mt-0.5">
-                                                <Layers className="w-3 h-3 text-pink-400" />
+                                    {/* Slide Item Content */}
+                                    {(() => {
+                                        const item = roadmapItems[currentRoadmapIndex];
+                                        const IconComponent = item.icon;
+                                        return (
+                                            <div className="flex items-start gap-2.5 px-1.5 w-full animate-fadeIn">
+                                                <div className={`p-1.5 rounded ${item.bgClass} border ${item.borderClass} mt-0.5 shrink-0`}>
+                                                    <IconComponent className={`w-3.5 h-3.5 ${item.colorClass}`} />
+                                                </div>
+                                                <div className="flex-1 min-w-0 pr-1.5">
+                                                    <div className="flex items-center justify-between gap-1">
+                                                        <h4 className="text-[10.5px] font-bold text-slate-200 truncate">{item.title}</h4>
+                                                        <span className="text-[7px] font-mono text-slate-500 shrink-0">{currentRoadmapIndex + 1}/4</span>
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-400 leading-normal mt-1 line-clamp-3">{item.description}</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Wide Expert Parallelism</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Scaling Mixture-of-Experts (MoE) workloads across large multi-node GPU clusters dynamically.</p>
-                                            </div>
-                                        </div>
+                                        );
+                                    })()}
+                                </div>
 
-                                        {/* Roadmap Item 4 */}
-                                        <div className="p-2 bg-slate-950/60 border border-slate-850 rounded-lg flex items-start gap-2.5">
-                                            <div className="p-1 rounded bg-cyan-500/10 border border-cyan-500/20 mt-0.5">
-                                                <TrendingUp className="w-3 h-3 text-cyan-400" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-[11px] font-bold text-slate-200">Value Analysis (Cost/TCO)</h4>
-                                                <p className="text-[9.5px] text-slate-400 leading-tight">Dynamic cost vs. performance optimization reports, estimating dollar savings per Chip hour.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-1.5 select-none mt-2 opacity-50">
-                                        <div className="h-6.5 bg-slate-950 border border-slate-850 rounded-md" />
-                                        <div className="h-6.5 bg-slate-950 border border-slate-850 rounded-md" />
-                                    </div>
-                                )}
+                                {/* Pagination indicator dots below the carousel */}
+                                <div className="flex justify-center gap-1.5 mt-2.5">
+                                    {roadmapItems.map((_, idx) => (
+                                        <button 
+                                            key={idx}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCurrentRoadmapIndex(idx);
+                                            }}
+                                            className="p-1 cursor-pointer flex items-center justify-center group"
+                                        >
+                                            <div 
+                                                className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                                                    idx === currentRoadmapIndex ? 'bg-purple-400 w-3' : 'bg-slate-700 group-hover:bg-slate-550'
+                                                }`}
+                                            />
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-
-                            <button className="w-full mt-3 py-1.5 bg-slate-855 hover:bg-slate-800 text-slate-300 rounded-lg font-medium text-[10px] flex items-center justify-center border border-slate-800 transition-colors">
-                                {isComingSoonExpanded ? 'Collapse Deck' : 'Expand Roadmap Deck'}
-                            </button>
                         </div>
                     </div>
                 </section>
@@ -392,41 +383,7 @@ const PrismHome = ({ onNavigate }) => {
                     </h2>
                     <p className="text-xs text-slate-450 text-center mb-8">Access specialized tools for deeper analysis and schema browsing</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
-                        {/* Card 1: Benchmark Browser */}
-                        <div 
-                            onClick={() => onNavigate('benchmark-browser')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <BarChart2 className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Benchmark browser</h3>
-                                </div>
-                                <p className="text-[11px] text-slate-400 mb-4">Browse and compare benchmark results across runs.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 2: Schema Explorer */}
-                        <div 
-                            onClick={() => onNavigate('schema-explorer')}
-                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                <div className="flex items-center mb-2">
-                                    <FileCode className="h-4 w-4 text-emerald-400 mr-2" />
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Schema explorer</h3>
-                                </div>
-                                <p className="text-[11px] text-slate-400 mb-4">Explore data schemas and metric definitions.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 3: Workload Catalog */}
+                        {/* Card 1: Workload Catalog */}
                         <div 
                             onClick={() => onNavigate('workload-catalog')}
                             className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
@@ -443,7 +400,7 @@ const PrismHome = ({ onNavigate }) => {
                             </button>
                         </div>
 
-                        {/* Card 4: Regressions & Analysis */}
+                        {/* Card 2: Regressions & Analysis */}
                         <div 
                             onClick={() => onNavigate('regressions-analysis')}
                             className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
@@ -454,6 +411,40 @@ const PrismHome = ({ onNavigate }) => {
                                     <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Regressions & analysis</h3>
                                 </div>
                                 <p className="text-[11px] text-slate-400 mb-4">Track nightly benchmark runs and detect regressions across well-lit paths.</p>
+                            </div>
+                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
+                                Launch <ArrowRight className="ml-1 h-3 w-3" />
+                            </button>
+                        </div>
+
+                        {/* Card 3: Benchmark Browser */}
+                        <div 
+                            onClick={() => onNavigate('benchmark-browser')}
+                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                        >
+                            <div>
+                                <div className="flex items-center mb-2">
+                                    <BarChart2 className="h-4 w-4 text-emerald-400 mr-2" />
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-450">Benchmark browser</h3>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mb-4">Browse and compare benchmark results across runs.</p>
+                            </div>
+                            <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
+                                Launch <ArrowRight className="ml-1 h-3 w-3" />
+                            </button>
+                        </div>
+
+                        {/* Card 4: Schema Explorer */}
+                        <div 
+                            onClick={() => onNavigate('schema-explorer')}
+                            className="bg-slate-900 shadow-xl border border-slate-800 rounded-xl p-3.5 hover:shadow-2xl hover:-translate-y-1 transition-all cursor-pointer flex flex-col justify-between h-full group"
+                        >
+                            <div>
+                                <div className="flex items-center mb-2">
+                                    <FileCode className="h-4 w-4 text-emerald-400 mr-2" />
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-1.5 transition-colors group-hover:text-emerald-400">Schema explorer</h3>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mb-4">Explore data schemas and metric definitions.</p>
                             </div>
                             <button className="w-full py-1.5 bg-slate-800 hover:bg-emerald-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center transition-colors">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />

@@ -148,16 +148,45 @@ export const useDashboardData = (initialState, dashboardState) => {
     const [availableSources, setAvailableSources] = useState(() => {
         try {
             const savedSourcesStr = localStorage.getItem('selectedSources');
-            if (savedSourcesStr) return new Set(JSON.parse(savedSourcesStr));
+            if (savedSourcesStr) {
+                const s = new Set(JSON.parse(savedSourcesStr));
+                if (window.location.search.includes('sandbox')) {
+                    s.add('llm-d-results:google_drive');
+                    s.add('local');
+                }
+                return s;
+            }
         } catch { }
-        return new Set(['local']);
+        const s = new Set(['local']);
+        if (window.location.search.includes('sandbox')) {
+            s.add('llm-d-results:google_drive');
+        }
+        return s;
     });
     const [selectedSources, setSelectedSources] = useState(() => {
         try {
             const savedSourcesStr = localStorage.getItem('selectedSources');
-            if (savedSourcesStr) return new Set(JSON.parse(savedSourcesStr));
+            if (savedSourcesStr) {
+                const s = new Set(JSON.parse(savedSourcesStr));
+                if (window.location.search.includes('sandbox')) {
+                    s.add('llm-d-results:google_drive');
+                    s.add('local');
+                }
+                if (s.size === 0) {
+                    s.add('local');
+                }
+                return s;
+            }
         } catch { }
-        return initialState?.sources || new Set(['local']);
+        const s = initialState?.sources || new Set(['local']);
+        if (window.location.search.includes('sandbox')) {
+            s.add('llm-d-results:google_drive');
+            s.add('local');
+        }
+        if (s.size === 0) {
+            s.add('local');
+        }
+        return s;
     });
     const [bucketConfigs, setBucketConfigs] = useState(() => {
         try {
@@ -183,6 +212,9 @@ export const useDashboardData = (initialState, dashboardState) => {
     });
     const [gcsProfiles, setGcsProfiles] = useState([]);
     const [enableLLMDResults, setEnableLLMDResults] = useState(() => {
+        if (window.location.search.includes('sandbox')) {
+            return true;
+        }
         try {
             const saved = JSON.parse(localStorage.getItem('prism_saved_sources') || '{}');
             if (saved.llmdEnabled !== undefined) return saved.llmdEnabled;
@@ -1718,7 +1750,11 @@ export const useDashboardData = (initialState, dashboardState) => {
         setBrv02Runs(prev => prev.filter(r => r.runId !== runId));
     };
 
-    const handleValidatedUpload = async (validBundles) => {
+    const clearAllBrv02Runs = () => {
+        setBrv02Runs([]);
+    };
+
+    const handleValidatedUpload = async (validBundles, isSubmit = false) => {
         if (!validBundles || validBundles.length === 0) return;
         
         setBrv02Loading(true);
@@ -1736,10 +1772,16 @@ export const useDashboardData = (initialState, dashboardState) => {
                     const identifier = sf.file.webkitRelativePath || sf.file.name;
                     const record = await parseReportV02(sf.content, identifier);
                     if (record) {
+                        if (!isSubmit) {
+                            record.runId = `${record.runId}-preview`;
+                        }
                         // Enrich stage record with bundle metadata
                         record.run_metadata = metadata;
                         record.config = config;
                         record.summary = summary;
+                        record.wellLitPath = bundle.payload.well_lit_path;
+                        record.well_lit_path = bundle.payload.well_lit_path;
+                        record.targetDashboards = bundle.targetDashboards;
                         
                         const isDupInBatch = trulyNewStages.some(s => s.filename === record.filename);
                         const isDupInExisting = brv02Runs.some(run => 
@@ -1872,7 +1914,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         expandedIntegration, setExpandedIntegration,
         awsBucketConfigs, setAwsBucketConfigs,
         fetchAWSBucketData, handleAddAWSBucket, removeAWSBucket,
-        brv02Runs, brv02Error, setBrv02Error, brv02Loading, handleBrv02Upload, handleValidatedUpload, removeBrv02Run,
+        brv02Runs, brv02Error, setBrv02Error, brv02Loading, handleBrv02Upload, handleValidatedUpload, removeBrv02Run, clearAllBrv02Runs,
         brv02CustomLabels, setBrv02CustomLabels,
         brv02BaselineRunId, setBrv02BaselineRunId,
         brv02SelectedStages, setBrv02SelectedStages,

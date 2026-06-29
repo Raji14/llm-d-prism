@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useState, useRef, useEffect } from 'react';
-import { Loader } from 'lucide-react';
+import { Loader, ArrowRight, Upload } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import ManageBenchmarks from './components/ManageBenchmarks';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -23,6 +23,7 @@ import SchemaExplorer from './components/SchemaExplorer';
 import WorkloadCatalog from './components/WorkloadCatalog';
 import RegressionsAnalysisDashboard from './components/RegressionsAnalysisDashboard';
 import AgenticWorkloadsDashboard from './components/AgenticWorkloadsDashboard';
+import UploadValidationPage from './components/DataConnections/UploadValidationPage';
 
 import LeftNavigation from './components/LeftNavigation';
 import { useDashboardState } from './hooks/useDashboardState';
@@ -32,6 +33,47 @@ function App() {
   const mainRef = useRef(null);
   const dashboardState = useDashboardState();
   const dashboardData = useDashboardData(dashboardState.initialState, dashboardState);
+
+  const [stagedBundles, setStagedBundles] = useState(() => {
+    try {
+      const active = localStorage.getItem('prism_active_staged_bundles');
+      return active ? JSON.parse(active) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const checkStaged = () => {
+      try {
+        const active = localStorage.getItem('prism_active_staged_bundles');
+        const parsed = active ? JSON.parse(active) : [];
+        if (JSON.stringify(parsed) !== JSON.stringify(stagedBundles)) {
+          setStagedBundles(parsed);
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    const interval = setInterval(checkStaged, 1000);
+    return () => clearInterval(interval);
+  }, [stagedBundles]);
+
+  const handleClearPreview = () => {
+    localStorage.removeItem('prism_active_staged_bundles');
+    setStagedBundles([]);
+    stagedBundles.forEach(bundle => {
+      const runId = bundle.payload?.runId || bundle.dirKey;
+      if (runId) {
+        dashboardData.removeBrv02Run(runId);
+      }
+    });
+  };
+
+  const handleProceedToUpload = () => {
+    localStorage.setItem('prism_trigger_resume_upload', 'true');
+    handleNavigate('upload-benchmarks');
+  };
 
   const [currentView, setCurrentView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -79,6 +121,9 @@ function App() {
 
 
   const handleNavigate = (view) => {
+    if (currentView !== 'upload-benchmarks') {
+      localStorage.setItem('prism_previous_view', currentView);
+    }
     setCurrentView(view);
     setIsMobileNavOpen(false); // Close mobile nav on navigation
     
@@ -122,11 +167,33 @@ function App() {
             </div>
           ) : (
             <>
+              {/* Global staged telemetry banner removed in favor of localized Manage Benchmarks dashboard alert banner */}
               {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
-              {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
-              {currentView === 'agentic-serving' && <AgenticWorkloadsDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
+              {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
+              {currentView === 'agentic-serving' && <AgenticWorkloadsDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
               {currentView === 'benchmark-browser' && <Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}
-              {currentView === 'manage-benchmarks' && <ManageBenchmarks onNavigateBack={() => handleNavigate('benchmark-browser')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}
+              {currentView === 'manage-benchmarks' && (
+                <ManageBenchmarks 
+                  onNavigateBack={() => {
+                    const prevView = localStorage.getItem('prism_previous_view') || 'benchmark-browser';
+                    handleNavigate(prevView);
+                  }} 
+                  onNavigate={handleNavigate} 
+                  dashboardState={dashboardState} 
+                  dashboardData={dashboardData} 
+                />
+              )}
+              {currentView === 'upload-benchmarks' && (
+                <UploadValidationPage 
+                  onNavigateBack={() => {
+                    const prevView = localStorage.getItem('prism_previous_view') || 'manage-benchmarks';
+                    handleNavigate(prevView);
+                  }}
+                  onNavigate={handleNavigate} 
+                  dashboardState={dashboardState} 
+                  dashboardData={dashboardData} 
+                />
+              )}
               {currentView === 'schema-explorer' && <SchemaExplorer onNavigateBack={() => handleNavigate('home')} />}
               {currentView === 'workload-catalog' && <WorkloadCatalog onNavigateBack={() => handleNavigate('home')} />}
               {currentView === 'regressions-analysis' && <RegressionsAnalysisDashboard onNavigateBack={() => handleNavigate('home')} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}

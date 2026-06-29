@@ -14,6 +14,7 @@
 
 import React from 'react';
 import { Zap, Cloud, FileJson, Target, ExternalLink, GitCompare } from 'lucide-react';
+import { parseReportV02, stageToEntry } from './benchmarkReportV02Parser';
 
 export const USE_CASE_META = {
     "Advanced Customer Support": "(~9k/256)",
@@ -394,4 +395,130 @@ export const getBenchmarkKey = (d) => {
     // - tp: per-node tensor parallelism
     // - pdRatio: differentiates disaggregated P/D node split configurations
     return `${source}::${origin}::${model}::${hardware}::${chips}::${tp}::${pdRatio}::${bucketedIsl}x${bucketedOsl}`;
+};
+
+export const getLocalDashboardRuns = (brv02Runs, targetDashboard) => {
+    const matched = [];
+    if (!brv02Runs || !Array.isArray(brv02Runs)) return matched;
+
+    brv02Runs.forEach(run => {
+        const metadata = run.run_metadata || {};
+        const config = run.config || {};
+        const wellLit = run.wellLitPath || run.well_lit_path || '';
+        const targets = run.targetDashboards || [];
+
+        // Check if this run explicitly targets the specified dashboard
+        if (!targets.includes(targetDashboard)) return;
+
+        run.stages.forEach(stage => {
+            const performance = stage.performance || {};
+            const scenario = stage.scenario || {};
+            const ttftMean = performance.ttftMean || 0;
+            const ttftP99 = performance.ttftP99 || 0;
+            const tpotMean = performance.tpotMean || 0;
+            const itlMean = performance.itlMean || 0;
+            const e2eMean = performance.e2eMean || 0;
+            const e2eP99 = performance.e2eP99 || 0;
+
+            if (targetDashboard === 'inference-scheduling') {
+                // For inference scheduling, map the run:
+                const scenarioName = wellLit === 'optimized-baseline' ? 'k8s-service-baseline' : 'llm-d-router-staged';
+                
+                matched.push({
+                    id: `local-${stage.runUid || run.runId}-${stage.stageIndex}`,
+                    filePath: stage.filename || 'local-stage',
+                    scenario: scenarioName,
+                    model: scenario.model || metadata.model || 'Unknown',
+                    model_name: scenario.model || metadata.model || 'Unknown',
+                    hardware: scenario.hardware || metadata.accelerator || 'Unknown',
+                    machine_type: config.machine_type || 'local-instance',
+                    precision: config.precision || 'BF16',
+                    serving_engine: config.serving_engine || 'vLLM',
+                    num_nodes: config.num_nodes || 4,
+                    runId: run.runId,
+                    stage: stage.stageIndex ?? 1,
+                    qps: performance.requestRate || 0,
+                    output_token_rate: performance.outputTokenRate || 0,
+                    ttft: {
+                        p50: ttftMean,
+                        p90: ttftMean * 1.2,
+                        p99: ttftP99 || (ttftMean * 1.5),
+                    },
+                    tpot: {
+                        p50: tpotMean,
+                        p90: tpotMean * 1.2,
+                        p99: tpotMean * 1.5,
+                    },
+                    ntpot: {
+                        p50: tpotMean,
+                        p90: tpotMean * 1.2,
+                        p99: tpotMean * 1.5,
+                    },
+                    itl: {
+                        p50: itlMean,
+                        p90: itlMean * 1.1,
+                        p99: itlMean * 1.3,
+                    }
+                });
+            } else if (targetDashboard === 'agentic-serving') {
+                // For agentic workloads, map the run:
+                let scenarioId = 1;
+                let scenarioName = 'llm-d-optimized-baseline';
+                if (wellLit === 'optimized-baseline' || wellLit === 'none') {
+                    scenarioId = 0;
+                    scenarioName = 'optimized-vllm';
+                } else if (wellLit === 'tiered-prefix-cache' || wellLit === 'pd-disaggregation') {
+                    scenarioId = 2;
+                    scenarioName = 'llm-d-tiered-cache';
+                }
+
+                matched.push({
+                    id: `local-${stage.runUid || run.runId}-${stage.stageIndex}`,
+                    filePath: stage.filename || 'local-stage',
+                    scenario: scenarioName,
+                    scenarioId: scenarioId,
+                    concurrency: scenario.rateQps || 40,
+                    model: scenario.model || metadata.model || 'Unknown',
+                    accelerator: scenario.hardware || metadata.accelerator || 'Unknown',
+                    machineType: config.machine_type || 'local-instance',
+                    replicas: config.replicas || 4,
+                    inputLengthMean: scenario.isl || 163000,
+                    outputLengthMean: scenario.osl || 425,
+                    ttft: {
+                        p50: ttftMean,
+                        p90: ttftMean * 1.2,
+                        p99: ttftP99 || (ttftMean * 1.5),
+                    },
+                    tpot: {
+                        p50: tpotMean,
+                        p90: tpotMean * 1.2,
+                        p99: tpotMean * 1.5,
+                    },
+                    ntpot: {
+                        p50: tpotMean,
+                        p90: tpotMean * 1.2,
+                        p99: tpotMean * 1.5,
+                    },
+                    itl: {
+                        p50: itlMean,
+                        p90: itlMean * 1.1,
+                        p99: itlMean * 1.3,
+                    },
+                    e2e: {
+                        p50: e2eMean,
+                        p90: e2eMean * 1.2,
+                        p99: e2eP99 || (e2eMean * 1.5),
+                    },
+                    throughput: {
+                        input: performance.inputTokenRate || 0,
+                        output: performance.outputTokenRate || 0,
+                        total: (performance.inputTokenRate || 0) + (performance.outputTokenRate || 0),
+                        qps: performance.requestRate || 0,
+                    }
+                });
+            }
+        });
+    });
+
+    return matched;
 };

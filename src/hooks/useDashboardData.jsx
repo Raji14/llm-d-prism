@@ -152,8 +152,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                 const s = new Set(JSON.parse(savedSourcesStr));
                 if (window.location.search.includes('sandbox')) {
                     s.add('llm-d-results:google_drive');
-                    s.add('local');
                 }
+                s.add('local');
                 return s;
             }
         } catch { }
@@ -161,6 +161,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         if (window.location.search.includes('sandbox')) {
             s.add('llm-d-results:google_drive');
         }
+        s.add('local');
         return s;
     });
     const [selectedSources, setSelectedSources] = useState(() => {
@@ -170,22 +171,16 @@ export const useDashboardData = (initialState, dashboardState) => {
                 const s = new Set(JSON.parse(savedSourcesStr));
                 if (window.location.search.includes('sandbox')) {
                     s.add('llm-d-results:google_drive');
-                    s.add('local');
                 }
-                if (s.size === 0) {
-                    s.add('local');
-                }
+                s.add('local');
                 return s;
             }
         } catch { }
         const s = initialState?.sources || new Set(['local']);
         if (window.location.search.includes('sandbox')) {
             s.add('llm-d-results:google_drive');
-            s.add('local');
         }
-        if (s.size === 0) {
-            s.add('local');
-        }
+        s.add('local');
         return s;
     });
     const [bucketConfigs, setBucketConfigs] = useState(() => {

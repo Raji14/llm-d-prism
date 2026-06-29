@@ -104,6 +104,7 @@ export const UnifiedDataTable = (props) => {
         brv02Runs = [], brv02CustomLabels = {}, setBrv02CustomLabels, removeBrv02Run,
         setShowDataPanel,
         searchTerm = '',
+        setSearchTerm,
         kpiFilter = null,
         setKpiFilter,
         paretoKeys = new Set(),
@@ -313,6 +314,8 @@ export const UnifiedDataTable = (props) => {
             pdRatio: new Set(), origins: new Set(), connectionNames: new Set()
         });
         setShowSelectedOnly(false);
+        if (setKpiFilter) setKpiFilter(null);
+        if (setSearchTerm) setSearchTerm('');
     };
 
     const toggleGroup = (stats, isAllSelected) => {

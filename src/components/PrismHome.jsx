@@ -190,13 +190,22 @@ const PrismHome = ({ onNavigate }) => {
                 </section>
 
                 {/* Well-lit paths */}
-                <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
-                        Well-lit paths
-                    </h2>
-                    <p className="text-xs text-slate-450 leading-relaxed text-center mb-8">Live benchmarked serving configurations and architectural templates</p>
+                <section className="mb-20 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
+                    {/* Grid mesh backdrop decorative lines */}
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="flex flex-row overflow-x-auto gap-5 pb-5 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
+                    <div className="relative p-6 md:p-8 z-10">
+                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-8">
+                            <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
+                                Well-lit paths
+                            </h2>
+                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
+                                Live benchmarked serving configurations and architectural templates
+                            </p>
+                        </div>
+                        
+                        <div className="flex flex-row overflow-x-auto gap-5 pb-5 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
                         {/* Path 1: Intelligent routing */}
                         <div 
                             onClick={() => onNavigate('inference-scheduling')}
@@ -374,15 +383,26 @@ const PrismHome = ({ onNavigate }) => {
                             </div>
                         </div>
                     </div>
-                </section>
+                </div>
+            </section>
                 
                 {/* Section: Utility Suite */}
-                <section className="mb-20 w-full max-w-5xl">
-                    <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
-                        Utility suite
-                    </h2>
-                    <p className="text-xs text-slate-450 text-center mb-8">Access specialized tools for deeper analysis and schema browsing</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                <section className="mb-20 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
+                    {/* Grid mesh backdrop decorative lines */}
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                    
+                    <div className="relative p-6 md:p-8 z-10">
+                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-8">
+                            <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
+                                Utility suite
+                            </h2>
+                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
+                                Access specialized tools for deeper analysis and schema browsing
+                            </p>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
                         {/* Card 1: Workload Catalog */}
                         <div 
                             onClick={() => onNavigate('workload-catalog')}
@@ -451,7 +471,8 @@ const PrismHome = ({ onNavigate }) => {
                             </button>
                         </div>
                     </div>
-                </section>
+                </div>
+            </section>
                 
 
                 {/* Section: How it works */}

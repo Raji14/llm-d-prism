@@ -455,7 +455,7 @@ const PrismHome = ({ onNavigate }) => {
                 
 
                 {/* Section: How it works */}
-                <section className="mb-20 w-full max-w-6xl mx-auto pl-20">
+                <section className="mb-20 w-full max-w-5xl">
                      <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
                           How it works: the full benchmark lifecycle
                      </h2>

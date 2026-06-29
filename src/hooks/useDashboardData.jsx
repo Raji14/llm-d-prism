@@ -1176,7 +1176,17 @@ export const useDashboardData = (initialState, dashboardState) => {
             // 2. Fetch All Configured Buckets
             const bucketResults = await Promise.all(bucketConfigs.map(b => {
                 const bName = typeof b === 'string' ? b : b.bucket;
-                return fetchBucketData(bName).then(res => ({ ...res, config: b }));
+                return fetchBucketData(bName)
+                    .then(res => ({ ...res, config: b }))
+                    .catch(err => {
+                        console.error(`Failed to fetch GCS bucket ${bName}:`, err);
+                        return {
+                            bucketName: bName,
+                            profile: { error: err.message || "Failed to connect", files: [], loadedAt: new Date().toISOString() },
+                            entries: [],
+                            config: b
+                        };
+                    });
             }));
 
             const newProfiles = [];

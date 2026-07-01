@@ -13,12 +13,11 @@
 // limitations under the License.
 
 import React, { useMemo } from 'react';
-import { Database, Eye, ArrowLeft, ArrowRight, MessageCircle, X, Loader, HelpCircle } from 'lucide-react';
+import { Database, Eye, ArrowLeft, ArrowRight, MessageCircle, X, Loader, HelpCircle, Upload } from 'lucide-react';
 import { FilterPanel } from './ManageBenchmarks/FilterPanel';
 import { UnifiedDataTable } from './ManageBenchmarks/UnifiedDataTable';
 import { INTEGRATIONS, getSourceTag, getBenchmarkKey, getBucket, getRatioType, getAcceleratorCount, getEffectiveTp, sortBuckets } from '../utils/dashboardHelpers';
 
-import { Upload } from 'lucide-react';
 
 const getCleanModelName = (name) => {
     if (!name) return '';
@@ -27,7 +26,7 @@ const getCleanModelName = (name) => {
 
 
 
-export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboardState, dashboardData }) {
+export default function ResultsStore({ onNavigate, onNavigateBack, dashboardState, dashboardData }) {
     const {
         showFilterPanel,
         showSelectedOnly,
@@ -83,14 +82,12 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
 
             const triggerStaged = localStorage.getItem('prism_activate_staged_filter');
             if (triggerStaged === 'true') {
-                localStorage.removeItem('prism_activate_staged_filter');
                 return 'staged';
             }
 
             const triggerMySubs = localStorage.getItem('prism_activate_my_submissions_filter');
             if (triggerMySubs === 'true') {
-                localStorage.removeItem('prism_activate_my_submissions_filter');
-                return 'my-uploads';
+                return 'my-submissions';
             }
         } catch {}
         return null;
@@ -121,7 +118,7 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
             const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
             window.history.replaceState({}, '', newUrl);
             
-            onNavigate('upload-benchmarks');
+            onNavigate('submit-benchmarks', { intent: 'submit-review' });
         }
     }, [addToast, onNavigate]);
 
@@ -249,7 +246,11 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
             const data = await res.json();
             if (data.success) {
                 if (addToast) {
-                    addToast(`Successfully updated status for run ${runId} to ${status}`, 'success');
+                    const friendlyStatus = 
+                        status === 'submitted_pending_processing' ? 'submitted' :
+                        status === 'submitted_pending_review' ? 'submitted for review' :
+                        status === 'public' ? 'published' : status;
+                    addToast(`Run has been ${friendlyStatus} successfully.`, 'success');
                 }
                 loadSubmissions();
             }
@@ -270,6 +271,36 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
             setSelectedBenchmarks(new Set());
         }
     }, [setSelectedBenchmarks]);
+
+    React.useEffect(() => {
+        const triggerStaged = localStorage.getItem('prism_activate_staged_filter');
+        const triggerMySubs = localStorage.getItem('prism_activate_my_submissions_filter');
+        
+        if (triggerStaged === 'true' || triggerMySubs === 'true') {
+            localStorage.removeItem('prism_activate_staged_filter');
+            localStorage.removeItem('prism_activate_my_submissions_filter');
+            if (setActiveFilters) {
+                setActiveFilters({
+                    models: new Set(),
+                    hardware: new Set(),
+                    machines: new Set(),
+                    tp: new Set(),
+                    precisions: new Set(),
+                    isl: new Set(),
+                    osl: new Set(),
+                    ratio: new Set(),
+                    modelServer: new Set(),
+                    servingStack: new Set(),
+                    components: new Set(),
+                    origins: new Set(),
+                    pdRatio: new Set(),
+                    acc_count: new Set(),
+                    useCase: new Set(),
+                    optimizations: new Set()
+                });
+            }
+        }
+    }, [setActiveFilters]);
 
     const submissionsMap = useMemo(() => {
         const map = {};
@@ -816,35 +847,24 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
                     </div>
 
                     <div className="flex items-center">
-                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">Manage Benchmarks</h1>
+                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">Results Store</h1>
                     </div>
                 </div>
 
                 <div className="flex items-center space-x-4">
 
-                    <button
-                        id="manage-tour-add-btn"
-                        onClick={() => onNavigate('upload-benchmarks')}
-                        className="px-4 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center shadow-lg text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border-emerald-500/20 hover:shadow-emerald-500/20 cursor-pointer"
-                    >
-                        <Upload className="w-4 h-4 mr-2" /> Upload Benchmark
-                    </button>
-
-
-
-
                     <a 
                         href="https://llm-d.ai/community" 
                         target="_blank" 
                         rel="noreferrer"
-                        className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 cursor-pointer"
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 cursor-pointer"
                     >
-                        <MessageCircle className="w-4 h-4 mr-2" /> Contact us
+                        Contact us
                     </a>
                 </div>
             </header>
 
-            <main className="w-full px-8 py-6 pl-28 flex flex-col transition-colors duration-200 z-10 relative">
+            <main className="w-full px-8 py-6 pl-28 flex flex-col space-y-8 z-10 relative">
                 <div className="relative bg-[#0b0f19] border border-slate-900 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
                     <FilterPanel
                         {...{
@@ -863,7 +883,7 @@ export default function ManageBenchmarks({ onNavigate, onNavigateBack, dashboard
                             qualityMetrics,
                             gcsProfiles: dashboardData.gcsProfiles,
                             loadingConnections: dashboardData.gcsProfiles?.some(p => p.loading) || dashboardData.loading,
-                            onOpenUploadDialog: () => onNavigate('upload-benchmarks'),
+                            onOpenSubmitDialog: (intent) => onNavigate('submit-benchmarks', { intent }),
                             showDataPanel,
                             setShowDataPanel
                         }}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ChevronLeft, ChevronRight, ChevronDown, Trash2, Upload, ShieldAlert, Check, ArrowRight, ArrowLeft, Loader, GitCompare, Zap, Cpu } from 'lucide-react';
+import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ChevronLeft, ChevronRight, ChevronDown, Trash2, Upload, ShieldAlert, Check, ArrowRight, ArrowLeft, Loader, GitCompare, Zap, Cpu, Pencil } from 'lucide-react';
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Scatter } from 'recharts';
 import { validateBenchmark, validatePrismUploadStructure } from '../../utils/benchmarkValidator';
 import { parseReportV02, stageToEntry } from '../../utils/benchmarkReportV02Parser';
@@ -78,7 +78,7 @@ const checkStageMetrics = (entry, format) => {
     };
 };
 
-export default function UploadValidationPage({ onNavigateBack, onNavigate, dashboardState, dashboardData }) {
+export default function UploadValidationPage({ onNavigateBack, onNavigate, dashboardState, dashboardData, initialIntent }) {
     const {
         baselineBenchmarkKey,
         setBaselineBenchmarkKey
@@ -97,8 +97,16 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
     const [stagedFiles, setStagedFiles] = useState([]);
     const [isDragging, setIsDragging] = useState(false);
-    const [uploadIntent, setUploadIntent] = useState('submit-review'); // 'stage-locally' or 'submit-review'
-    const [selectionMade, setSelectionMade] = useState(false);
+    const [uploadIntent, setUploadIntent] = useState(() => {
+        if (initialIntent) return initialIntent;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('intent') || 'submit-review';
+    }); // 'stage-locally' or 'submit-review'
+    const [selectionMade, setSelectionMade] = useState(() => {
+        if (initialIntent) return true;
+        const params = new URLSearchParams(window.location.search);
+        return !!params.get('intent');
+    });
     const [ingestionSource, setIngestionSource] = useState('local'); // 'local' or 'cloud'
     const [cloudPath, setCloudPath] = useState('');
     const [cloudProvider, setCloudProvider] = useState('gcs'); // 'gcs' or 's3'
@@ -260,9 +268,21 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     const updateSingleField = (bundleId, key, value) => {
         setStagedFiles(prev => prev.map(b => {
             if (b.id === bundleId) {
-                const updatedPayload = { ...b.payload, [key]: value };
-                if (key === 'hardware_name') {
+                const updatedPayload = { ...b.payload };
+                if (key === 'model_name') {
+                    updatedPayload.model_name = value;
+                    updatedPayload.modelNameInferred = false;
+                } else if (key === 'hardware_name') {
                     updatedPayload.hardware = { ...updatedPayload.hardware, hardware_name: value };
+                    updatedPayload.hardwareInferred = false;
+                } else if (key === 'accelerator_count') {
+                    updatedPayload.run_metadata = { 
+                        ...updatedPayload.run_metadata, 
+                        accelerator_count: value !== '' ? parseInt(value, 10) : null 
+                    };
+                    updatedPayload.acceleratorCountInferred = false;
+                } else {
+                    updatedPayload[key] = value;
                 }
                 const uploadValidation = validatePrismUploadStructure(updatedPayload, { isUpload: false });
                 const updatedValidation = {
@@ -744,14 +764,20 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
             let resolvedModel = 'Unknown';
             let resolvedHw = 'Unknown';
+            let resolvedCount = null;
             let runCid = null;
             let runEid = null;
             let runPid = null;
+
+            let hardwareInferred = false;
+            let acceleratorCountInferred = false;
+            let modelNameInferred = false;
 
             if (firstParsedStage) {
                 if (firstParsedStage.isInferencePerf) {
                     resolvedModel = firstParsedStage.model_name;
                     resolvedHw = firstParsedStage.hardware;
+                    resolvedCount = firstParsedStage.accelerator_count || 1;
                     runCid = null;
                     runEid = null;
                     runPid = null;
@@ -759,9 +785,37 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     const normalized = stageToEntry(firstParsedStage);
                     resolvedModel = normalized.model_name;
                     resolvedHw = normalized.hardware;
+                    resolvedCount = firstParsedStage.scenario?.acceleratorCount;
                     runCid = firstParsedStage.runCid || null;
                     runEid = firstParsedStage.runEid || null;
                     runPid = firstParsedStage.runPid || null;
+
+                    // Hardware is inferred if the scenario hardware was missing/generic, and config/metadata was used to resolve it.
+                    const rawHw = firstParsedStage.scenario?.hardware;
+                    if (!rawHw || rawHw === 'Unknown' || rawHw === 'TPU' || rawHw === 'GPU') {
+                        if (resolvedHw && resolvedHw !== 'Unknown' && resolvedHw !== 'TPU' && resolvedHw !== 'GPU') {
+                            hardwareInferred = true;
+                        }
+                    }
+
+                    // Model Name is inferred if the scenario model was missing/generic, and config/metadata was used to resolve it.
+                    const rawModel = firstParsedStage.scenario?.model;
+                    if (!rawModel || rawModel === 'Unknown') {
+                        if (resolvedModel && resolvedModel !== 'Unknown') {
+                            modelNameInferred = true;
+                        }
+                    }
+
+                    // Accelerator count is inferred if scenario acceleratorCount was missing
+                    if (resolvedCount === null || resolvedCount === undefined) {
+                        resolvedCount = 1;
+                        acceleratorCountInferred = true;
+                    }
+                }
+            } else {
+                if (resolvedCount === null || resolvedCount === undefined) {
+                    resolvedCount = 1;
+                    acceleratorCountInferred = true;
                 }
             }
 
@@ -859,13 +913,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 manifests: {},
                 evidence: {},
                 format: "brv02",
-                run_metadata: runMetadata || {},
+                run_metadata: {
+                    ...runMetadata,
+                    accelerator_count: resolvedCount
+                },
                 entries: payloadEntries,
                 well_lit_path: null,
                 metadata: {},
                 inference_tool: initialInferenceTool,
                 inference_tool_version: initialInferenceToolVersion,
-                other_tools: initialOtherTools
+                other_tools: initialOtherTools,
+                hardwareInferred,
+                modelNameInferred,
+                acceleratorCountInferred
             };
 
             // If model name is unknown, fail validation
@@ -982,10 +1042,38 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     setStagedFiles(JSON.parse(savedBundles));
                 }
             } catch {}
+        } else if (initialIntent) {
+            setUploadIntent(initialIntent);
+            setSelectionMade(true);
+            if (initialIntent === 'stage-locally') {
+                setIngestionSource('local');
+                if (clearAllBrv02Runs) clearAllBrv02Runs();
+            }
         } else {
-            resetWizard();
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlIntent = urlParams.get('intent');
+            const submitIntent = localStorage.getItem('prism_submit_intent');
+
+            if (urlIntent) {
+                setUploadIntent(urlIntent);
+                setSelectionMade(true);
+                if (urlIntent === 'stage-locally') {
+                    setIngestionSource('local');
+                    if (clearAllBrv02Runs) clearAllBrv02Runs();
+                }
+            } else if (submitIntent) {
+                localStorage.removeItem('prism_submit_intent');
+                setUploadIntent(submitIntent);
+                setSelectionMade(true);
+                if (submitIntent === 'stage-locally') {
+                    setIngestionSource('local');
+                    if (clearAllBrv02Runs) clearAllBrv02Runs();
+                }
+            } else {
+                resetWizard();
+            }
         }
-    }, []);
+    }, [clearAllBrv02Runs, initialIntent]);
 
     const handleDrop = async (e) => {
         e.preventDefault();
@@ -1181,7 +1269,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         resetWizard();
         localStorage.setItem('prism_activate_staged_filter', 'true');
         if (onNavigate) {
-            onNavigate('manage-benchmarks');
+            onNavigate('results-store');
         }
     };
 
@@ -1247,7 +1335,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             resetWizard();
             localStorage.setItem('prism_activate_my_submissions_filter', 'true');
             if (onNavigate) {
-                onNavigate('manage-benchmarks');
+                onNavigate('results-store');
             } else if (onNavigateBack) {
                 onNavigateBack();
             }
@@ -1266,6 +1354,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         setDcoSigned(false);
         setSelectedReviewers([]);
         setSelectionMade(false);
+        try {
+            const params = new URLSearchParams(window.location.search);
+            params.delete('intent');
+            window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        } catch (e) {}
     };
 
     const handleGithubLoginRedirect = () => {
@@ -1761,16 +1854,16 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         <div className="flex flex-wrap items-center gap-5 text-[13px] font-semibold text-slate-500 select-none">
                             <span className={`flex items-center gap-2 transition-all ${wizardStep === 1 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'}`}>
                                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${wizardStep === 1 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>1</span>
-                                Upload Sources
+                                Upload Files
                             </span>
                             <ChevronRight size={14} className="text-slate-700 shrink-0" />
                             <span className={`flex items-center gap-2 transition-all ${wizardStep === 2 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'}`}>
                                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${wizardStep === 2 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>2</span>
-                                Metadata & Validation
+                                Validation & Preview
                             </span>
                             <ChevronRight size={14} className="text-slate-700 shrink-0" />
                             <span className={`flex items-center gap-2 transition-all ${wizardStep === 3 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'}`}>
-                                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${wizardStep === 3 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>3</span>
+                                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-all ${wizardStep === 3 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>3</span>
                                 Attribution & DCO
                             </span>
                             <ChevronRight size={14} className="text-slate-700 shrink-0" />
@@ -1790,12 +1883,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         <div className="flex flex-wrap items-center gap-5 text-[13px] font-semibold text-slate-500 select-none">
                             <span className={`flex items-center gap-2 transition-all ${wizardStep === 1 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'}`}>
                                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${wizardStep === 1 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>1</span>
-                                Ingest Files
+                                Upload Files
                             </span>
                             <ChevronRight size={14} className="text-slate-700 shrink-0" />
                             <span className={`flex items-center gap-2 transition-all ${wizardStep === 2 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400'}`}>
                                 <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${wizardStep === 2 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500'}`}>2</span>
-                                Local Visualization
+                                Validation & Preview
                             </span>
                         </div>
                     </div>
@@ -1815,15 +1908,25 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             <div className={stagedFiles.length === 0 ? 'max-w-md w-full bg-slate-900/30 border border-slate-900/50 p-6 rounded-2xl shadow-xl space-y-4' : 'flex flex-col h-full'}>
                             {/* Workflow Option Description */}
                             <div className="mb-5 space-y-2 select-none">
-                                <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-widest">
-                                    Ingestion Workflow
-                                </label>
-                                <p className="text-xs font-semibold text-slate-200">
-                                    Stage & Preview Telemetry Runs
-                                </p>
-                                <p className="text-[10px] text-slate-500 leading-normal">
-                                    First stage, validate and visualize your data locally in Prism to review it. Once verified, you will be able to proceed directly to submit the runs to the public results store.
-                                </p>
+                                {uploadIntent === 'stage-locally' ? (
+                                    <>
+                                        <p className="text-xs font-bold text-slate-200">
+                                            Stage & Preview Telemetry Runs
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 leading-normal">
+                                            Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public registry.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-xs font-bold text-slate-200">
+                                            Publish Telemetry to Registry
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 leading-normal">
+                                            Upload your benchmark run files to validate them, edit their metadata, add developer attribution, and submit them to be reviewed and published to the public registry.
+                                        </p>
+                                    </>
+                                )}
                             </div>
 
                             {/* Ingestion Source Switch (Only visible for Submit Review) */}
@@ -1959,6 +2062,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             </div>
                         ) : (
                             <div className="space-y-4">
+                                {stagedFiles.some(b => !b.isSkipped && (b.payload?.modelNameInferred || b.payload?.hardwareInferred || b.payload?.acceleratorCountInferred)) && (
+                                    <div className="bg-amber-500/10 border border-amber-500/20 text-amber-250 p-3.5 rounded-xl text-xs flex items-start gap-2.5 leading-normal shadow-[0_4px_20px_rgba(245,158,11,0.05)] select-none">
+                                        <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
+                                        <div className="flex-1">
+                                            <span className="font-bold text-amber-450 block mb-0.5">Verification Required for Inferred Metadata</span>
+                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <span className="bg-amber-500/10 text-amber-450 border border-amber-500/20 px-1 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase tracking-wider mx-0.5">Inferred</span> before continuing to publish to the registry.
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Batch Edit Control Bar */}
                                 <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
                                     <div className="flex items-center gap-3">
@@ -2228,6 +2340,13 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 </span>
                                                             )}
 
+                                                            {/* Inferred Warning Tag */}
+                                                            {(bundle.payload.modelNameInferred || bundle.payload.hardwareInferred || bundle.payload.acceleratorCountInferred) && (
+                                                                <span className="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded border border-amber-500/20 animate-pulse" title="This run has fields guessed from folder names or configuration. Click to expand and verify them.">
+                                                                    ⚠️ Verification Required
+                                                                </span>
+                                                            )}
+
                                                             {/* Hardware Check Tag */}
                                                             {bundle.validation.hasHardware && bundle.payload.hardware?.hardware_name && bundle.payload.hardware.hardware_name !== 'Unknown' && bundle.payload.hardware.hardware_name !== 'Unknown Hardware' ? (
                                                                 <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-900/50 animate-in fade-in zoom-in-95 duration-150">
@@ -2304,60 +2423,137 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                             </ul>
                                                         </div>
                                                     )}
+                                                    <div className="text-[10px] text-slate-500 italic mb-2 px-1 select-none font-semibold">
+                                                          * Fields marked with "Inferred" are auto-populated by guessing from configuration files and should be verified.
+                                                      </div>
 
-                                                    {/* Run details section: key-value details table */}
-                                                    {/* Run details section: key-value details table */}
-                                                     <div className="mb-4 overflow-hidden border border-slate-900/60 rounded-xl bg-slate-950/40 backdrop-blur-md shadow-sm">
-                                                         <table className="w-full text-left text-xs border-collapse">
-                                                             <tbody className="divide-y divide-slate-900/60">
+                                                      <div className="mb-4 overflow-hidden border border-slate-800/40 rounded-xl bg-slate-950/40 backdrop-blur-md shadow-sm">
+                                                          <table className="w-full text-left text-xs border-collapse">
+                                                              <tbody className="divide-y divide-slate-800/35">
+                                                                  <tr className="hover:bg-slate-900/20">
+                                                                      <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>Run Directory</td>
+                                                                      <td className="px-3.5 py-2.5 font-mono text-slate-455 select-all">{bundle.dirKey}</td>
+                                                                  </tr>
+                                                                  <tr className="hover:bg-slate-900/20">
+                                                                      <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>
+                                                                          <span>Model Name</span>
+                                                                      </td>
+                                                                      <td className="px-3.5 py-2.5">
+                                                                          <div className="relative flex items-center w-full group">
+                                                                              <input 
+                                                                                  type="text" 
+                                                                                  value={bundle.payload.model_name || ''} 
+                                                                                  onChange={(e) => updateSingleField(bundle.id, 'model_name', e.target.value)}
+                                                                                  className={`w-full bg-slate-900/20 border rounded-lg pl-3 pr-28 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none transition-all text-xs ${
+                                                                                      bundle.payload.modelNameInferred 
+                                                                                          ? "border-amber-500/30 hover:border-amber-500/50 focus:border-amber-500/70 focus:bg-amber-950/10" 
+                                                                                          : "border-emerald-500/20 hover:border-emerald-500/35 focus:border-emerald-500/50 focus:bg-emerald-950/10"
+                                                                                  }`}
+                                                                                  placeholder="e.g. google/gemma-4-31b-it"
+                                                                              />
+                                                                              <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
+                                                                                  {bundle.payload.modelNameInferred && (
+                                                                                      <span className="text-[8px] font-extrabold tracking-wider uppercase px-1.5 py-0.5 rounded bg-amber-500/5 text-amber-450 border border-amber-500/10 animate-pulse"
+                                                                                          title="This field was guessed/inferred from metadata/config files. Verify for correctness."
+                                                                                      >
+                                                                                          Inferred
+                                                                                      </span>
+                                                                                  )}
+                                                                                  <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                              </div>
+                                                                          </div>
+                                                                      </td>
+                                                                  </tr>
+                                                                  <tr className="hover:bg-slate-900/20">
+                                                                      <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>
+                                                                          <span>Detailed Hardware</span>
+                                                                      </td>
+                                                                      <td className="px-3.5 py-2.5">
+                                                                          <div className="relative flex items-center w-full group">
+                                                                              <input 
+                                                                                  type="text" 
+                                                                                  value={bundle.payload.hardware?.hardware_name || ''} 
+                                                                                  onChange={(e) => updateSingleField(bundle.id, 'hardware_name', e.target.value)}
+                                                                                  className={`w-full bg-slate-900/20 border rounded-lg pl-3 pr-28 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none transition-all text-xs ${
+                                                                                      bundle.payload.hardwareInferred 
+                                                                                          ? "border-amber-500/30 hover:border-amber-500/50 focus:border-amber-500/70 focus:bg-amber-950/10" 
+                                                                                          : "border-emerald-500/20 hover:border-emerald-500/35 focus:border-emerald-500/50 focus:bg-emerald-950/10"
+                                                                                  }`}
+                                                                                  placeholder="e.g. H100, TPU v6e"
+                                                                              />
+                                                                              <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
+                                                                                  {bundle.payload.hardwareInferred && (
+                                                                                      <span className="text-[8px] font-extrabold tracking-wider uppercase px-1.5 py-0.5 rounded bg-amber-500/5 text-amber-450 border border-amber-500/10 animate-pulse"
+                                                                                          title="This field was guessed/inferred from metadata/config files. Verify for correctness."
+                                                                                      >
+                                                                                          Inferred
+                                                                                      </span>
+                                                                                  )}
+                                                                                  <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                              </div>
+                                                                          </div>
+                                                                      </td>
+                                                                  </tr>
+                                                                  <tr className="hover:bg-slate-900/20">
+                                                                      <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>
+                                                                          <span>Accelerator/Chip Count</span>
+                                                                      </td>
+                                                                      <td className="px-3.5 py-2.5">
+                                                                          <div className="relative flex items-center w-full group">
+                                                                              <input 
+                                                                                  type="number" 
+                                                                                  value={bundle.payload.run_metadata?.accelerator_count ?? ''} 
+                                                                                  onChange={(e) => updateSingleField(bundle.id, 'accelerator_count', e.target.value)}
+                                                                                  className={`w-full bg-slate-900/20 border rounded-lg pl-3 pr-28 py-1.5 text-slate-200 font-mono focus:ring-0 focus:outline-none transition-all text-xs ${
+                                                                                      bundle.payload.acceleratorCountInferred 
+                                                                                          ? "border-amber-500/30 hover:border-amber-500/50 focus:border-amber-500/70 focus:bg-amber-950/10" 
+                                                                                          : "border-emerald-500/20 hover:border-emerald-500/35 focus:border-emerald-500/50 focus:bg-emerald-950/10"
+                                                                                  }`}
+                                                                                  placeholder="e.g. 8"
+                                                                              />
+                                                                              <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
+                                                                                  {bundle.payload.acceleratorCountInferred && (
+                                                                                      <span className="text-[8px] font-extrabold tracking-wider uppercase px-1.5 py-0.5 rounded bg-amber-500/5 text-amber-450 border border-amber-500/10 animate-pulse"
+                                                                                          title="This field was guessed/inferred from metadata/config files. Verify for correctness."
+                                                                                      >
+                                                                                          Inferred
+                                                                                      </span>
+                                                                                  )}
+                                                                                  <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                              </div>
+                                                                          </div>
+                                                                      </td>
+                                                                  </tr>
                                                                  <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Run Directory</td>
-                                                                     <td className="px-3.5 py-2.5 font-mono text-slate-300 select-all">{bundle.dirKey}</td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Model Name</td>
-                                                                     <td className="px-3.5 py-2.5 font-semibold text-slate-200">{bundle.payload.model_name || 'Not specified'}</td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Detailed Hardware</td>
-                                                                     <td className="px-3.5 py-2.5 text-slate-200">
-                                                                         {bundle.payload.hardware?.hardware_name && bundle.payload.hardware.hardware_name !== 'Unknown' && bundle.payload.hardware.hardware_name !== 'Unknown Hardware' ? (
-                                                                             <span className="inline-flex items-center gap-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                                                                                 {bundle.payload.hardware.hardware_name}
-                                                                             </span>
-                                                                         ) : (
-                                                                             <span className="text-amber-500 font-semibold italic">Not specified (Please attach manifest to auto-resolve)</span>
-                                                                         )}
+                                                                     <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>
+                                                                         <span>Serving Stack / Tool</span>
+                                                                     </td>
+                                                                     <td className="px-3.5 py-2.5">
+                                                                         <div className="relative flex items-center w-full gap-3 group">
+                                                                             <div className="flex-1 flex gap-2">
+                                                                                 <input 
+                                                                                     type="text" 
+                                                                                     value={bundle.payload.inference_tool || ''} 
+                                                                                     onChange={(e) => updateSingleField(bundle.id, 'inference_tool', e.target.value)}
+                                                                                     className="w-1/2 bg-slate-900/20 border border-slate-800/40 hover:border-slate-700/60 focus:border-cyan-500/35 focus:bg-slate-900/50 rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none placeholder-slate-750 transition-all text-xs"
+                                                                                     placeholder="Tool e.g. vLLM"
+                                                                                 />
+                                                                                 <input 
+                                                                                     type="text" 
+                                                                                     value={bundle.payload.inference_tool_version || ''} 
+                                                                                     onChange={(e) => updateSingleField(bundle.id, 'inference_tool_version', e.target.value)}
+                                                                                     className="w-1/2 bg-slate-900/20 border border-slate-800/40 hover:border-slate-700/60 focus:border-cyan-500/35 focus:bg-slate-900/50 rounded-lg px-3 py-1.5 text-slate-400 focus:ring-0 focus:outline-none placeholder-slate-750 transition-all font-mono text-xs"
+                                                                                     placeholder="Version e.g. 0.4.2"
+                                                                                 />
+                                                                             </div>
+                                                                             <div className="flex items-center gap-2 shrink-0 select-none">
+                                                                                 <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                             </div>
+                                                                         </div>
                                                                      </td>
                                                                  </tr>
                                                                  <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Accelerator/Chip Count</td>
-                                                                     <td className="px-3.5 py-2.5 font-mono text-slate-200">
-                                                                         {bundle.payload.run_metadata?.accelerator_count !== undefined ? (
-                                                                             `${bundle.payload.run_metadata.accelerator_count} Accelerator Chips`
-                                                                         ) : (
-                                                                             <span className="text-slate-500 italic">Not specified</span>
-                                                                         )}
-                                                                     </td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Serving Stack / Tool</td>
-                                                                     <td className="px-3.5 py-2.5 font-semibold text-slate-200">
-                                                                         {bundle.payload.inference_tool ? (
-                                                                             `${bundle.payload.inference_tool} ${bundle.payload.inference_tool_version || ''}`.trim()
-                                                                         ) : (
-                                                                             <span className="text-slate-500 italic">Unknown Stack</span>
-                                                                         )}
-                                                                     </td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Well-lit Path</td>
-                                                                     <td className="px-3.5 py-2.5 font-bold text-cyan-400">
-                                                                         {bundle.payload.well_lit_path || 'None'}
-                                                                     </td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Attached Manifests & Configs</td>
+                                                                     <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>Attached Manifests & Configs</td>
                                                                      <td className="px-3.5 py-3 text-slate-300">
                                                                          <div className="space-y-3">
                                                                              {/* List of attached files */}
@@ -2403,22 +2599,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                  />
                                                                              </div>
                                                                          </div>
-                                                                     </td>
-                                                                 </tr>
-                                                                 <tr className="hover:bg-slate-900/20">
-                                                                     <td className="px-3.5 py-2.5 w-1/4 font-semibold text-slate-400 border-r border-slate-900/60 bg-slate-950/30">Custom Metadata Tags</td>
-                                                                     <td className="px-3.5 py-2.5 text-slate-300">
-                                                                         {Object.keys(bundle.payload.metadata || {}).length > 0 ? (
-                                                                             <div className="flex flex-wrap gap-1.5">
-                                                                                 {Object.entries(bundle.payload.metadata).map(([k, v]) => (
-                                                                                     <span key={k} className="inline-flex items-center gap-1 text-[10px] font-bold bg-slate-900 border border-slate-800 text-slate-300 px-2 py-0.5 rounded-lg">
-                                                                                         <span className="text-slate-500">{k}:</span> {String(v)}
-                                                                                     </span>
-                                                                                 ))}
-                                                                             </div>
-                                                                         ) : (
-                                                                             <span className="text-slate-500 italic text-[11px]">No tags resolved</span>
-                                                                         )}
                                                                      </td>
                                                                  </tr>
                                                              </tbody>
@@ -2519,23 +2699,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                     )}
 
                                                     {/* Target Dashboards Selection */}
+                                                                                                        {/* Publish Destinations Selection */}
                                                     <div className="mt-4 p-4 bg-slate-950/20 border border-slate-900/80 rounded-xl shadow-inner">
                                                         <h5 className="font-bold text-xs text-slate-300 mb-1 flex items-center gap-1.5 uppercase tracking-wider select-none">
-                                                            🎯 Target Dashboards
+                                                            Publish Destinations
                                                         </h5>
                                                         <p className="text-[10px] text-slate-500 mb-3 leading-normal">
-                                                            Explicitly pull this staged benchmark run's metrics into the selected existing product dashboards.
+                                                            Select the dashboards where this benchmark run should be published.
                                                         </p>
                                                         <div className="flex flex-wrap gap-4 text-xs font-semibold select-none">
-                                                            <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 shadow-md transition-all">
-                                                                <input 
-                                                                    type="checkbox" 
-                                                                    checked={bundle.targetDashboards?.includes('performance-browser') ?? true} 
-                                                                    disabled 
-                                                                    className="rounded text-cyan-500 focus:ring-cyan-500 h-4 w-4 border-slate-800 bg-slate-950"
-                                                                />
-                                                                <span className="text-slate-400">Standard Performance Browser</span>
-                                                            </label>
                                                             <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-cyan-500/35 shadow-md transition-all">
                                                                 <input 
                                                                     type="checkbox" 

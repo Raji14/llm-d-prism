@@ -13,9 +13,9 @@
 // limitations under the License.
 
 import { useState, useRef, useEffect } from 'react';
-import { Loader, ArrowRight, Upload } from 'lucide-react';
+import { Loader, ArrowRight } from 'lucide-react';
 import Dashboard from './components/Dashboard';
-import ManageBenchmarks from './components/ManageBenchmarks';
+import ResultsStore from './components/ResultsStore';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrismHome from './components/PrismHome';
 import Milestone1Dashboard from './components/Milestone1Dashboard';
@@ -23,7 +23,7 @@ import SchemaExplorer from './components/SchemaExplorer';
 import WorkloadCatalog from './components/WorkloadCatalog';
 import RegressionsAnalysisDashboard from './components/RegressionsAnalysisDashboard';
 import AgenticWorkloadsDashboard from './components/AgenticWorkloadsDashboard';
-import UploadValidationPage from './components/DataConnections/UploadValidationPage';
+import SubmitValidationPage from './components/DataConnections/SubmitValidationPage';
 
 import LeftNavigation from './components/LeftNavigation';
 import { useDashboardState } from './hooks/useDashboardState';
@@ -70,18 +70,25 @@ function App() {
     });
   };
 
-  const handleProceedToUpload = () => {
-    localStorage.setItem('prism_trigger_resume_upload', 'true');
-    handleNavigate('upload-benchmarks');
+  const handleProceedToSubmit = () => {
+    localStorage.setItem('prism_trigger_resume_submit', 'true');
+    handleNavigate('submit-benchmarks', { intent: 'submit-review' });
   };
 
   const [currentView, setCurrentView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     // Legacy 'benchmark-comparison' deep links land on the Benchmark Browser,
-    // where the comparison renders inline once brv02 runs are uploaded.
+    // where the comparison renders inline once brv02 runs are submitted.
     const view = params.get('view') || 'home';
-    return view === 'benchmark-comparison' ? 'benchmark-browser' : view;
-  }); // 'home' | 'benchmark-browser' | 'intelligent-routing' | 'schema-explorer' | 'workload-catalog' | 'guided-analysis' | 'regressions-analysis'
+    if (view === 'benchmark-comparison') return 'benchmark-browser';
+    if (view === 'manage-benchmarks') return 'results-store';
+    return view;
+  });
+
+  const [navigationParams, setNavigationParams] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return { intent: params.get('intent') || null };
+  });
 
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [bypassLoading, setBypassLoading] = useState(false);
@@ -113,15 +120,21 @@ function App() {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
       const view = params.get('view') || 'home';
-      setCurrentView(view === 'benchmark-comparison' ? 'benchmark-browser' : view);
+      if (view === 'benchmark-comparison') {
+        setCurrentView('benchmark-browser');
+      } else if (view === 'manage-benchmarks') {
+        setCurrentView('results-store');
+      } else {
+        setCurrentView(view);
+      }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
 
-  const handleNavigate = (view) => {
-    if (currentView !== 'upload-benchmarks') {
+  const handleNavigate = (view, extraParams = {}) => {
+    if (currentView !== 'submit-benchmarks') {
       localStorage.setItem('prism_previous_view', currentView);
     }
     setCurrentView(view);
@@ -133,6 +146,25 @@ function App() {
     if (view !== 'workload-catalog') {
       params.delete('workload');
     }
+    
+    const resolvedParams = {};
+    if (view === 'submit-benchmarks') {
+      if (extraParams && typeof extraParams === 'object' && extraParams.intent) {
+        params.set('intent', extraParams.intent);
+        resolvedParams.intent = extraParams.intent;
+      } else if (typeof extraParams === 'string') {
+        params.set('intent', extraParams);
+        resolvedParams.intent = extraParams;
+      } else {
+        params.delete('intent');
+        resolvedParams.intent = null;
+      }
+    } else {
+      params.delete('intent');
+      resolvedParams.intent = null;
+    }
+    setNavigationParams(resolvedParams);
+
     window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`);
     
     // Reset scroll position on navigation
@@ -143,7 +175,7 @@ function App() {
   };
 
   const activeLoading = loading || isRestoringConnections || (gcsProfiles && gcsProfiles.some(p => p.loading));
-  const shouldShowLoading = activeLoading && !bypassLoading && (currentView === 'benchmark-browser' || currentView === 'manage-benchmarks');
+  const shouldShowLoading = activeLoading && !bypassLoading && (currentView === 'benchmark-browser' || currentView === 'results-store');
 
   return (
     <ErrorBoundary>
@@ -167,13 +199,13 @@ function App() {
             </div>
           ) : (
             <>
-              {/* Global staged telemetry banner removed in favor of localized Manage Benchmarks dashboard alert banner */}
+              {/* Global staged telemetry banner removed in favor of localized Results Store dashboard alert banner */}
               {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
               {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
               {currentView === 'agentic-serving' && <AgenticWorkloadsDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
               {currentView === 'benchmark-browser' && <Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}
-              {currentView === 'manage-benchmarks' && (
-                <ManageBenchmarks 
+              {currentView === 'results-store' && (
+                <ResultsStore 
                   onNavigateBack={() => {
                     const prevView = localStorage.getItem('prism_previous_view') || 'benchmark-browser';
                     handleNavigate(prevView);
@@ -183,15 +215,16 @@ function App() {
                   dashboardData={dashboardData} 
                 />
               )}
-              {currentView === 'upload-benchmarks' && (
-                <UploadValidationPage 
+              {currentView === 'submit-benchmarks' && (
+                <SubmitValidationPage 
                   onNavigateBack={() => {
-                    const prevView = localStorage.getItem('prism_previous_view') || 'manage-benchmarks';
+                    const prevView = localStorage.getItem('prism_previous_view') || 'results-store';
                     handleNavigate(prevView);
                   }}
                   onNavigate={handleNavigate} 
                   dashboardState={dashboardState} 
                   dashboardData={dashboardData} 
+                  initialIntent={navigationParams.intent}
                 />
               )}
               {currentView === 'schema-explorer' && <SchemaExplorer onNavigateBack={() => handleNavigate('home')} />}

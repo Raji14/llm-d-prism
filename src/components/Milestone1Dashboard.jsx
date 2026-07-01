@@ -663,7 +663,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
 
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pt-16 relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pt-16 md:pl-24 w-full font-sans relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
             {/* Pulsing Vibrant Neon Glow Background Shapes */}
             <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
             <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
@@ -758,6 +758,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                         {/* Col 1: Overview */}
                         <div className="flex flex-col justify-between space-y-3">
                             <div>
+                                <div className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-widest mb-2">Overview</div>
                                 <p className="text-sm text-slate-400 leading-relaxed">
                                     These variants of Intelligent Routing optimize request routing to maximize performance. By leveraging GKE Inference Gateway, real-time cache state introspection or machine-learned latency predictions, they reduce tail latency, increase throughput, and improve cache hit rates across distributed model servers.
                                 </p>

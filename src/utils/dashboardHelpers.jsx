@@ -51,7 +51,7 @@ export const INTEGRATIONS = [
     },
     {
         id: 'llmd_results',
-        name: 'llm-d Results Store',
+        name: 'llm-d Registry',
         type: 'llm-d',
         tags: ['Performance', 'Official'],
         description: (
@@ -348,7 +348,7 @@ export const formatOriginLabel = (origin) => {
     if (origin === 'drag-and-drop') return 'LOCAL: drag-and-drop';
     if (origin.startsWith('lpg:')) return `infperf: ${origin.substring(4)}`;
     if (origin.startsWith('infperf:')) return origin; 
-    if (origin === 'llm-d-results:google_drive' || origin === 'llmd_drive') return 'llm-d Results Store';
+    if (origin === 'llm-d-results:google_drive' || origin === 'llmd_drive') return 'llm-d Registry';
     if (origin.startsWith('gcs:')) return `GCS: ${origin.substring(4)}`;
     if (origin.startsWith('brv02:')) return `BRV0.2: ${origin.substring(6)}`;
 

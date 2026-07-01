@@ -749,7 +749,7 @@ app.get('/api/auth/github', (req, res) => {
 app.get('/api/auth/github/callback', async (req, res) => {
     const { code } = req.query;
     if (!code) {
-        return res.redirect('/?view=manage-benchmarks&auth_error=missing_code');
+        return res.redirect('/?view=results-store&auth_error=missing_code');
     }
 
     try {
@@ -801,11 +801,11 @@ app.get('/api/auth/github/callback', async (req, res) => {
             email = primaryEmailObj ? primaryEmailObj.email : (userData.email || 'no-email@github.com');
         }
 
-        res.redirect(`/?view=manage-benchmarks&github_user=${encodeURIComponent(username)}&github_name=${encodeURIComponent(fullName)}&github_email=${encodeURIComponent(email)}&auth_success=true`);
+        res.redirect(`/?view=results-store&github_user=${encodeURIComponent(username)}&github_name=${encodeURIComponent(fullName)}&github_email=${encodeURIComponent(email)}&auth_success=true`);
 
     } catch (err) {
         console.error('[Auth Callback Error]', err);
-        res.redirect('/?view=manage-benchmarks&auth_error=' + encodeURIComponent(err.message));
+        res.redirect('/?view=results-store&auth_error=' + encodeURIComponent(err.message));
     }
 });
 

@@ -989,7 +989,7 @@ export const useDashboardData = (initialState, dashboardState) => {
                 // Ensure valid source info
                 newD.source_info = {
                     type: 'drive_archive',
-                    origin: sweepId !== 'unknown' ? sweepId : 'llm-d Results Store', // Fallback for fixed static files
+                    origin: sweepId !== 'unknown' ? sweepId : 'llm-d Registry', // Fallback for fixed static files
                     run_id: runId,   // Keep original run_id
                     file_identifier: d._source_file || d.filename || 'archived_data'
                 };
@@ -1648,7 +1648,7 @@ export const useDashboardData = (initialState, dashboardState) => {
             }
 
             if (trulyNewStages.length === 0) {
-                setBrv02Error('All selected files have already been uploaded.');
+                setBrv02Error('All selected files have already been submitted.');
                 if (isEvent && eventOrFiles.target) {
                     eventOrFiles.target.value = '';
                 }
@@ -1665,8 +1665,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                 eventOrFiles.target.value = '';
             }
         } catch (e) {
-            console.error("Failed to upload local report files:", e);
-            setBrv02Error("Failed to upload report files. Make sure they are valid YAML files.");
+            console.error("Failed to submit local report files:", e);
+            setBrv02Error("Failed to submit report files. Make sure they are valid YAML files.");
         } finally {
             setBrv02Loading(false);
         }
@@ -1751,13 +1751,13 @@ export const useDashboardData = (initialState, dashboardState) => {
         setEnableLLMDResults(false);
     };
 
-    const removeBrv02Run = (runId) => {
+    const removeBrv02Run = useCallback((runId) => {
         setBrv02Runs(prev => prev.filter(r => r.runId !== runId));
-    };
+    }, []);
 
-    const clearAllBrv02Runs = () => {
+    const clearAllBrv02Runs = useCallback(() => {
         setBrv02Runs([]);
-    };
+    }, []);
 
     const handleValidatedUpload = async (validBundles, isSubmit = false) => {
         if (!validBundles || validBundles.length === 0) return;
@@ -1800,7 +1800,7 @@ export const useDashboardData = (initialState, dashboardState) => {
             }
 
             if (trulyNewStages.length === 0) {
-                setBrv02Error('All selected valid files have already been uploaded.');
+                setBrv02Error('All selected valid files have already been submitted.');
                 return;
             }
 
@@ -1810,8 +1810,8 @@ export const useDashboardData = (initialState, dashboardState) => {
             });
 
         } catch (e) {
-            console.error("Failed to upload validated files:", e);
-            setBrv02Error("Failed to upload validated report files.");
+            console.error("Failed to submit validated files:", e);
+            setBrv02Error("Failed to submit validated report files.");
         } finally {
             setBrv02Loading(false);
         }

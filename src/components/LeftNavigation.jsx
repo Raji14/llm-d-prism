@@ -14,7 +14,10 @@ import {
     Activity,
     TrendingUp,
     Zap,
-    Settings
+    Settings,
+    Library,
+    Blocks,
+    Server
 } from 'lucide-react';
 
 const MENU_GROUPS = [
@@ -36,15 +39,58 @@ const MENU_GROUPS = [
     {
         title: "Utility suite",
         items: [
-            { id: 'workload-catalog', label: 'Workload catalog', icon: Zap, view: 'workload-catalog', disabled: false },
+            { id: 'results-store', label: 'Results store', icon: Server, view: 'results-store' },
+            { id: 'workload-catalog', label: 'Workload catalog', icon: Blocks, view: 'workload-catalog', disabled: false },
             { id: 'regressions-analysis', label: 'Regressions & analysis', icon: Activity, view: 'regressions-analysis' },
             { id: 'benchmark-browser', label: 'Benchmark browser', icon: BarChart2, view: 'benchmark-browser' },
             { id: 'schema-browser', label: 'Schema explorer', icon: FileCode, view: 'schema-explorer', disabled: false },
-            { id: 'manage-benchmarks', label: 'Manage benchmarks', icon: Settings, view: 'manage-benchmarks' },
             { id: 'value-analysis', label: 'Value analysis', icon: TrendingUp, view: 'value-analysis', disabled: true }
         ]
     }
 ];
+
+const ITEM_THEMES = {
+    'home': {
+        activeBg: 'bg-gradient-to-r from-slate-900/10 via-slate-800/10 to-slate-950/20 border-slate-700/30 text-slate-200',
+        activeIcon: 'bg-gradient-to-br from-slate-500 to-slate-600 text-white shadow-[0_0_15px_rgba(148,163,184,0.35)]',
+        indicator: 'bg-gradient-to-b from-slate-400 to-slate-500 shadow-[0_0_8px_rgba(148,163,184,0.6)]'
+    },
+    'inference-scheduling': {
+        activeBg: 'bg-gradient-to-r from-cyan-950/20 via-blue-950/10 to-slate-950/20 border-cyan-500/20 text-cyan-300',
+        activeIcon: 'bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]',
+        indicator: 'bg-gradient-to-b from-cyan-400 to-blue-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]'
+    },
+    'agentic-serving': {
+        activeBg: 'bg-gradient-to-r from-emerald-950/20 via-teal-950/10 to-slate-950/20 border-emerald-500/20 text-emerald-300',
+        activeIcon: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.35)]',
+        indicator: 'bg-gradient-to-b from-emerald-400 to-teal-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+    },
+    'workload-catalog': {
+        activeBg: 'bg-gradient-to-r from-cyan-950/20 via-blue-950/10 to-slate-950/20 border-cyan-500/20 text-cyan-300',
+        activeIcon: 'bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]',
+        indicator: 'bg-gradient-to-b from-cyan-400 to-blue-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]'
+    },
+    'regressions-analysis': {
+        activeBg: 'bg-gradient-to-r from-rose-950/20 via-red-950/10 to-slate-950/20 border-rose-500/20 text-rose-350',
+        activeIcon: 'bg-gradient-to-br from-rose-500 to-red-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.35)]',
+        indicator: 'bg-gradient-to-b from-rose-400 to-red-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]'
+    },
+    'benchmark-browser': {
+        activeBg: 'bg-gradient-to-r from-amber-950/20 via-orange-950/10 to-slate-950/20 border-amber-500/20 text-amber-300',
+        activeIcon: 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.35)]',
+        indicator: 'bg-gradient-to-b from-amber-400 to-orange-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
+    },
+    'schema-explorer': {
+        activeBg: 'bg-gradient-to-r from-purple-950/20 via-violet-950/10 to-slate-950/20 border-purple-500/20 text-purple-300',
+        activeIcon: 'bg-gradient-to-br from-purple-500 to-violet-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.35)]',
+        indicator: 'bg-gradient-to-b from-purple-400 to-violet-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]'
+    },
+    'results-store': {
+        activeBg: 'bg-gradient-to-r from-emerald-950/20 via-teal-950/10 to-slate-950/20 border-emerald-500/20 text-emerald-300',
+        activeIcon: 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.35)]',
+        indicator: 'bg-gradient-to-b from-emerald-400 to-teal-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+    }
+};
 
 export default function LeftNavigation({ currentView, onNavigate, isMobileOpen }) {
     const [isExpanded, setIsExpanded] = useState(() => {
@@ -57,11 +103,8 @@ export default function LeftNavigation({ currentView, onNavigate, isMobileOpen }
     }, [isExpanded]);
 
     const handleItemClick = (view, disabled) => {
-        if (!isExpanded) {
-            setIsExpanded(true);
-        } else if (!disabled) {
+        if (!disabled) {
             onNavigate(view);
-            setIsExpanded(false);
         }
     };
 
@@ -101,18 +144,18 @@ export default function LeftNavigation({ currentView, onNavigate, isMobileOpen }
                                         title={!isExpanded ? item.label : undefined}
                                         className={`group relative flex items-center gap-4 px-3 py-2.5 rounded-2xl transition-all duration-300 w-full text-left font-normal border ${
                                             isActive 
-                                                ? 'bg-gradient-to-r from-cyan-950/20 via-blue-950/10 to-slate-950/20 border-cyan-500/20 text-cyan-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]' 
+                                                ? (ITEM_THEMES[item.view]?.activeBg || 'bg-gradient-to-r from-cyan-950/20 via-blue-950/10 to-slate-950/20 border-cyan-500/20 text-cyan-300 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)]') 
                                                 : 'border-transparent text-slate-400 hover:bg-slate-900/30 hover:text-white cursor-pointer'
                                         }`}
                                     >
                                         {/* Active Side Indicator */}
                                         {isActive && (
-                                            <div className="absolute left-1 top-3.5 bottom-3.5 w-1 rounded-full bg-gradient-to-b from-cyan-400 to-blue-500 shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
+                                            <div className={`absolute left-1 top-3.5 bottom-3.5 w-1 rounded-full ${ITEM_THEMES[item.view]?.indicator || 'bg-gradient-to-b from-cyan-400 to-blue-500'}`} />
                                         )}
 
                                         <div className={`p-1.5 rounded-xl transition-all duration-300 ${
                                             isActive 
-                                                ? 'bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]' 
+                                                ? (ITEM_THEMES[item.view]?.activeIcon || 'bg-gradient-to-br from-cyan-500 to-blue-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.35)]') 
                                                 : 'bg-transparent text-slate-400 group-hover:text-slate-200'
                                         }`}>
                                             <Icon className="w-5 h-5 shrink-0" />

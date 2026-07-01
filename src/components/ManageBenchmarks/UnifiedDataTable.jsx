@@ -25,12 +25,12 @@ const getCleanModelName = (name) => {
 
 const getKpiFilterLabel = (filter) => {
     switch (filter) {
-        case 'my-uploads': return 'My Submissions';
+        case 'my-submissions': return 'My Submissions';
         case 'verified': return 'Production Ready';
-        case 'staged': return 'Staged';
-        case 'processing': return 'Pending Processing';
-        case 'in_review': return 'In Review';
-        case 'approved': return 'Public';
+        case 'staged': return 'Locally Staged';
+        case 'processing': return 'Submitted';
+        case 'in_review': return 'Under Review';
+        case 'approved': return 'Published';
         case 'action': return 'Rejected';
         case 'legacy': return 'Legacy Format';
         case 'pareto': return 'Pareto Frontier';
@@ -111,7 +111,8 @@ export const UnifiedDataTable = (props) => {
         submissionsMap = {},
         updateSubmissionStatus,
         qualityMetrics,
-        onOpenUploadDialog,
+        onOpenSubmitDialog,
+        isFiltered = false,
         groupBy = 'Model',
         sortByField = 'timestamp',
         sortDirection = 'desc',
@@ -341,7 +342,7 @@ export const UnifiedDataTable = (props) => {
         }
 
         // Apply KPI Filter
-        if (kpiFilter === 'my-uploads') {
+        if (kpiFilter === 'my-submissions') {
             stats = stats.filter(stat => {
                 const src = stat.data?.[0]?.source || '';
                 return src.startsWith('brv02:');
@@ -577,20 +578,20 @@ export const UnifiedDataTable = (props) => {
     // Computes metric-specific empty state messaging, icons, colors and actions
     const getEmptyStateConfig = () => {
         switch (kpiFilter) {
-            case 'my-uploads':
+            case 'my-submissions':
                 return {
                     icon: <FileText className="w-8 h-8" />,
                     themeColor: 'cyan',
                     glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
                     radialGlow: 'bg-cyan-500/10',
-                    title: 'No Uploaded Benchmarks Found',
-                    description: "You haven't uploaded or staged any benchmark runs yet. Staged and submitted benchmarks will appear here.",
+                    title: 'No submitted benchmarks found',
+                    description: "You have not submitted any benchmark runs to the registry yet. Staged and submitted benchmarks will appear here.",
                     action: (
                         <button
-                            onClick={() => onOpenUploadDialog && onOpenUploadDialog()}
-                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            onClick={() => onOpenSubmitDialog && onOpenSubmitDialog('submit-review')}
+                            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
                         >
-                            Upload & Stage Runs
+                            Publish to registry
                         </button>
                     )
                 };
@@ -600,14 +601,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'cyan',
                     glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
                     radialGlow: 'bg-cyan-500/10',
-                    title: 'No Staged Submissions Found',
-                    description: "You haven't uploaded or staged any local benchmark runs yet. Benchmark uploads staged via the ingestion tool will appear here.",
+                    title: 'No staged submissions found',
+                    description: "You have not staged any local benchmark runs yet. Benchmark runs staged for local review will appear here.",
                     action: (
                         <button
-                            onClick={() => onOpenUploadDialog && onOpenUploadDialog()}
-                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            onClick={() => onOpenSubmitDialog && onOpenSubmitDialog('stage-locally')}
+                            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
                         >
-                            Upload & Stage Runs
+                            Stage locally
                         </button>
                     )
                 };
@@ -617,14 +618,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'emerald',
                     glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
                     radialGlow: 'bg-emerald-500/10',
-                    title: 'No Production-Ready Runs',
-                    description: "No benchmarks currently meet the strict v0.2 production validation criteria. To publish to production, ensure runs comply with all verification logs.",
+                    title: 'No production-ready runs found',
+                    description: "No benchmarks currently meet the validation criteria. To publish to the registry, ensure your runs comply with all validation rules.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Clear Filters & View All
+                            Clear filters
                         </button>
                     )
                 };
@@ -634,14 +635,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'purple',
                     glowClass: 'shadow-[0_0_30px_rgba(168,85,247,0.2)] bg-purple-500/10 border-purple-500/30 text-purple-400',
                     radialGlow: 'bg-purple-500/10',
-                    title: 'No Submissions In Review',
-                    description: "There are currently no benchmark submissions pending admin compliance review. Everything has been processed.",
+                    title: 'No submissions in review',
+                    description: "There are currently no benchmark submissions pending administrator compliance review.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Reset Filters
+                            Clear filters
                         </button>
                     )
                 };
@@ -651,14 +652,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'emerald',
                     glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
                     radialGlow: 'bg-emerald-500/10',
-                    title: 'No Approved Runs Found',
-                    description: "No benchmark submissions have been approved for this profile yet. Once review admins approve staged runs, they will display here.",
+                    title: 'No approved runs found',
+                    description: "No benchmark submissions have been approved for this profile yet. Once review administrators approve staged runs, they will display here.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-500/20 hover:shadow-emerald-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            View Staged Registry
+                            Clear filters
                         </button>
                     )
                 };
@@ -668,14 +669,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'slate',
                     glowClass: 'shadow-[0_0_30px_rgba(148,163,184,0.15)] bg-slate-800/40 border-slate-700/50 text-slate-400',
                     radialGlow: 'bg-slate-800/10',
-                    title: 'No Legacy Runs Found',
-                    description: "No v0.1 format legacy benchmark runs match your active filter set. Standardize workflows onto the v0.2 layout spec.",
+                    title: 'No legacy runs found',
+                    description: "No legacy format benchmark runs match your active filters. Standardize your workflow onto the current layout specification.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Reset Filters
+                            Clear filters
                         </button>
                     )
                 };
@@ -685,14 +686,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'emerald',
                     glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
                     radialGlow: 'bg-emerald-500/10',
-                    title: 'All Clear! No Action Required',
-                    description: "Excellent work! None of your staged submissions currently require code adjustments, re-running, or reviewer actions.",
+                    title: 'All clear, no action required',
+                    description: "None of your staged submissions currently require code adjustments, runs, or reviewer actions.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-700/60 shadow-lg cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Back to Main Catalog
+                            Clear filters
                         </button>
                     )
                 };
@@ -702,14 +703,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'purple',
                     glowClass: 'shadow-[0_0_30px_rgba(168,85,247,0.2)] bg-purple-500/10 border-purple-500/30 text-purple-400',
                     radialGlow: 'bg-purple-500/10',
-                    title: 'No Pareto Frontier Configurations',
-                    description: "No configurations currently match the cost-performance optimal frontier. Try clearing active filters or uploading multi-node sweeps.",
+                    title: 'No Pareto frontier configurations found',
+                    description: "No configurations match the cost-performance optimal frontier. Try clearing active filters or uploading multi-node sweeps.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-purple-500/20 hover:shadow-purple-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Clear Filters
+                            Clear filters
                         </button>
                     )
                 };
@@ -719,14 +720,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'amber',
                     glowClass: 'shadow-[0_0_30px_rgba(245,158,11,0.2)] bg-amber-500/10 border-amber-500/30 text-amber-400',
                     radialGlow: 'bg-amber-500/10',
-                    title: 'No Active Regressions',
-                    description: "Fantastic! No configurations show a performance or throughput drop of more than 5% relative to the pinned baseline configuration.",
+                    title: 'No active regressions found',
+                    description: "No configurations show a performance or throughput drop of more than 5% relative to the pinned baseline configuration.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 hover:shadow-amber-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Reset Views
+                            Clear filters
                         </button>
                     )
                 };
@@ -736,14 +737,14 @@ export const UnifiedDataTable = (props) => {
                     themeColor: 'cyan',
                     glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
                     radialGlow: 'bg-cyan-500/10',
-                    title: 'No Benchmarks Matching Filters',
-                    description: "No records in the database match your combination of text query and active dropdown selections. Adjust your facets or start fresh.",
+                    title: 'No benchmarks match active filters',
+                    description: "No records match your combination of text search and active filters. Adjust your search parameters or start fresh.",
                     action: (
                         <button
                             onClick={clearFilters}
-                            className="px-5 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-cyan-500/20 hover:shadow-cyan-400/30 hover:scale-105 transition-all duration-300 cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl transition-all cursor-pointer mb-2"
                         >
-                            Reset Slices
+                            Clear filters
                         </button>
                     )
                 };
@@ -764,7 +765,7 @@ export const UnifiedDataTable = (props) => {
                             </span>
                             {kpiFilter && (
                                 <span className={`text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full border flex items-center gap-1.5 transition-all select-none ${
-                                    kpiFilter === 'my-uploads' ? 'bg-cyan-550/10 text-cyan-400 border-cyan-550/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' :
+                                    kpiFilter === 'my-submissions' ? 'bg-cyan-550/10 text-cyan-400 border-cyan-550/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' :
                                     kpiFilter === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' :
                                     kpiFilter === 'action' ? 'bg-red-500/10 text-red-400 border-red-500/25' :
                                     kpiFilter === 'staged' ? 'bg-amber-500/10 text-amber-400 border-amber-500/25' :
@@ -819,7 +820,6 @@ export const UnifiedDataTable = (props) => {
                             : "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
                         }
                     >
-                        <Sliders className="w-3.5 h-3.5" />
                         {hasPromotableSelected ? `Compare & Promote (${selectedBenchmarks.size})` : `Compare & Inspect (${selectedBenchmarks.size})`}
                     </button>
 
@@ -865,9 +865,9 @@ export const UnifiedDataTable = (props) => {
                     {/* Clear Filters */}
                     <button
                         onClick={clearFilters}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200 flex items-center gap-1.5"
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
                     >
-                        <RotateCcw size={12.5} /> Clear Filters
+                        Clear Filters
                     </button>
 
                     {/* Delete Staged Runs */}
@@ -904,7 +904,7 @@ export const UnifiedDataTable = (props) => {
                         </p>
                         {emptyConfig.action}
 
-                        {kpiFilter !== 'staged' && (
+                        {!isFiltered && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-4xl mx-auto">
                                 {/* Card 1: Cloud Store */}
                                 <div 

@@ -10,7 +10,11 @@ const WorkloadCatalog = ({ onNavigateBack }) => {
         const workload = queryParams.get('workload') || '';
         const initialPath = workload ? `/workloads/${workload}` : '';
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const baseUrl = isLocal 
+        const useLocalCatalog = isLocal && (
+            import.meta.env.VITE_USE_LOCAL_WORKLOAD_CATALOG === 'true' ||
+            queryParams.get('local_catalog') === 'true'
+        );
+        const baseUrl = useLocalCatalog 
             ? 'http://localhost:5174'
             : 'https://workload-catalog-app-369234493812.us-central1.run.app';
         return `${baseUrl}${initialPath}`;

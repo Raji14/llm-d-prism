@@ -231,12 +231,8 @@ const PrismHome = ({ onNavigate }) => {
                                     {/* Slide Item Content */}
                                     {(() => {
                                         const item = roadmapItems[currentRoadmapIndex];
-                                        const IconComponent = item.icon;
                                         return (
                                             <div className="flex items-start gap-2.5 px-1.5 w-full animate-fadeIn">
-                                                <div className={`p-1.5 rounded ${item.bgClass} border ${item.borderClass} mt-0.5 shrink-0`}>
-                                                    <IconComponent className={`w-3.5 h-3.5 ${item.colorClass}`} />
-                                                </div>
                                                 <div className="flex-1 min-w-0 pr-1.5">
                                                     <div className="flex items-center justify-between gap-1">
                                                         <h4 className="text-[10.5px] font-bold text-slate-200 truncate">{item.title}</h4>

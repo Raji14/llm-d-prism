@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Filter, ChevronDown, ChevronUp, Check, ArrowDown01, ArrowDown10, Loader, FileText, FileClock, Sliders, Search, Activity, TrendingUp, ShieldCheck, Database, Layout, HelpCircle, Bookmark, Trash2, Settings, X, Pencil, Laptop, CloudUpload, ArrowRight } from 'lucide-react';
 import { MultiSelectDropdown } from '../common';
 import { USE_CASE_META, formatOriginLabel } from '../../utils/dashboardHelpers';
@@ -197,13 +198,23 @@ export const FilterPanel = ({
     };
 
     const applyPreset = (preset) => {
-        setSearchTerm(preset.searchTerm || '');
-        setKpiFilter(preset.kpiFilter || null);
-        const newFilters = {};
-        Object.keys(activeFilters).forEach(key => {
-            newFilters[key] = new Set(preset.filters?.[key] || []);
-        });
-        setActiveFilters(newFilters);
+        if (isPresetActive(preset)) {
+            setSearchTerm('');
+            setKpiFilter(null);
+            const newFilters = {};
+            Object.keys(activeFilters).forEach(key => {
+                newFilters[key] = new Set();
+            });
+            setActiveFilters(newFilters);
+        } else {
+            setSearchTerm(preset.searchTerm || '');
+            setKpiFilter(preset.kpiFilter || null);
+            const newFilters = {};
+            Object.keys(activeFilters).forEach(key => {
+                newFilters[key] = new Set(preset.filters?.[key] || []);
+            });
+            setActiveFilters(newFilters);
+        }
     };
 
     const hasFiltersToSave = React.useMemo(() => {
@@ -874,15 +885,17 @@ export const FilterPanel = ({
                 )}
 
                 {/* Advanced Filters Backdrop */}
-                {isAdvancedExpanded && (
+                {isAdvancedExpanded && createPortal(
                     <div 
-                        className="fixed inset-0 bg-black/40 z-[55] backdrop-blur-[1.5px] transition-opacity duration-200"
+                        className="fixed inset-0 bg-black/40 z-[55] backdrop-blur-[1.5px] transition-opacity duration-200 cursor-pointer"
                         onClick={() => setIsAdvancedExpanded(false)}
-                    />
+                    />,
+                    document.body
                 )}
 
                 {/* Advanced Filters Drawer */}
-                <div className={`fixed top-20 right-4 h-[calc(100vh-6rem)] w-[420px] bg-slate-950/95 border border-slate-900 shadow-2xl z-[60] flex flex-col rounded-3xl overflow-hidden transform transition-transform duration-300 backdrop-blur-xl ${isAdvancedExpanded ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}>
+                {createPortal(
+                    <div className={`fixed top-20 right-4 h-[calc(100vh-6rem)] w-[420px] bg-slate-950/95 border border-slate-900 shadow-2xl z-[60] flex flex-col rounded-3xl overflow-hidden transform transition-transform duration-300 backdrop-blur-xl ${isAdvancedExpanded ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}>
                     {/* Header */}
                     <div className="bg-slate-950/40 p-4 border-b border-slate-900/60 flex items-center justify-between select-none">
                         <div className="flex items-center gap-2">
@@ -1295,7 +1308,9 @@ export const FilterPanel = ({
                             Apply Filters
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body
+            )}
             
             {/* Spacer */}
             <div className="h-4" />

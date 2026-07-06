@@ -13,7 +13,8 @@
 // limitations under the License.
 
 import React, { useState } from 'react';
-import { RotateCcw, ChevronDown, ChevronUp, Pin, CheckSquare, Square, Check, Pencil, Trash2, Code2, Copy, X, Database, Eye, ShieldCheck, AlertCircle, TrendingUp, AlertTriangle, Search, FileText, FileClock, Sliders, Activity } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { RotateCcw, ChevronDown, ChevronUp, Pin, CheckSquare, Square, Check, Pencil, Trash2, Code2, Copy, X, Database, Eye, ShieldCheck, AlertCircle, TrendingUp, AlertTriangle, Search, FileText, FileClock, Sliders, Activity, Send, Play } from 'lucide-react';
 import { RunComparisonChart } from '../Dashboard/RunComparisonChart';
 import { ThroughputCostChart } from '../Dashboard/ThroughputCostChart';
 import { getEffectiveTp, getBucket, getSourceTag, getSourceType, getSourceTypeStyle, formatOriginLabel, getBenchmarkKey } from '../../utils/dashboardHelpers';
@@ -193,6 +194,16 @@ export const UnifiedDataTable = (props) => {
         });
         setSelectedBenchmarks(new Set());
     };
+
+    React.useEffect(() => {
+        if (showComparisonDrawer) {
+            const originalStyle = window.getComputedStyle(document.body).overflow;
+            document.body.style.overflow = 'hidden';
+            return () => {
+                document.body.style.overflow = originalStyle;
+            };
+        }
+    }, [showComparisonDrawer]);
 
     React.useEffect(() => {
         if (!isDraggingSelection) return;
@@ -1722,17 +1733,16 @@ export const UnifiedDataTable = (props) => {
             )}
 
             {/* Slide-Over Comparison Drawer Displayed from Right */}
-            <div className={`fixed inset-0 z-[99999] flex justify-end overflow-hidden pointer-events-none transition-opacity duration-300 ${showComparisonDrawer ? 'opacity-100' : 'opacity-0'}`}>
-                {/* Backdrop */}
-                {showComparisonDrawer && (
-                    <div 
-                        className="absolute inset-0 bg-black/40 backdrop-blur-[1.5px] pointer-events-auto"
-                        onClick={() => setShowComparisonDrawer(false)}
-                    />
-                )}
-                
-                {/* Sub-Panel Animating from the Right */}
-                <div className={`relative w-full sm:w-[864px] xl:w-[1030px] h-full bg-slate-950/95 border-l border-cyan-500/40 p-6 shadow-[0_0_60px_rgba(0,0,0,0.9)] flex flex-col overflow-y-auto z-10 transform transition-transform duration-300 pointer-events-auto ${showComparisonDrawer ? 'translate-x-0' : 'translate-x-full'}`}>
+            {showComparisonDrawer && createPortal(
+                <div 
+                    className="fixed inset-0 bg-black/40 z-[99998] backdrop-blur-[1.5px] cursor-pointer"
+                    onClick={() => setShowComparisonDrawer(false)}
+                />,
+                document.body
+            )}
+            
+            {createPortal(
+                <div className={`fixed top-20 right-4 h-[calc(100vh-6rem)] w-full sm:w-[864px] xl:w-[1030px] bg-slate-950/95 border border-slate-900 shadow-2xl z-[99999] flex flex-col rounded-3xl overflow-hidden p-6 transform transition-transform duration-300 pointer-events-auto ${showComparisonDrawer ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}>
                         <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
                         
                         <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-805 flex-shrink-0">
@@ -1755,220 +1765,272 @@ export const UnifiedDataTable = (props) => {
                             </div>
                         </div>
 
-                        {/* Active Submissions Actions */}
-                        <div className="mb-6 p-4 rounded-xl border border-slate-800/80 bg-[#070b12]/30 flex-shrink-0">
-                            <div className="space-y-2.5 max-h-[180px] overflow-y-auto pr-1">
-                                {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => {
-                                    const src = stat.data?.[0]?.source || '';
-                                    const isBrv02 = src.startsWith('brv02:');
-                                    const runId = isBrv02 ? src.replace('brv02:', '') : null;
-                                    const sub = runId && submissionsMap ? submissionsMap[runId] : null;
-                                    const status = sub?.status || 'staged';
-                                    
-                                    return (
-                                        <div key={stat.benchmarkKey} className="flex flex-col p-3 rounded-lg border border-slate-800/30 bg-[#0d131f]/40 hover:bg-[#0d131f]/60 transition-colors">
-                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                                <div className="flex flex-col gap-0.5">
-                                                    <div className="text-xs font-bold text-slate-100 flex items-center gap-2">
-                                                        {stat.model}
-                                                        {isBrv02 ? (
-                                                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-900/35">
-                                                                {stat.hardware}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-900/35">
-                                                                Production Registry
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="text-[10px] text-slate-500 truncate max-w-[280px]">
-                                                        {stat.configuration || 'Default Settings'}
-                                                    </div>
-                                                </div>
-                                                                                                <div className="flex items-center gap-3 flex-wrap">
-                                                    {/* Status Badge */}
-                                                    {isBrv02 ? (
-                                                        <span className={`text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border ${
-                                                            (status === 'public' || status === 'promoted' || status === 'approved') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                            status === 'submitted_pending_processing' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse' :
-                                                            (status === 'submitted_pending_review' || status === 'in_review') ? 'bg-purple-500/10 text-purple-400 border-purple-500/20 animate-pulse' :
-                                                            (status === 'rejected' || status === 'changes_requested') ? 'bg-red-500/10 text-red-400 border-red-500/20' :
-                                                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                                        }`}>
-                                                            {(status === 'rejected' || status === 'changes_requested') ? 'Rejected' :
-                                                             status === 'submitted_pending_processing' ? 'Processing' :
-                                                             (status === 'submitted_pending_review' || status === 'in_review') ? 'In Review' :
-                                                             (status === 'public' || status === 'promoted' || status === 'approved') ? 'Public' :
-                                                             status}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/25">
-                                                            Verified
-                                                        </span>
-                                                    )}
+                        {/* Scrollable Content Container */}
+                        <div className="flex-1 overflow-y-auto space-y-8 pr-1 custom-scrollbar">
+                            
+                            {/* Section 1: Chart Container */}
+                            <div className="min-h-[500px] w-full flex flex-col">
+                                {comparisonTab === 'scatter' ? (
+                                    <div className="flex-1 flex flex-col">
+                                        <ThroughputCostChart
+                                            tputType={drawerTputType}
+                                            setTputType={setDrawerTputType}
+                                            yQualityMode={drawerYQualityMode}
+                                            setYQualityMode={setDrawerYQualityMode}
+                                            chartMode={drawerChartMode}
+                                            setChartMode={setDrawerChartMode}
+                                            xQualityMode={drawerXQualityMode}
+                                            setXQualityMode={setDrawerXQualityMode}
+                                            costMode={drawerCostMode}
+                                            setCostMode={setDrawerCostMode}
+                                            showPerChip={drawerShowPerChip}
+                                            setShowPerChip={setDrawerShowPerChip}
+                                            showLabels={drawerShowLabels}
+                                            setShowLabels={setDrawerShowLabels}
+                                            showDataLabels={drawerShowDataLabels}
+                                            setShowDataLabels={setDrawerShowDataLabels}
+                                            showPareto={drawerShowPareto}
+                                            setShowPareto={setDrawerShowPareto}
+                                            qualityMetrics={qualityMetrics}
+                                            allModels={modelStats.map(m => m.model)}
+                                            selectedModels={selectedModels}
+                                            filteredData={filteredBySource}
+                                            getBenchmarkKey={getBenchmarkKey}
+                                            theme="dark"
+                                            isZoomEnabled={drawerIsZoomEnabled}
+                                            setIsZoomEnabled={setDrawerIsZoomEnabled}
+                                            zoomDomain={drawerZoomDomain}
+                                            setZoomDomain={setDrawerZoomDomain}
+                                            chartContainerRef={drawerChartContainerRef}
+                                            isDragging={drawerIsDragging}
+                                            setIsDragging={setDrawerIsDragging}
+                                            lastMouseRef={drawerLastMouseRef}
+                                            chartColorMode={drawerChartColorMode}
+                                            setChartColorMode={setDrawerChartColorMode}
+                                            metricAvailability={drawerMetricAvailability}
+                                            filteredBySource={filteredBySource}
+                                            xAxisMax={drawerXAxisMax}
+                                            setXAxisMax={setDrawerXAxisMax}
+                                            isLogScaleX={drawerIsLogScaleX}
+                                            setIsLogScaleX={setDrawerIsLogScaleX}
+                                            setLatType={setDrawerLatType}
+                                            selectedBenchmarks={selectedBenchmarks}
+                                            baselineBenchmarkKey={baselineBenchmarkKey}
+                                        />
+                                    </div>
+                                ) : (
+                                    <RunComparisonChart
+                                        filteredBySource={filteredBySource}
+                                        selectedBenchmarks={selectedBenchmarks}
+                                        getBenchmarkKey={getBenchmarkKey}
+                                        baselineBenchmarkKey={baselineBenchmarkKey}
+                                        brv02CustomLabels={brv02CustomLabels}
+                                        theme="dark"
+                                    />
+                                )}
+                            </div>
 
-                                                    {/* Actions */}
-                                                    {isBrv02 && (
-                                                        <div className="flex items-center gap-1.5">
-                                                            {status === 'staged' && (
-                                                                <button
-                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
-                                                                    className="px-2.5 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
-                                                                >
-                                                                    Run Format Checks
-                                                                </button>
+                            {/* Section 2: Active Submissions Actions */}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between border-b border-slate-900 pb-2 select-none">
+                                    <span className="font-mono text-xs font-black uppercase tracking-wider text-cyan-400/90">
+                                        Run Verification & Promotion Pipeline
+                                    </span>
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                        {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).length} Selected Runs
+                                    </span>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 gap-3.5">
+                                    {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => {
+                                        const src = stat.data?.[0]?.source || '';
+                                        const isBrv02 = src.startsWith('brv02:');
+                                        const runId = isBrv02 ? src.replace('brv02:', '') : null;
+                                        const sub = runId && submissionsMap ? submissionsMap[runId] : null;
+                                        const status = sub?.status || 'staged';
+                                        
+                                        return (
+                                            <div key={stat.benchmarkKey} className="flex flex-col p-4 rounded-2xl border border-slate-800/50 bg-[#0d131f]/20 hover:bg-[#0d131f]/40 hover:border-slate-700/40 transition-all duration-200">
+                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="text-sm font-semibold text-white tracking-tight truncate max-w-[280px]" title={stat.model}>
+                                                                {stat.model}
+                                                            </span>
+                                                            {isBrv02 ? (
+                                                                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-900/35">
+                                                                    {stat.hardware}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-900/35">
+                                                                    Production Registry
+                                                                </span>
                                                             )}
-                                                            {status === 'submitted_pending_processing' && (
-                                                                <button
-                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware)}
-                                                                    className="px-2.5 py-1.5 bg-purple-500 hover:bg-purple-400 text-white text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
-                                                                >
-                                                                    Submit for Review
-                                                                </button>
-                                                            )}
-                                                            {(status === 'submitted_pending_review' || status === 'in_review') && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware)}
-                                                                        className="px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer"
-                                                                    >
-                                                                        Publish Run
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setDrawerRejectingRunId(runId);
-                                                                            setDrawerRejectionFeedback('');
-                                                                        }}
-                                                                        className="px-2 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-[10px] font-extrabold uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
-                                                                    >
-                                                                        Reject
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {(status === 'rejected' || status === 'changes_requested') && (
-                                                                <button
-                                                                    onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
-                                                                    className="px-2.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider rounded-lg shadow transition-all hover:scale-105 cursor-pointer animate-pulse"
-                                                                >
-                                                                    Resubmit Validation
-                                                                </button>
+                                                            
+                                                            {/* Status Badge */}
+                                                            {isBrv02 ? (
+                                                                <span className={`text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border ${
+                                                                    (status === 'public' || status === 'promoted' || status === 'approved') ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                                    status === 'submitted_pending_processing' ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20 animate-pulse' :
+                                                                    (status === 'submitted_pending_review' || status === 'in_review') ? 'bg-purple-500/10 text-purple-400 border-purple-500/20 animate-pulse' :
+                                                                    (status === 'rejected' || status === 'changes_requested') ? 'bg-red-500/10 text-red-400 border-red-500/20' :
+                                                                    'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                                                }`}>
+                                                                    {(status === 'rejected' || status === 'changes_requested') ? 'Changes Requested' :
+                                                                     status === 'submitted_pending_processing' ? 'Verifying Format' :
+                                                                     (status === 'submitted_pending_review' || status === 'in_review') ? 'Pending Review' :
+                                                                     (status === 'public' || status === 'promoted' || status === 'approved') ? 'Public' :
+                                                                     status}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[9px] font-mono font-extrabold uppercase px-2 py-0.5 rounded border bg-emerald-500/10 text-emerald-400 border-emerald-500/25 flex items-center gap-1">
+                                                                    <ShieldCheck className="w-3 h-3 text-emerald-450" /> Verified
+                                                                </span>
                                                             )}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            </div>   
-                                            {/* Drawer Rejection inline input */}
-                                            {drawerRejectingRunId === runId && (
-                                                <div className="w-full mt-3 p-3 bg-slate-900 border border-red-500/20 rounded-lg animate-fadeIn flex flex-col gap-2">
-                                                    <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center justify-between">
-                                                        <span>Provide Revision Feedback</span>
-                                                        <button 
-                                                            onClick={() => setDrawerRejectingRunId(null)}
-                                                            className="text-slate-400 hover:text-white"
-                                                        >
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </button>
+                                                        <div className="text-xs text-slate-500 truncate" title={stat.configuration}>
+                                                            {stat.configuration || 'Default Settings'}
+                                                        </div>
                                                     </div>
-                                                    <textarea
-                                                        value={drawerRejectionFeedback}
-                                                        onChange={(e) => setDrawerRejectionFeedback(e.target.value)}
-                                                        placeholder="Explain why this run is rejected or what changes are required..."
-                                                        className="w-full p-2 bg-slate-950 border border-slate-800 text-slate-200 text-xs rounded-md outline-none focus:border-red-500/50 min-h-[50px] resize-y"
-                                                    />
-                                                    <div className="flex justify-end gap-1.5 mt-1">
-                                                        <button
-                                                            onClick={() => setDrawerRejectingRunId(null)}
-                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                if (drawerRejectionFeedback.trim() && updateSubmissionStatus) {
-                                                                    updateSubmissionStatus(runId, 'rejected', drawerRejectionFeedback, stat.model, stat.hardware);
-                                                                    setDrawerRejectingRunId(null);
-                                                                }
-                                                            }}
-                                                            disabled={!drawerRejectionFeedback.trim()}
-                                                            className={`px-2 py-1 text-[10px] font-bold rounded ${
-                                                                drawerRejectionFeedback.trim()
-                                                                ? 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer'
-                                                                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                                                            }`}
-                                                        >
-                                                            Confirm Rejection
-                                                        </button>
+                                                    
+                                                    {/* Actions */}
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                                        {isBrv02 && (
+                                                            <div className="flex items-center gap-2">
+                                                                {status === 'staged' && (
+                                                                    <button
+                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
+                                                                        className="flex items-center gap-1 px-3 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] cursor-pointer"
+                                                                    >
+                                                                        <Play className="w-3 h-3 fill-slate-950 text-slate-950" /> Verify Format
+                                                                    </button>
+                                                                )}
+                                                                {status === 'submitted_pending_processing' && (
+                                                                    <button
+                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware)}
+                                                                        className="flex items-center gap-1 px-3 py-2 bg-purple-500 hover:bg-purple-400 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] cursor-pointer"
+                                                                    >
+                                                                        <Send className="w-3 h-3" /> Submit for Review
+                                                                    </button>
+                                                                )}
+                                                                {(status === 'submitted_pending_review' || status === 'in_review') && (
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware)}
+                                                                            className="flex items-center gap-1 px-3 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] cursor-pointer"
+                                                                        >
+                                                                            <Check className="w-3 h-3 stroke-[3]" /> Publish Run
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setDrawerRejectingRunId(runId);
+                                                                                setDrawerRejectionFeedback('');
+                                                                            }}
+                                                                            className="flex items-center gap-1 px-2.5 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/25 text-red-400 text-xs font-bold uppercase tracking-wider rounded-xl transition-colors cursor-pointer"
+                                                                        >
+                                                                            <X className="w-3 h-3" /> Reject
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {(status === 'rejected' || status === 'changes_requested') && (
+                                                                    <button
+                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
+                                                                        className="flex items-center gap-1 px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] cursor-pointer animate-pulse"
+                                                                    >
+                                                                        <RotateCcw className="w-3.5 h-3.5" /> Resubmit Validation
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
+                                                
+                                                {/* Drawer Rejection inline input */}
+                                                {runId !== null && drawerRejectingRunId === runId && (
+                                                    <div className="w-full mt-4 p-4 bg-slate-950/60 border border-red-500/20 rounded-2xl animate-fadeIn flex flex-col gap-3">
+                                                        <div className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center justify-between select-none">
+                                                            <span>Provide Revision Feedback</span>
+                                                            <button 
+                                                                onClick={() => setDrawerRejectingRunId(null)}
+                                                                className="text-slate-400 hover:text-white"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                        <textarea
+                                                            value={drawerRejectionFeedback}
+                                                            onChange={(e) => setDrawerRejectionFeedback(e.target.value)}
+                                                            placeholder="Explain why this run is rejected or what changes are required..."
+                                                            className="w-full p-3 bg-slate-900/80 border border-slate-800 text-slate-200 text-xs rounded-xl outline-none focus:border-red-500/40 min-h-[70px] resize-y placeholder:text-slate-600"
+                                                        />
+                                                        <div className="flex justify-end gap-2 mt-1">
+                                                            <button
+                                                                onClick={() => setDrawerRejectingRunId(null)}
+                                                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold uppercase rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (drawerRejectionFeedback.trim() && updateSubmissionStatus) {
+                                                                        updateSubmissionStatus(runId, 'rejected', drawerRejectionFeedback, stat.model, stat.hardware);
+                                                                        setDrawerRejectingRunId(null);
+                                                                    }
+                                                                }}
+                                                                disabled={!drawerRejectionFeedback.trim()}
+                                                                className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all duration-200 ${
+                                                                    drawerRejectionFeedback.trim()
+                                                                    ? 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer hover:scale-105'
+                                                                    : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                                                }`}
+                                                            >
+                                                                Confirm Rejection
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex-1 flex flex-col min-h-[500px] w-full">
-                            {comparisonTab === 'scatter' ? (
-                                <div className="flex-1 flex flex-col">
-                                    <ThroughputCostChart
-                                        tputType={drawerTputType}
-                                        setTputType={setDrawerTputType}
-                                        yQualityMode={drawerYQualityMode}
-                                        setYQualityMode={setDrawerYQualityMode}
-                                        chartMode={drawerChartMode}
-                                        setChartMode={setDrawerChartMode}
-                                        xQualityMode={drawerXQualityMode}
-                                        setXQualityMode={setDrawerXQualityMode}
-                                        costMode={drawerCostMode}
-                                        setCostMode={setDrawerCostMode}
-                                        showPerChip={drawerShowPerChip}
-                                        setShowPerChip={setDrawerShowPerChip}
-                                        showLabels={drawerShowLabels}
-                                        setShowLabels={setDrawerShowLabels}
-                                        showDataLabels={drawerShowDataLabels}
-                                        setShowDataLabels={setDrawerShowDataLabels}
-                                        showPareto={drawerShowPareto}
-                                        setShowPareto={setDrawerShowPareto}
-                                        qualityMetrics={qualityMetrics}
-                                        allModels={modelStats.map(m => m.model)}
-                                        selectedModels={selectedModels}
-                                        filteredData={filteredBySource}
-                                        getBenchmarkKey={getBenchmarkKey}
-                                        theme="dark"
-                                        isZoomEnabled={drawerIsZoomEnabled}
-                                        setIsZoomEnabled={setDrawerIsZoomEnabled}
-                                        zoomDomain={drawerZoomDomain}
-                                        setZoomDomain={setDrawerZoomDomain}
-                                        chartContainerRef={drawerChartContainerRef}
-                                        isDragging={drawerIsDragging}
-                                        setIsDragging={setDrawerIsDragging}
-                                        lastMouseRef={drawerLastMouseRef}
-                                        chartColorMode={drawerChartColorMode}
-                                        setChartColorMode={setDrawerChartColorMode}
-                                        metricAvailability={drawerMetricAvailability}
-                                        filteredBySource={filteredBySource}
-                                        xAxisMax={drawerXAxisMax}
-                                        setXAxisMax={setDrawerXAxisMax}
-                                        isLogScaleX={drawerIsLogScaleX}
-                                        setIsLogScaleX={setDrawerIsLogScaleX}
-                                        setLatType={setDrawerLatType}
-                                        selectedBenchmarks={selectedBenchmarks}
-                                        baselineBenchmarkKey={baselineBenchmarkKey}
-                                    />
-                                </div>
-                            ) : (
-                                <RunComparisonChart
-                                    filteredBySource={filteredBySource}
-                                    selectedBenchmarks={selectedBenchmarks}
-                                    getBenchmarkKey={getBenchmarkKey}
-                                    baselineBenchmarkKey={baselineBenchmarkKey}
-                                    brv02CustomLabels={brv02CustomLabels}
-                                    theme="dark"
-                                />
-                            )}
-                    </div>
-            </div>
-        </div>
+                        {/* Fixed Footer */}
+                        <div className="pt-4 mt-6 border-t border-slate-900 flex items-center justify-end gap-3 flex-shrink-0 select-none">
+                            <button
+                                type="button"
+                                onClick={() => setShowComparisonDrawer(false)}
+                                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-xs font-bold uppercase tracking-wider text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer shadow-md"
+                            >
+                                Close
+                            </button>
+                        </div>
+                </div>,
+                document.body
+            )}
+            {/* Floating Action Dock when runs are selected */}
+            {selectedBenchmarks.size > 0 && createPortal(
+                <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-4 bg-slate-950/90 backdrop-blur-md border border-slate-800/80 px-4 py-3 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom duration-300">
+                    <span className="text-xs font-mono font-medium text-slate-300">
+                        {selectedBenchmarks.size} {selectedBenchmarks.size === 1 ? 'benchmark' : 'benchmarks'} selected
+                    </span>
+                    <div className="h-4 w-px bg-slate-800" />
+                    <button
+                        onClick={clearSelected}
+                        className="text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                        Unselect All
+                    </button>
+                    <button
+                        onClick={() => setShowComparisonDrawer(true)}
+                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow-md transition-all duration-200 cursor-pointer hover:scale-105"
+                    >
+                        {hasPromotableSelected ? 'Compare & Promote' : 'Compare & Inspect'}
+                    </button>
+                </div>,
+                document.body
+            )}
         </div>
     );
 };

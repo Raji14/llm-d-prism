@@ -317,8 +317,6 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
 // Filtered by source
     const filteredBySource = useMemo(() => {
         const res = data.filter(d => {
-            const hasSource = selectedSources.has(d.source || 'local');
-            if (!hasSource) return false;
 
             // Apply Connection/Source filter
             if (activeFilters.connectionNames && activeFilters.connectionNames.size > 0) {
@@ -430,7 +428,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             return true;
         });
         return res;
-    }, [data, selectedSources, activeFilters]);
+    }, [data, activeFilters]);
 
     // Local copy of modelStats computation
     const modelStats = useMemo(() => {
@@ -500,7 +498,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             connectionNames: new Set()
         };
 
-        const baseData = data.filter(d => selectedSources.has(d.source || 'local'));
+        const baseData = data;
 
         const seenModelsLower = new Set();
         baseData.forEach(d => {
@@ -578,7 +576,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             origins: [...options.origins].sort(),
             connectionNames: [...options.connectionNames].sort()
         };
-    }, [data, selectedSources]);
+    }, [data]);
 
     const facetCounts = useMemo(() => {
         // We use Sets of unique row benchmarkKeys so that the numbers shown in the
@@ -603,7 +601,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             pdRatio: {}
         };
 
-        const baseData = data.filter(d => selectedSources.has(d.source || 'local'));
+        const baseData = data;
 
         const canonicalModelMap = {};
         if (filterOptions && filterOptions.models) {
@@ -774,7 +772,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         });
 
         return finalCounts;
-    }, [data, selectedSources, activeFilters, filterOptions]);
+    }, [data, activeFilters, filterOptions]);
 
     const toggleFilter = (category, value) => {
         setActiveFilters(prev => {

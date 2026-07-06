@@ -1769,7 +1769,37 @@ export const UnifiedDataTable = (props) => {
                         <div className="flex-1 overflow-y-auto space-y-8 pr-1 custom-scrollbar">
                             
                             {/* Section 1: Chart Container */}
-                            <div className="min-h-[500px] w-full flex flex-col">
+                            <div className="min-h-[500px] w-full flex flex-col gap-4">
+                                <div className="flex items-center justify-between border-b border-slate-900 pb-2 select-none">
+                                    <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-900">
+                                        <button
+                                            type="button"
+                                            onClick={() => setComparisonTab('scatter')}
+                                            className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                                                comparisonTab === 'scatter'
+                                                    ? 'bg-cyan-500 text-slate-950 shadow'
+                                                    : 'text-slate-400 hover:text-slate-200'
+                                            }`}
+                                        >
+                                            Scatter Plot
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setComparisonTab('bar')}
+                                            className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
+                                                comparisonTab === 'bar'
+                                                    ? 'bg-cyan-500 text-slate-950 shadow'
+                                                    : 'text-slate-400 hover:text-slate-200'
+                                            }`}
+                                        >
+                                            Bar Chart
+                                        </button>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                        Comparing {selectedBenchmarks.size} Runs
+                                    </span>
+                                </div>
+
                                 {comparisonTab === 'scatter' ? (
                                     <div className="flex-1 flex flex-col">
                                         <ThroughputCostChart
@@ -1854,6 +1884,20 @@ export const UnifiedDataTable = (props) => {
                                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                                                     <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                                                         <div className="flex items-center gap-2 flex-wrap">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    toggleBaseline(stat.benchmarkKey);
+                                                                }}
+                                                                title={stat.benchmarkKey === baselineBenchmarkKey ? 'Clear baseline' : 'Set as baseline'}
+                                                                className={`p-1.5 rounded-xl border transition-colors flex-shrink-0 cursor-pointer ${
+                                                                    stat.benchmarkKey === baselineBenchmarkKey
+                                                                        ? 'bg-cyan-500/10 border-cyan-500/35 text-cyan-400'
+                                                                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-cyan-400 hover:border-cyan-500/20'
+                                                                }`}
+                                                            >
+                                                                <Pin size={11} className={`transition-transform duration-300 ${stat.benchmarkKey === baselineBenchmarkKey ? 'rotate-[45deg]' : '-rotate-45 opacity-65'}`} fill={stat.benchmarkKey === baselineBenchmarkKey ? 'currentColor' : 'none'} />
+                                                            </button>
                                                             <span className="text-sm font-semibold text-white tracking-tight truncate max-w-[280px]" title={stat.model}>
                                                                 {stat.model}
                                                             </span>

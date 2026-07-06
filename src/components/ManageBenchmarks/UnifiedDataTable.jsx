@@ -42,7 +42,6 @@ const getKpiFilterLabel = (filter) => {
 
 export const UnifiedDataTable = (props) => {
     const [showComparisonDrawer, setShowComparisonDrawer] = useState(false);
-    const [comparisonTab, setComparisonTab] = useState('scatter'); // 'scatter' or 'bar'
     
     // Local state for ThroughputCostChart inside Comparison Drawer
     const [drawerTputType, setDrawerTputType] = useState('output');
@@ -1769,95 +1768,52 @@ export const UnifiedDataTable = (props) => {
                         <div className="flex-1 overflow-y-auto space-y-8 pr-1 custom-scrollbar">
                             
                             {/* Section 1: Chart Container */}
-                            <div className="min-h-[500px] w-full flex flex-col gap-4">
-                                <div className="flex items-center justify-between border-b border-slate-900 pb-2 select-none">
-                                    <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-900">
-                                        <button
-                                            type="button"
-                                            onClick={() => setComparisonTab('scatter')}
-                                            className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                                                comparisonTab === 'scatter'
-                                                    ? 'bg-cyan-500 text-slate-950 shadow'
-                                                    : 'text-slate-400 hover:text-slate-200'
-                                            }`}
-                                        >
-                                            Scatter Plot
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setComparisonTab('bar')}
-                                            className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${
-                                                comparisonTab === 'bar'
-                                                    ? 'bg-cyan-500 text-slate-950 shadow'
-                                                    : 'text-slate-400 hover:text-slate-200'
-                                            }`}
-                                        >
-                                            Bar Chart
-                                        </button>
-                                    </div>
-                                    <span className="text-[10px] font-mono text-slate-500">
-                                        Comparing {selectedBenchmarks.size} Runs
-                                    </span>
-                                </div>
-
-                                {comparisonTab === 'scatter' ? (
-                                    <div className="flex-1 flex flex-col">
-                                        <ThroughputCostChart
-                                            tputType={drawerTputType}
-                                            setTputType={setDrawerTputType}
-                                            yQualityMode={drawerYQualityMode}
-                                            setYQualityMode={setDrawerYQualityMode}
-                                            chartMode={drawerChartMode}
-                                            setChartMode={setDrawerChartMode}
-                                            xQualityMode={drawerXQualityMode}
-                                            setXQualityMode={setDrawerXQualityMode}
-                                            costMode={drawerCostMode}
-                                            setCostMode={setDrawerCostMode}
-                                            showPerChip={drawerShowPerChip}
-                                            setShowPerChip={setDrawerShowPerChip}
-                                            showLabels={drawerShowLabels}
-                                            setShowLabels={setDrawerShowLabels}
-                                            showDataLabels={drawerShowDataLabels}
-                                            setShowDataLabels={setDrawerShowDataLabels}
-                                            showPareto={drawerShowPareto}
-                                            setShowPareto={setDrawerShowPareto}
-                                            qualityMetrics={qualityMetrics}
-                                            allModels={modelStats.map(m => m.model)}
-                                            selectedModels={selectedModels}
-                                            filteredData={filteredBySource}
-                                            getBenchmarkKey={getBenchmarkKey}
-                                            theme="dark"
-                                            isZoomEnabled={drawerIsZoomEnabled}
-                                            setIsZoomEnabled={setDrawerIsZoomEnabled}
-                                            zoomDomain={drawerZoomDomain}
-                                            setZoomDomain={setDrawerZoomDomain}
-                                            chartContainerRef={drawerChartContainerRef}
-                                            isDragging={drawerIsDragging}
-                                            setIsDragging={setDrawerIsDragging}
-                                            lastMouseRef={drawerLastMouseRef}
-                                            chartColorMode={drawerChartColorMode}
-                                            setChartColorMode={setDrawerChartColorMode}
-                                            metricAvailability={drawerMetricAvailability}
-                                            filteredBySource={filteredBySource}
-                                            xAxisMax={drawerXAxisMax}
-                                            setXAxisMax={setDrawerXAxisMax}
-                                            isLogScaleX={drawerIsLogScaleX}
-                                            setIsLogScaleX={setDrawerIsLogScaleX}
-                                            setLatType={setDrawerLatType}
-                                            selectedBenchmarks={selectedBenchmarks}
-                                            baselineBenchmarkKey={baselineBenchmarkKey}
-                                        />
-                                    </div>
-                                ) : (
-                                    <RunComparisonChart
-                                        filteredBySource={filteredBySource}
-                                        selectedBenchmarks={selectedBenchmarks}
-                                        getBenchmarkKey={getBenchmarkKey}
-                                        baselineBenchmarkKey={baselineBenchmarkKey}
-                                        brv02CustomLabels={brv02CustomLabels}
-                                        theme="dark"
-                                    />
-                                )}
+                            <div className="min-h-[500px] w-full flex flex-col">
+                                <ThroughputCostChart
+                                    tputType={drawerTputType}
+                                    setTputType={setDrawerTputType}
+                                    yQualityMode={drawerYQualityMode}
+                                    setYQualityMode={setDrawerYQualityMode}
+                                    chartMode={drawerChartMode}
+                                    setChartMode={setDrawerChartMode}
+                                    xQualityMode={drawerXQualityMode}
+                                    setXQualityMode={setDrawerXQualityMode}
+                                    costMode={drawerCostMode}
+                                    setCostMode={setDrawerCostMode}
+                                    showPerChip={drawerShowPerChip}
+                                    setShowPerChip={setDrawerShowPerChip}
+                                    showLabels={drawerShowLabels}
+                                    setShowLabels={setDrawerShowLabels}
+                                    showDataLabels={drawerShowDataLabels}
+                                    setShowDataLabels={setDrawerShowDataLabels}
+                                    showPareto={drawerShowPareto}
+                                    setShowPareto={setDrawerShowPareto}
+                                    qualityMetrics={qualityMetrics}
+                                    allModels={modelStats.map(m => m.model)}
+                                    selectedModels={selectedModels}
+                                    filteredData={filteredBySource}
+                                    getBenchmarkKey={getBenchmarkKey}
+                                    theme="dark"
+                                    isZoomEnabled={drawerIsZoomEnabled}
+                                    setIsZoomEnabled={setDrawerIsZoomEnabled}
+                                    zoomDomain={drawerZoomDomain}
+                                    setZoomDomain={setDrawerZoomDomain}
+                                    chartContainerRef={drawerChartContainerRef}
+                                    isDragging={drawerIsDragging}
+                                    setIsDragging={setDrawerIsDragging}
+                                    lastMouseRef={drawerLastMouseRef}
+                                    chartColorMode={drawerChartColorMode}
+                                    setChartColorMode={setDrawerChartColorMode}
+                                    metricAvailability={drawerMetricAvailability}
+                                    filteredBySource={filteredBySource}
+                                    xAxisMax={drawerXAxisMax}
+                                    setXAxisMax={setDrawerXAxisMax}
+                                    isLogScaleX={drawerIsLogScaleX}
+                                    setIsLogScaleX={setDrawerIsLogScaleX}
+                                    setLatType={setDrawerLatType}
+                                    selectedBenchmarks={selectedBenchmarks}
+                                    baselineBenchmarkKey={baselineBenchmarkKey}
+                                />
                             </div>
 
                             {/* Section 2: Active Submissions Actions */}

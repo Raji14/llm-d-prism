@@ -512,7 +512,7 @@ export const FilterPanel = ({
                                     }`}
                                 >
                                     <div className="flex flex-col justify-start">
-                                        <h3 className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                                        <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
                                             Registry
                                         </h3>
                                     </div>
@@ -537,7 +537,7 @@ export const FilterPanel = ({
                                     }`}
                                 >
                                     <div className="flex flex-col justify-start">
-                                        <h3 className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider mb-1">
+                                        <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
                                             My Subs
                                         </h3>
                                     </div>
@@ -573,7 +573,7 @@ export const FilterPanel = ({
                                                     kpiFilter === 'staged' ? 'bg-amber-400 h-6' : 'bg-amber-500/55'
                                                 }`} />
                                                 <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[7.5px] font-semibold uppercase text-slate-500 tracking-wider">Locally Staged</span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Locally Staged</span>
                                                     <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
                                                         kpiFilter === 'staged' ? 'text-amber-400 font-black' : 'text-slate-200'
                                                     }`}>{staged}</span>
@@ -596,7 +596,7 @@ export const FilterPanel = ({
                                                     kpiFilter === 'processing' ? 'bg-yellow-400 h-6' : 'bg-yellow-500/55'
                                                 }`} />
                                                 <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[7.5px] font-semibold uppercase text-slate-500 tracking-wider">Submitted</span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Submitted</span>
                                                     <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
                                                         kpiFilter === 'processing' ? 'text-yellow-400 font-black' : 'text-slate-200'
                                                     }`}>{processing}</span>
@@ -619,7 +619,7 @@ export const FilterPanel = ({
                                                     kpiFilter === 'in_review' ? 'bg-purple-400 h-6' : 'bg-purple-500/55'
                                                 }`} />
                                                 <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[7.5px] font-semibold uppercase text-slate-500 tracking-wider">Under Review</span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Under Review</span>
                                                     <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
                                                         kpiFilter === 'in_review' ? 'text-purple-400 font-black' : 'text-slate-200'
                                                     }`}>{inReview}</span>
@@ -642,7 +642,7 @@ export const FilterPanel = ({
                                                     kpiFilter === 'approved' ? 'bg-emerald-455 h-6' : 'bg-emerald-500/55'
                                                 }`} />
                                                 <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[7.5px] font-semibold uppercase text-slate-500 tracking-wider">Published</span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Published</span>
                                                     <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
                                                         kpiFilter === 'approved' ? 'text-emerald-450 font-black' : 'text-slate-200'
                                                     }`}>{approved}</span>
@@ -666,7 +666,7 @@ export const FilterPanel = ({
                                                     kpiFilter === 'action' ? 'bg-red-400 h-6' : 'bg-red-500/55'
                                                 }`} />
                                                 <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[7.5px] font-semibold uppercase text-slate-500 tracking-wider">Rejected</span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Rejected</span>
                                                     <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
                                                         kpiFilter === 'action' ? 'text-red-400 font-black' : 'text-slate-200'
                                                     }`}>{rejected}</span>

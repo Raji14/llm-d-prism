@@ -469,420 +469,422 @@ export const FilterPanel = ({
     if (!showFilterPanel) return null;
 
     return (
-        <div className="flex flex-col mb-4">
-                {/* Hero Category KPI Cards */}
-                <div className="flex flex-col xl:flex-row gap-4 mb-6 relative z-40">
-                    {/* Combined Group: Database & Ingestion Overview */}
-                    {/* Group 1: Submission Ingress (Sleek & Spruced Up) */}
-                    <div className="flex-1 xl:flex-[6] flex flex-col justify-start p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/95 to-[#0b0f19] border border-slate-800 hover:border-cyan-500/35 hover:shadow-[0_0_30px_rgba(6,182,212,0.08)] transition-all duration-300 min-h-[128px]">
-                        {/* Header */}
-                        <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center justify-between select-none mb-2.5">
-                            <div className="flex flex-col">
-                                <span className="font-sans tracking-wide">
-                                    Submission Tracker
-                                </span>
-                                <span className="text-[9px] text-slate-400 font-normal normal-case tracking-normal mt-0.5">
-                                    Click any pipeline stage below to filter results in the table below
-                                </span>
-                            </div>
-                            <div className="relative group/tooltip inline-block cursor-help shrink-0">
-                                <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-cyan-400 transition-colors" />
-                                <div className="absolute right-0 top-5 mt-1.5 px-3.5 py-3 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-[11px] font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[300px] pointer-events-none leading-relaxed normal-case tracking-normal backdrop-blur-md space-y-2">
-                                    <div className="font-bold text-xs text-white border-b border-slate-800 pb-1 mb-1 font-sans">Submissions & Registry:</div>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-cyan-400" /> <strong>Benchmark Registry</strong>: Total verified runs loaded into public database.</p>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-amber-500" /> <strong>Locally Staged</strong>: Runs staged locally in browser session.</p>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-yellow-500" /> <strong>Submitted</strong>: Runs uploaded and awaiting ingestion/validation.</p>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-purple-500" /> <strong>Under Review</strong>: Submissions in queue for maintainer verification.</p>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px]. w-1.5 h-1.5 rounded-sm bg-emerald-500" /> <strong>Published</strong>: Approved runs indexed and globally visible.</p>
-                                    <p className="text-[10px] pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-red-500" /> <strong>Rejected</strong>: Failed verification checks or declined runs.</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div id="manage-tour-summary" className="flex flex-col md:flex-row gap-4 items-stretch w-full">
-                            {/* Left Side: DB Summary Stats */}
-                            <div className="flex flex-row shrink-0 gap-2 select-none">
-                                {/* Card 1a: Benchmark Registry */}
-                                <div 
-                                    onClick={() => setKpiFilter(null)}
-                                    className={`flex flex-col justify-between p-2.5 rounded-xl border transition-all duration-300 cursor-pointer w-[90px] ${
-                                        kpiFilter === null 
-                                        ? 'bg-slate-800/60 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.08)]' 
-                                        : 'bg-slate-800/20 border-slate-800/60 hover:bg-slate-800/40 hover:border-slate-700/60'
-                                    }`}
-                                >
-                                    <div className="flex flex-col justify-start">
-                                        <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
-                                            Registry
-                                        </h3>
-                                    </div>
-                                    <div className="flex items-center justify-start mt-1">
-                                        <span className={`text-3xl font-black font-mono tracking-tight leading-none ${
-                                            kpiFilter === null 
-                                            ? 'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.3)]' 
-                                            : 'text-slate-350'
-                                        }`}>
-                                            {totalCount}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {/* Card 1b: My Submissions */}
-                                <div 
-                                    onClick={() => setKpiFilter(kpiFilter === 'my-submissions' ? null : 'my-submissions')}
-                                    className={`flex flex-col justify-between p-2.5 rounded-xl border transition-all duration-300 cursor-pointer w-[90px] ${
-                                        kpiFilter === 'my-submissions' 
-                                        ? 'bg-slate-800/60 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.08)]' 
-                                        : 'bg-slate-800/20 border-slate-800/60 hover:bg-slate-800/40 hover:border-slate-700/60'
-                                    }`}
-                                >
-                                    <div className="flex flex-col justify-start">
-                                        <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
-                                            My Subs
-                                        </h3>
-                                    </div>
-                                    <div className="flex items-center justify-start mt-1">
-                                        <span className={`text-3xl font-black font-mono tracking-tight leading-none ${
-                                            kpiFilter === 'my-submissions' 
-                                            ? 'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.3)]' 
-                                            : 'text-slate-350'
-                                        }`}>
-                                            {verifiedCount}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right Side: Connected Submission Pipeline Flow (World-class Interactive design) */}
-                            <div className="flex-1 w-full flex items-center">
-                                {(() => {
-                                    const { staged, processing, inReview, approved, rejected } = statusCounts;
-                                    return (
-                                        <div className="flex flex-1 items-center justify-between gap-1 bg-slate-950/50 backdrop-blur-sm border border-slate-900/80 p-2 rounded-xl shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.6)] select-none">
-                                            {/* Step 1: Locally Staged */}
-                                            <div 
-                                                onClick={() => setKpiFilter(kpiFilter === 'staged' ? null : 'staged')}
-                                                className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
-                                                    kpiFilter === 'staged' 
-                                                    ? 'bg-amber-500/5 border-amber-500/35 shadow-[0_0_12px_rgba(245,158,11,0.08)] -translate-y-0.5' 
-                                                    : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
-                                                }`}
-                                            >
-                                                {/* Sleek Vertical Accent Bar */}
-                                                <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
-                                                    kpiFilter === 'staged' ? 'bg-amber-400 h-6' : 'bg-amber-500/55'
-                                                }`} />
-                                                <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Locally Staged</span>
-                                                    <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
-                                                        kpiFilter === 'staged' ? 'text-amber-400 font-black' : 'text-slate-200'
-                                                    }`}>{staged}</span>
-                                                </div>
-                                            </div>
-
-                                            <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
-
-                                            {/* Step 2: Submitted */}
-                                            <div 
-                                                onClick={() => setKpiFilter(kpiFilter === 'processing' ? null : 'processing')}
-                                                className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
-                                                    kpiFilter === 'processing' 
-                                                    ? 'bg-yellow-500/5 border-yellow-500/35 shadow-[0_0_12px_rgba(234,179,8,0.08)] -translate-y-0.5' 
-                                                    : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
-                                                }`}
-                                            >
-                                                {/* Sleek Vertical Accent Bar */}
-                                                <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
-                                                    kpiFilter === 'processing' ? 'bg-yellow-400 h-6' : 'bg-yellow-500/55'
-                                                }`} />
-                                                <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Submitted</span>
-                                                    <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
-                                                        kpiFilter === 'processing' ? 'text-yellow-400 font-black' : 'text-slate-200'
-                                                    }`}>{processing}</span>
-                                                </div>
-                                            </div>
-
-                                            <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
-
-                                            {/* Step 3: Under Review */}
-                                            <div 
-                                                onClick={() => setKpiFilter(kpiFilter === 'in_review' ? null : 'in_review')}
-                                                className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
-                                                    kpiFilter === 'in_review' 
-                                                    ? 'bg-purple-500/5 border-purple-500/35 shadow-[0_0_12px_rgba(168,85,247,0.08)] -translate-y-0.5' 
-                                                    : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
-                                                }`}
-                                            >
-                                                {/* Sleek Vertical Accent Bar */}
-                                                <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
-                                                    kpiFilter === 'in_review' ? 'bg-purple-400 h-6' : 'bg-purple-500/55'
-                                                }`} />
-                                                <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Under Review</span>
-                                                    <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
-                                                        kpiFilter === 'in_review' ? 'text-purple-400 font-black' : 'text-slate-200'
-                                                    }`}>{inReview}</span>
-                                                </div>
-                                            </div>
-
-                                            <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
-
-                                            {/* Step 4: Published */}
-                                            <div 
-                                                onClick={() => setKpiFilter(kpiFilter === 'approved' ? null : 'approved')}
-                                                className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
-                                                    kpiFilter === 'approved' 
-                                                    ? 'bg-emerald-500/5 border-emerald-500/35 shadow-[0_0_12px_rgba(16,185,129,0.08)] -translate-y-0.5' 
-                                                    : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
-                                                }`}
-                                            >
-                                                {/* Sleek Vertical Accent Bar */}
-                                                <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
-                                                    kpiFilter === 'approved' ? 'bg-emerald-455 h-6' : 'bg-emerald-500/55'
-                                                }`} />
-                                                <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Published</span>
-                                                    <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
-                                                        kpiFilter === 'approved' ? 'text-emerald-450 font-black' : 'text-slate-200'
-                                                    }`}>{approved}</span>
-                                                </div>
-                                            </div>
-
-                                            {/* Failure dead-letter boundary split */}
-                                            <div className="w-px h-6 bg-slate-900 self-center mx-1 shrink-0" />
-
-                                            {/* Alternative Branch: Rejected */}
-                                            <div 
-                                                onClick={() => setKpiFilter(kpiFilter === 'action' ? null : 'action')}
-                                                className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
-                                                    kpiFilter === 'action' 
-                                                    ? 'bg-red-500/5 border-red-500/35 shadow-[0_0_12px_rgba(239,68,68,0.08)] -translate-y-0.5' 
-                                                    : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
-                                                }`}
-                                            >
-                                                {/* Sleek Vertical Accent Bar */}
-                                                <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
-                                                    kpiFilter === 'action' ? 'bg-red-400 h-6' : 'bg-red-500/55'
-                                                }`} />
-                                                <div className="flex flex-col items-start leading-none">
-                                                    <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Rejected</span>
-                                                    <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
-                                                        kpiFilter === 'action' ? 'text-red-400 font-black' : 'text-slate-200'
-                                                    }`}>{rejected}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Group 2: Benchmark Action Portal (30% Width, Styled like the "Intelligent routing" cards) */}
-                    <div className="flex-1 xl:flex-[3] group relative bg-gradient-to-br from-slate-900 via-slate-900/95 to-[#0b0f19] border border-slate-800 hover:border-cyan-500/30 hover:shadow-[0_0_30px_rgba(34,211,238,0.12)] rounded-2xl p-3.5 transition-all duration-300 flex flex-col justify-between overflow-hidden min-h-[128px]">
-                        <div>
+        <div className="flex flex-col gap-6 mb-4">
+            {/* Top Section: Submission Tracker & Upload Benchmarks */}
+            <div className="flex flex-col lg:flex-row gap-4 relative z-40">
+                {/* Submission Tracker Card */}
+                <div className="flex-1 lg:flex-[7] flex flex-col justify-start p-5 rounded-3xl bg-[#090c15] border border-slate-800/80 hover:border-cyan-500/20 shadow-lg transition-all duration-300 min-h-[128px]">
                             {/* Header */}
-                            <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center select-none mb-2.5">
-                                Upload Benchmarks
+                            <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center justify-between select-none mb-2.5">
+                                <div className="flex flex-col">
+                                    <span className="font-sans tracking-wide">
+                                        Submission Tracker
+                                    </span>
+                                    <span className="text-xs text-slate-400 font-normal normal-case tracking-normal mt-0.5">
+                                        Click any pipeline stage below to filter results in the table below
+                                    </span>
+                                </div>
+                                <div className="relative group/tooltip inline-block cursor-help shrink-0">
+                                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-cyan-400 transition-colors" />
+                                    <div className="absolute right-0 top-5 mt-1.5 px-3.5 py-3 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[300px] pointer-events-none leading-relaxed normal-case tracking-normal backdrop-blur-md space-y-2">
+                                        <div className="font-bold text-xs text-white border-b border-slate-800 pb-1 mb-1 font-sans">Submissions & Results Store:</div>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-cyan-400" /> <strong>Results store</strong>: Total verified runs loaded into public database.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-amber-500" /> <strong>Locally Staged</strong>: Runs staged locally in browser session.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-yellow-500" /> <strong>Submitted</strong>: Runs uploaded and awaiting ingestion/validation.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-purple-500" /> <strong>Under Review</strong>: Submissions in queue for maintainer verification.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px]. w-1.5 h-1.5 rounded-sm bg-emerald-500" /> <strong>Published</strong>: Approved runs indexed and globally visible.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-red-500" /> <strong>Rejected</strong>: Failed verification checks or declined runs.</p>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Descriptions of two distinct scenarios */}
-                            <div className="flex flex-col gap-2.5 text-[10px] text-slate-400 leading-normal select-none my-2">
-                                <div className="flex flex-col items-start pl-2.5 border-l border-emerald-500/30">
-                                    <strong className="text-slate-200 text-[10.5px]">Local Staging</strong>
-                                    <span className="text-slate-400 mt-0.5">Validate run files and preview curves offline.</span>
+                            <div id="manage-tour-summary" className="flex flex-col md:flex-row gap-4 items-stretch w-full">
+                                {/* Left Side: DB Summary Stats */}
+                                <div className="flex flex-row shrink-0 gap-2 select-none">
+                                    {/* Card 1a: Results Store */}
+                                    <div 
+                                        onClick={() => setKpiFilter(null)}
+                                        className={`flex flex-col justify-between p-2.5 rounded-xl border transition-all duration-300 cursor-pointer w-[90px] ${
+                                            kpiFilter === null 
+                                            ? 'bg-slate-800/60 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.08)]' 
+                                            : 'bg-slate-800/20 border-slate-800/60 hover:bg-slate-800/40 hover:border-slate-700/60'
+                                        }`}
+                                    >
+                                        <div className="flex flex-col justify-start">
+                                            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
+                                                Results store
+                                            </h3>
+                                        </div>
+                                        <div className="flex items-center justify-start mt-1">
+                                            <span className={`text-3xl font-black font-mono tracking-tight leading-none ${
+                                                kpiFilter === null 
+                                                ? 'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.3)]' 
+                                                : 'text-slate-350'
+                                            }`}>
+                                                {totalCount}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Card 1b: My Submissions */}
+                                    <div 
+                                        onClick={() => setKpiFilter(kpiFilter === 'my-submissions' ? null : 'my-submissions')}
+                                        className={`flex flex-col justify-between p-2.5 rounded-xl border transition-all duration-300 cursor-pointer w-[90px] ${
+                                            kpiFilter === 'my-submissions' 
+                                            ? 'bg-slate-800/60 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.08)]' 
+                                            : 'bg-slate-800/20 border-slate-800/60 hover:bg-slate-800/40 hover:border-slate-700/60'
+                                        }`}
+                                    >
+                                        <div className="flex flex-col justify-start">
+                                            <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">
+                                                My Subs
+                                            </h3>
+                                        </div>
+                                        <div className="flex items-center justify-start mt-1">
+                                            <span className={`text-3xl font-black font-mono tracking-tight leading-none ${
+                                                kpiFilter === 'my-submissions' 
+                                                ? 'text-cyan-400 drop-shadow-[0_0_6px_rgba(6,182,212,0.3)]' 
+                                                : 'text-slate-350'
+                                            }`}>
+                                                {verifiedCount}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col items-start pl-2.5 border-l border-cyan-500/30">
-                                    <strong className="text-slate-200 text-[10.5px]">Cloud Registry</strong>
-                                    <span className="text-slate-400 mt-0.5">Publish verified telemetry to database.</span>
-                                </div>
-                            </div>
-                        </div>
 
-                        {/* Action Buttons (Exactly two buttons side-by-side at the bottom) */}
-                        <div className="flex gap-2.5 mt-2 w-full">
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    try {
-                                        localStorage.setItem('prism_submit_intent', 'stage-locally');
-                                    } catch (e) {}
-                                    onOpenSubmitDialog && onOpenSubmitDialog('stage-locally');
-                                }}
-                                className="flex-1 py-1.5 px-3 bg-slate-950 border border-emerald-500/40 text-emerald-400 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-xl font-bold text-[10px] flex items-center justify-center transition-all cursor-pointer gap-1.5"
-                            >
-                                Stage Locally
-                            </button>
-
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    try {
-                                        localStorage.setItem('prism_submit_intent', 'submit-review');
-                                    } catch (e) {}
-                                    onOpenSubmitDialog && onOpenSubmitDialog('submit-review');
-                                }}
-                                className="flex-1 py-1.5 px-3 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-650 text-white rounded-xl font-bold text-[10px] flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all cursor-pointer gap-1.5"
-                            >
-                                Publish to Registry
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Primary Row Controls (Always Visible) */}
-                <div className="flex flex-wrap items-center gap-3 bg-[#0d1527] backdrop-blur-xl p-4 border border-slate-800/80 rounded-2xl mb-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] relative z-30">
-                    {/* Search Bar */}
-                    <div id="manage-tour-search" className="relative flex-1 min-w-[240px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                        <input
-                            type="text"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            placeholder="Search by model name or hardware..."
-                            className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-800/40 bg-slate-950 text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-medium"
-                        />
-                    </div>
-
-                    {/* Primary Dropdowns */}
-                    <div className="w-44 flex-shrink-0">
-                        <MultiSelectDropdown 
-                            label="Models"
-                            options={filterOptions.models}
-                            selected={activeFilters.models}
-                            onChange={(val) => toggleFilter('models', val)}
-                            counts={facetCounts.models}
-                        />
-                    </div>
-
-                    <div className="w-44 flex-shrink-0 border-r border-slate-800/40 pr-3 mr-1">
-                        <MultiSelectDropdown 
-                            label="Accelerators"
-                            options={filterOptions.hardware}
-                            selected={activeFilters.hardware}
-                            onChange={(val) => toggleFilter('hardware', val)}
-                            counts={facetCounts.hardware}
-                        />
-                    </div>
-
-                    {/* Grouping Selector */}
-                    <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Group:</span>
-                        <select 
-                            className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
-                            value={groupBy}
-                            onChange={(e) => setGroupBy(e.target.value)}
-                        >
-                            <option value="None">None</option>
-                            <option value="Model">Model</option>
-                            <option value="Hardware">Hardware</option>
-                            <option value="Origin">Source Connections</option>
-                            <option value="OriginFolder">Origin/Folder</option>
-                        </select>
-                    </div>
-
-                    {/* Sorting Selector */}
-                    <div className="flex items-center gap-1 border-r border-slate-900/60 pr-3 mr-1">
-                        <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Sort:</span>
-                        <select 
-                            className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
-                            value={sortByField}
-                            onChange={(e) => setSortByField(e.target.value)}
-                        >
-                            <option value="timestamp">Timestamp</option>
-                            <option value="maxTput">Max Throughput</option>
-                            <option value="minLat">Min Latency</option>
-                            <option value="model">Model Name</option>
-                            <option value="qps">QPS</option>
-                            <option value="inputTput">Input Tok/s</option>
-                            <option value="outputTput">Output Tok/s</option>
-                            <option value="totalTput">Total Tok/s</option>
-                            <option value="ntpot">NTPOT</option>
-                            <option value="tpot">TPOT</option>
-                            <option value="itl">ITL</option>
-                            <option value="ttft">TTFT</option>
-                            <option value="e2e">E2E Latency</option>
-                            <option value="costIn">Cost/1M In</option>
-                            <option value="costOut">Cost/1M Out</option>
-                        </select>
-                        <button
-                            onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                            title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                            className="p-2 text-slate-400 hover:text-slate-200 bg-slate-950/60 rounded-xl border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 transition-colors cursor-pointer flex items-center justify-center"
-                        >
-                            {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
-                        </button>
-                    </div>
-
-                    {/* Columns Dropdown (Metrics Selector) */}
-                    <div className="relative">
-                        <button 
-                            onClick={() => setShowSpecsDropdown(!showSpecsDropdown)}
-                            className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-900/60 bg-slate-950/60 hover:border-slate-850 hover:bg-slate-900/40 text-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors"
-                        >
-                            Metrics ({Object.values(visibleSpecs).filter(Boolean).length})
-                        </button>
-                        {showSpecsDropdown && (
-                            <>
-                                <div className="fixed inset-0 z-20" onClick={() => setShowSpecsDropdown(false)} />
-                                <div className="absolute right-0 mt-2 w-72 bg-slate-950/95 border border-slate-900 rounded-xl shadow-2xl p-4 z-[100] grid grid-cols-1 gap-2 max-h-96 overflow-y-auto backdrop-blur-md">
-                                    <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-1">Toggle visible columns</div>
-                                    {Object.entries(SPEC_LABELS).map(([key, label]) => {
-                                        const isSelected = visibleSpecs[key];
+                                {/* Right Side: Connected Submission Pipeline Flow (World-class Interactive design) */}
+                                <div className="flex-1 w-full flex items-center">
+                                    {(() => {
+                                        const { staged, processing, inReview, approved, rejected } = statusCounts;
                                         return (
-                                            <button
-                                                key={key}
-                                                onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
-                                                className={`w-full text-left px-2 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
-                                            >
-                                                <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-slate-950'}`}>
-                                                    {isSelected && <Check size={10} strokeWidth={3} />}
+                                            <div className="flex flex-1 items-center justify-between gap-1 bg-slate-950/50 backdrop-blur-sm border border-slate-900/80 p-2 rounded-xl shadow-[inset_0_1.5px_3px_rgba(0,0,0,0.6)] select-none">
+                                                {/* Step 1: Locally Staged */}
+                                                <div 
+                                                    onClick={() => setKpiFilter(kpiFilter === 'staged' ? null : 'staged')}
+                                                    className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
+                                                        kpiFilter === 'staged' 
+                                                        ? 'bg-amber-500/5 border-amber-500/35 shadow-[0_0_12px_rgba(245,158,11,0.08)] -translate-y-0.5' 
+                                                        : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
+                                                    }`}
+                                                >
+                                                    {/* Sleek Vertical Accent Bar */}
+                                                    <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
+                                                        kpiFilter === 'staged' ? 'bg-amber-400 h-6' : 'bg-amber-500/55'
+                                                    }`} />
+                                                    <div className="flex flex-col items-start leading-none">
+                                                        <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Locally Staged</span>
+                                                        <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
+                                                            kpiFilter === 'staged' ? 'text-amber-400 font-black' : 'text-slate-200'
+                                                        }`}>{staged}</span>
+                                                    </div>
                                                 </div>
-                                                {label}
-                                            </button>
+
+                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+
+                                                {/* Step 2: Submitted */}
+                                                <div 
+                                                    onClick={() => setKpiFilter(kpiFilter === 'processing' ? null : 'processing')}
+                                                    className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
+                                                        kpiFilter === 'processing' 
+                                                        ? 'bg-yellow-500/5 border-yellow-500/35 shadow-[0_0_12px_rgba(234,179,8,0.08)] -translate-y-0.5' 
+                                                        : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
+                                                    }`}
+                                                >
+                                                    {/* Sleek Vertical Accent Bar */}
+                                                    <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
+                                                        kpiFilter === 'processing' ? 'bg-yellow-400 h-6' : 'bg-yellow-500/55'
+                                                    }`} />
+                                                    <div className="flex flex-col items-start leading-none">
+                                                        <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Submitted</span>
+                                                        <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
+                                                            kpiFilter === 'processing' ? 'text-yellow-400 font-black' : 'text-slate-200'
+                                                        }`}>{processing}</span>
+                                                    </div>
+                                                </div>
+
+                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+
+                                                {/* Step 3: Under Review */}
+                                                <div 
+                                                    onClick={() => setKpiFilter(kpiFilter === 'in_review' ? null : 'in_review')}
+                                                    className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
+                                                        kpiFilter === 'in_review' 
+                                                        ? 'bg-purple-500/5 border-purple-500/35 shadow-[0_0_12px_rgba(168,85,247,0.08)] -translate-y-0.5' 
+                                                        : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
+                                                    }`}
+                                                >
+                                                    {/* Sleek Vertical Accent Bar */}
+                                                    <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
+                                                        kpiFilter === 'in_review' ? 'bg-purple-400 h-6' : 'bg-purple-500/55'
+                                                    }`} />
+                                                    <div className="flex flex-col items-start leading-none">
+                                                        <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Under Review</span>
+                                                        <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
+                                                            kpiFilter === 'in_review' ? 'text-purple-400 font-black' : 'text-slate-200'
+                                                        }`}>{inReview}</span>
+                                                    </div>
+                                                </div>
+
+                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+
+                                                {/* Step 4: Published */}
+                                                <div 
+                                                    onClick={() => setKpiFilter(kpiFilter === 'approved' ? null : 'approved')}
+                                                    className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
+                                                        kpiFilter === 'approved' 
+                                                        ? 'bg-emerald-500/5 border-emerald-500/35 shadow-[0_0_12px_rgba(16,185,129,0.08)] -translate-y-0.5' 
+                                                        : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
+                                                    }`}
+                                                >
+                                                    {/* Sleek Vertical Accent Bar */}
+                                                    <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
+                                                        kpiFilter === 'approved' ? 'bg-emerald-455 h-6' : 'bg-emerald-500/55'
+                                                    }`} />
+                                                    <div className="flex flex-col items-start leading-none">
+                                                        <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Published</span>
+                                                        <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
+                                                            kpiFilter === 'approved' ? 'text-emerald-450 font-black' : 'text-slate-200'
+                                                        }`}>{approved}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Failure dead-letter boundary split */}
+                                                <div className="w-px h-6 bg-slate-900 self-center mx-1 shrink-0" />
+
+                                                {/* Alternative Branch: Rejected */}
+                                                <div 
+                                                    onClick={() => setKpiFilter(kpiFilter === 'action' ? null : 'action')}
+                                                    className={`relative flex items-center pl-3.5 pr-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer overflow-hidden ${
+                                                        kpiFilter === 'action' 
+                                                        ? 'bg-red-500/5 border-red-500/35 shadow-[0_0_12px_rgba(239,68,68,0.08)] -translate-y-0.5' 
+                                                        : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
+                                                    }`}
+                                                >
+                                                    {/* Sleek Vertical Accent Bar */}
+                                                    <div className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r transition-all duration-300 ${
+                                                        kpiFilter === 'action' ? 'bg-red-400 h-6' : 'bg-red-500/55'
+                                                    }`} />
+                                                    <div className="flex flex-col items-start leading-none">
+                                                        <span className="text-[9px] font-bold uppercase text-slate-400/90 tracking-wider">Rejected</span>
+                                                        <span className={`text-sm md:text-base font-extrabold font-mono mt-0.5 transition-colors duration-200 ${
+                                                            kpiFilter === 'action' ? 'text-red-400 font-black' : 'text-slate-200'
+                                                        }`}>{rejected}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         );
-                                    })}
+                                    })()}
                                 </div>
-                            </>
-                        )}
+                            </div>
+                        </div>
+
+                {/* Upload Benchmarks Card */}
+                <div className="flex-1 lg:flex-[3] group relative bg-slate-950/70 border border-slate-900 rounded-3xl p-5 shadow-lg hover:border-cyan-500/20 transition-all duration-300 flex flex-col justify-between overflow-hidden min-h-[128px]">
+                    <div>
+                        {/* Header */}
+                        <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center select-none mb-2.5">
+                            Upload Benchmarks
+                        </div>
+
+                        {/* Descriptions of two distinct scenarios */}
+                        <div className="flex flex-col gap-2.5 text-[10px] text-slate-400 leading-normal select-none my-2">
+                            <div className="flex flex-col items-start pl-2.5 border-l border-emerald-500/30">
+                                <strong className="text-slate-200 text-[10.5px]">Local Staging</strong>
+                                <span className="text-slate-400 mt-0.5">Validate run files and preview curves offline.</span>
+                            </div>
+                            <div className="flex flex-col items-start pl-2.5 border-l border-cyan-500/30">
+                                <strong className="text-slate-200 text-[10.5px]">Results Store</strong>
+                                <span className="text-slate-400 mt-0.5">Publish verified benchmarks to database.</span>
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Advanced Toggle */}
-                    <button 
-                        id="manage-tour-filter-toggle"
-                        onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
-                        className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950/60 text-slate-200 border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 cursor-pointer flex items-center gap-1 transition-colors"
-                    >
-                        {isAdvancedExpanded ? "Basic Filters" : `Advanced Filters${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
-                    </button>
+                    {/* Action Buttons (Exactly two buttons side-by-side at the bottom) */}
+                    <div className="flex gap-2.5 mt-2 w-full">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                try {
+                                    localStorage.setItem('prism_submit_intent', 'stage-locally');
+                                } catch (e) {}
+                                onOpenSubmitDialog && onOpenSubmitDialog('stage-locally');
+                            }}
+                            className="flex-1 py-1.5 px-3 bg-slate-950 border border-emerald-500/40 text-emerald-400 hover:border-emerald-500 hover:bg-emerald-500/10 rounded-xl font-bold text-xs flex items-center justify-center transition-all cursor-pointer gap-1.5"
+                        >
+                            Stage Locally
+                        </button>
+
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                try {
+                                    localStorage.setItem('prism_submit_intent', 'submit-review');
+                                } catch (e) {}
+                                onOpenSubmitDialog && onOpenSubmitDialog('submit-review');
+                            }}
+                            className="flex-1 py-1.5 px-3 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-650 text-white rounded-xl font-bold text-xs flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all cursor-pointer gap-1.5"
+                        >
+                            Publish to Results Store
+                        </button>
+                    </div>
                 </div>
+            </div>
 
-                {/* Saved Preset Chips Row (Always Visible on Main Page) */}
-                {presets.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 mb-4 px-1 select-none animate-in fade-in duration-200">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                            <Bookmark className="w-3 h-3 text-cyan-500" /> Presets:
-                        </span>
-                        {presets.map((preset) => {
-                            const isActive = isPresetActive(preset);
-                            return (
-                                <button
-                                    key={preset.id}
-                                    onClick={() => applyPreset(preset)}
-                                    className={`px-3 py-1 text-xs rounded-xl font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
-                                        isActive 
-                                        ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 font-semibold shadow-sm shadow-cyan-500/10' 
-                                        : 'bg-slate-950/40 text-slate-400 border-slate-850 hover:text-slate-200 hover:border-slate-800'
-                                    }`}
-                                >
-                                    {isActive && <Check className="w-3 h-3 text-cyan-400 stroke-[2.5] animate-in zoom-in-50 duration-200" />}
-                                    <span>{preset.name}</span>
-                                </button>
-                            );
-                        })}
+            {/* Section 2: Explorer & Registry Catalog */}
+            <div className="flex flex-col gap-6 bg-[#070b13]/65 border border-slate-900/90 rounded-3xl p-6 shadow-2xl backdrop-blur-md relative z-30">
+
+                    {/* Primary Row Controls (Always Visible) */}
+                    <div className="flex flex-wrap items-center gap-3 bg-[#0d1527] backdrop-blur-xl p-4 border border-slate-800/80 rounded-2xl mb-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] relative z-30">
+                        {/* Search Bar */}
+                        <div id="manage-tour-search" className="relative flex-1 min-w-[240px]">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <input
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search by model name or hardware..."
+                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-800/40 bg-slate-950 text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-medium"
+                            />
+                        </div>
+
+                        {/* Primary Dropdowns */}
+                        <div className="w-44 flex-shrink-0">
+                            <MultiSelectDropdown 
+                                label="Models"
+                                options={filterOptions.models}
+                                selected={activeFilters.models}
+                                onChange={(val) => toggleFilter('models', val)}
+                                counts={facetCounts.models}
+                            />
+                        </div>
+
+                        <div className="w-44 flex-shrink-0 border-r border-slate-800/40 pr-3 mr-1">
+                            <MultiSelectDropdown 
+                                label="Accelerators"
+                                options={filterOptions.hardware}
+                                selected={activeFilters.hardware}
+                                onChange={(val) => toggleFilter('hardware', val)}
+                                counts={facetCounts.hardware}
+                            />
+                        </div>
+
+                        {/* Grouping Selector */}
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Group:</span>
+                            <select 
+                                className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
+                                value={groupBy}
+                                onChange={(e) => setGroupBy(e.target.value)}
+                            >
+                                <option value="None">None</option>
+                                <option value="Model">Model</option>
+                                <option value="Hardware">Hardware</option>
+                                <option value="Origin">Source Connections</option>
+                                <option value="OriginFolder">Origin/Folder</option>
+                            </select>
+                        </div>
+
+                        {/* Sorting Selector */}
+                        <div className="flex items-center gap-1 border-r border-slate-900/60 pr-3 mr-1">
+                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Sort:</span>
+                            <select 
+                                className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
+                                value={sortByField}
+                                onChange={(e) => setSortByField(e.target.value)}
+                            >
+                                <option value="timestamp">Timestamp</option>
+                                <option value="maxTput">Max Throughput</option>
+                                <option value="minLat">Min Latency</option>
+                                <option value="model">Model Name</option>
+                                <option value="qps">QPS</option>
+                                <option value="inputTput">Input Tok/s</option>
+                                <option value="outputTput">Output Tok/s</option>
+                                <option value="totalTput">Total Tok/s</option>
+                                <option value="ntpot">NTPOT</option>
+                                <option value="tpot">TPOT</option>
+                                <option value="itl">ITL</option>
+                                <option value="ttft">TTFT</option>
+                                <option value="e2e">E2E Latency</option>
+                                <option value="costIn">Cost/1M In</option>
+                                <option value="costOut">Cost/1M Out</option>
+                            </select>
+                            <button
+                                onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                                className="p-2 text-slate-400 hover:text-slate-200 bg-slate-950/60 rounded-xl border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 transition-colors cursor-pointer flex items-center justify-center"
+                            >
+                                {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
+                            </button>
+                        </div>
+
+                        {/* Columns Dropdown (Metrics Selector) */}
+                        <div className="relative">
+                            <button 
+                                onClick={() => setShowSpecsDropdown(!showSpecsDropdown)}
+                                className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-900/60 bg-slate-950/60 hover:border-slate-850 hover:bg-slate-900/40 text-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors"
+                            >
+                                Metrics ({Object.values(visibleSpecs).filter(Boolean).length})
+                            </button>
+                            {showSpecsDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-20" onClick={() => setShowSpecsDropdown(false)} />
+                                    <div className="absolute right-0 mt-2 w-72 bg-slate-950/95 border border-slate-900 rounded-xl shadow-2xl p-4 z-[100] grid grid-cols-1 gap-2 max-h-96 overflow-y-auto backdrop-blur-md">
+                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-1">Toggle visible columns</div>
+                                        {Object.entries(SPEC_LABELS).map(([key, label]) => {
+                                            const isSelected = visibleSpecs[key];
+                                            return (
+                                                <button
+                                                    key={key}
+                                                    onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                    className={`w-full text-left px-2 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+                                                >
+                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-slate-950'}`}>
+                                                        {isSelected && <Check size={10} strokeWidth={3} />}
+                                                    </div>
+                                                    {label}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Advanced Toggle */}
+                        <button 
+                            id="manage-tour-filter-toggle"
+                            onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
+                            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950/60 text-slate-200 border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 cursor-pointer flex items-center gap-1 transition-colors"
+                        >
+                            {isAdvancedExpanded ? "Basic Filters" : `Advanced Filters${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
+                        </button>
                     </div>
-                )}
+
+                    {/* Saved Preset Chips Row (Always Visible on Main Page) */}
+                    {presets.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 mb-1 px-1 select-none animate-in fade-in duration-200">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                                <Bookmark className="w-3 h-3 text-cyan-500" /> Presets:
+                            </span>
+                            {presets.map((preset) => {
+                                const isActive = isPresetActive(preset);
+                                return (
+                                    <button
+                                        key={preset.id}
+                                        onClick={() => applyPreset(preset)}
+                                        className={`px-3 py-1 text-xs rounded-xl font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
+                                            isActive 
+                                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 font-semibold shadow-sm shadow-cyan-500/10' 
+                                            : 'bg-slate-950/40 text-slate-400 border-slate-850 hover:text-slate-200 hover:border-slate-800'
+                                        }`}
+                                    >
+                                        {isActive && <Check className="w-3 h-3 text-cyan-400 stroke-[2.5] animate-in zoom-in-50 duration-200" />}
+                                        <span>{preset.name}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
 
                 {/* Advanced Filters Backdrop */}
                 {isAdvancedExpanded && createPortal(
@@ -1312,40 +1314,41 @@ export const FilterPanel = ({
                 document.body
             )}
             
-            {/* Spacer */}
-            <div className="h-4" />
+            {/* Divider Line */}
+            <div className="border-t border-slate-900/60 my-2" />
 
-              <div id="manage-tour-table">
-              <UnifiedDataTable
-                groupBy={groupBy}
-                sortByField={sortByField}
-                sortDirection={sortDirection}
-                visibleSpecs={visibleSpecs}
-                modelStats={modelStats} selectedModels={selectedModels} filteredBySource={filteredBySource}
-                showSelectedOnly={showSelectedOnly} setShowSelectedOnly={setShowSelectedOnly}
-                selectedBenchmarks={selectedBenchmarks} setSelectedBenchmarks={setSelectedBenchmarks}
-                setActiveFilters={setActiveFilters} expandedModels={expandedModels}
-                toggleBenchmark={toggleBenchmark} toggleModelExpansion={toggleModelExpansion}
-                baselineBenchmarkKey={baselineBenchmarkKey}
-                setBaselineBenchmarkKey={setBaselineBenchmarkKey}
-                hideShowSelectedOnly={hideShowSelectedOnly}
-                renameClearToUnselectAll={renameClearToUnselectAll}
-                brv02Runs={brv02Runs}
-                brv02CustomLabels={brv02CustomLabels}
-                setBrv02CustomLabels={setBrv02CustomLabels}
-                removeBrv02Run={removeBrv02Run}
-                setShowDataPanel={setShowDataPanel}
-                searchTerm={searchTerm}
-                setSearchTerm={setSearchTerm}
-                kpiFilter={kpiFilter}
-                setKpiFilter={setKpiFilter}
-                paretoKeys={paretoKeys}
-                submissionsMap={submissionsMap}
-                updateSubmissionStatus={updateSubmissionStatus}
-                onOpenSubmitDialog={onOpenSubmitDialog}
-                isFiltered={hasFiltersToSave}
-            />
-              </div>
+            <div id="manage-tour-table" className="relative flex flex-col gap-4">
+                <UnifiedDataTable
+                    groupBy={groupBy}
+                    sortByField={sortByField}
+                    sortDirection={sortDirection}
+                    visibleSpecs={visibleSpecs}
+                    modelStats={modelStats} selectedModels={selectedModels} filteredBySource={filteredBySource}
+                    showSelectedOnly={showSelectedOnly} setShowSelectedOnly={setShowSelectedOnly}
+                    selectedBenchmarks={selectedBenchmarks} setSelectedBenchmarks={setSelectedBenchmarks}
+                    setActiveFilters={setActiveFilters} expandedModels={expandedModels}
+                    toggleBenchmark={toggleBenchmark} toggleModelExpansion={toggleModelExpansion}
+                    baselineBenchmarkKey={baselineBenchmarkKey}
+                    setBaselineBenchmarkKey={setBaselineBenchmarkKey}
+                    hideShowSelectedOnly={hideShowSelectedOnly}
+                    renameClearToUnselectAll={renameClearToUnselectAll}
+                    brv02Runs={brv02Runs}
+                    brv02CustomLabels={brv02CustomLabels}
+                    setBrv02CustomLabels={setBrv02CustomLabels}
+                    removeBrv02Run={removeBrv02Run}
+                    setShowDataPanel={setShowDataPanel}
+                    searchTerm={searchTerm}
+                    setSearchTerm={setSearchTerm}
+                    kpiFilter={kpiFilter}
+                    setKpiFilter={setKpiFilter}
+                    paretoKeys={paretoKeys}
+                    submissionsMap={submissionsMap}
+                    updateSubmissionStatus={updateSubmissionStatus}
+                    onOpenSubmitDialog={onOpenSubmitDialog}
+                    isFiltered={hasFiltersToSave}
+                />
+            </div>
         </div>
-    );
+    </div>
+);
 };

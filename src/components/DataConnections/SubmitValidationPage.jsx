@@ -102,25 +102,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         const params = new URLSearchParams(window.location.search);
         return params.get('intent') || 'submit-review';
     }); // 'stage-locally' or 'submit-review'
-    const [selectionMade, setSelectionMade] = useState(() => {
-        if (initialIntent) return true;
-        const params = new URLSearchParams(window.location.search);
-        return !!params.get('intent');
-    });
     const [ingestionSource, setIngestionSource] = useState('local'); // 'local' or 'cloud'
     const [cloudPath, setCloudPath] = useState('');
     const [cloudProvider, setCloudProvider] = useState('gcs'); // 'gcs' or 's3'
-    const [selectedBundleIds, setSelectedBundleIds] = useState([]);
-    const [showBatchEdit, setShowBatchEdit] = useState(false);
-    const [batchWellLitPath, setBatchWellLitPath] = useState('');
-    const [isCustomWellLitPath, setIsCustomWellLitPath] = useState(false);
-    const [customWellLitPath, setCustomWellLitPath] = useState('');
-    const [batchHardware, setBatchHardware] = useState('');
-    const [batchManifestName, setBatchManifestName] = useState('');
-    const [batchManifestUrl, setBatchManifestUrl] = useState('');
-    const [batchEvidenceName, setBatchEvidenceName] = useState('');
-    const [batchEvidenceUrl, setBatchEvidenceUrl] = useState('');
-    const [batchMetadataPairs, setBatchMetadataPairs] = useState([{ key: '', value: '' }]);
+
 
 
     // Wizard navigation & Attribution states
@@ -169,101 +154,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     };
 
 
-    const addMetadataPair = () => {
-        setBatchMetadataPairs(prev => [...prev, { key: '', value: '' }]);
-    };
 
-    const removeMetadataPair = (index) => {
-        setBatchMetadataPairs(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const updateMetadataPair = (index, field, val) => {
-        setBatchMetadataPairs(prev => prev.map((p, i) => i === index ? { ...p, [field]: val } : p));
-    };
-
-    const applyBatchEdit = () => {
-        const parsedMeta = {};
-        for (const pair of batchMetadataPairs) {
-            const k = pair.key.trim();
-            const v = pair.value.trim();
-            if (k) {
-                let parsedVal = v;
-                if (v.toLowerCase() === 'true') parsedVal = true;
-                else if (v.toLowerCase() === 'false') parsedVal = false;
-                else if (!isNaN(v) && v !== '') parsedVal = Number(v);
-                
-                parsedMeta[k] = parsedVal;
-            }
-        }
-
-        setStagedFiles(prev => prev.map(bundle => {
-            if (selectedBundleIds.includes(bundle.id)) {
-                const finalWellLit = batchWellLitPath === 'none'
-                    ? null
-                    : (batchWellLitPath === 'custom'
-                        ? (customWellLitPath.trim() || null)
-                        : (batchWellLitPath || bundle.payload.well_lit_path));
-
-                const updatedPayload = {
-                    ...bundle.payload,
-                    well_lit_path: finalWellLit,
-                    metadata: { ...(bundle.payload.metadata || {}), ...parsedMeta }
-                };
-
-                if (batchHardware.trim()) {
-                    updatedPayload.hardware = {
-                        ...(updatedPayload.hardware || {}),
-                        hardware_name: batchHardware.trim()
-                    };
-                }
-
-                if (batchManifestName.trim() && batchManifestUrl.trim()) {
-                    updatedPayload.manifests = {
-                        ...(updatedPayload.manifests || {}),
-                        [batchManifestName.trim()]: batchManifestUrl.trim()
-                    };
-                }
-
-                if (batchEvidenceName.trim() && batchEvidenceUrl.trim()) {
-                    updatedPayload.evidence = {
-                        ...(updatedPayload.evidence || {}),
-                        [batchEvidenceName.trim()]: batchEvidenceUrl.trim()
-                    };
-                }
-
-                const uploadValidation = validatePrismUploadStructure(updatedPayload, { isUpload: false });
-                const updatedValidation = {
-                    ...bundle.validation,
-                    hasHardware: updatedPayload.hardware?.hardware_name && updatedPayload.hardware.hardware_name !== 'Unknown' && updatedPayload.hardware.hardware_name !== 'Unknown Hardware',
-                    errors: uploadValidation.errors,
-                    warnings: uploadValidation.warnings
-                };
-                return {
-                    ...bundle,
-                    payload: updatedPayload,
-                    validation: updatedValidation
-                };
-            }
-            return bundle;
-        }));
-
-        // Reset state fields
-        setShowBatchEdit(false);
-        setSelectedBundleIds([]);
-        setBatchWellLitPath('');
-        setIsCustomWellLitPath(false);
-        setCustomWellLitPath('');
-        setBatchHardware('');
-        setBatchMetadataPairs([{ key: '', value: '' }]);
-        setBatchManifestName('');
-        setBatchManifestUrl('');
-        setBatchEvidenceName('');
-        setBatchEvidenceUrl('');
-
-        if (addToast) {
-            addToast(`Successfully applied batch metadata to ${selectedBundleIds.length} runs.`, 'success');
-        }
-    };
 
     const updateSingleField = (bundleId, key, value) => {
         setStagedFiles(prev => prev.map(b => {
@@ -1010,7 +901,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 const parsed = JSON.parse(cached);
                 setStagedFiles(parsed);
                 setWizardStep(3);
-                setSelectionMade(true);
                 setUploadIntent('submit-review');
             } catch (e) {
                 console.warn("Failed to load cached staged files", e);
@@ -1020,7 +910,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         } else if (trigger === 'true') {
             localStorage.removeItem('prism_trigger_resume_upload');
             setWizardStep(3);
-            setSelectionMade(true);
             setUploadIntent('submit-review');
             
             try {
@@ -1033,7 +922,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             localStorage.removeItem('prism_upload_wizard_step');
             const stepNum = parseInt(wizardStepSaved, 10);
             setWizardStep(stepNum);
-            setSelectionMade(true);
             setUploadIntent('submit-review');
             
             try {
@@ -1044,7 +932,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             } catch {}
         } else if (initialIntent) {
             setUploadIntent(initialIntent);
-            setSelectionMade(true);
             if (initialIntent === 'stage-locally') {
                 setIngestionSource('local');
                 if (clearAllBrv02Runs) clearAllBrv02Runs();
@@ -1056,7 +943,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
             if (urlIntent) {
                 setUploadIntent(urlIntent);
-                setSelectionMade(true);
                 if (urlIntent === 'stage-locally') {
                     setIngestionSource('local');
                     if (clearAllBrv02Runs) clearAllBrv02Runs();
@@ -1064,7 +950,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             } else if (submitIntent) {
                 localStorage.removeItem('prism_submit_intent');
                 setUploadIntent(submitIntent);
-                setSelectionMade(true);
                 if (submitIntent === 'stage-locally') {
                     setIngestionSource('local');
                     if (clearAllBrv02Runs) clearAllBrv02Runs();
@@ -1135,7 +1020,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         }
     };
 
-    const handleLoadMockTelemetry = async () => {
+    const handleLoadMockBenchmarks = async () => {
         setIsDragging(true);
         try {
             const listRes = await fetch('/api/local/list');
@@ -1220,10 +1105,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             }
 
             setStagedFiles(prev => [...prev, ...parsedBundles]);
-            if (addToast) addToast("Successfully loaded mock telemetry runs.", "success");
+            if (addToast) addToast("Successfully loaded mock benchmark runs.", "success");
         } catch (e) {
-            console.error("Failed to load mock telemetry:", e);
-            if (addToast) addToast("Failed to load mock telemetry: " + e.message, "error");
+            console.error("Failed to load mock benchmarks:", e);
+            if (addToast) addToast("Failed to load mock benchmarks: " + e.message, "error");
         } finally {
             setIsDragging(false);
         }
@@ -1268,6 +1153,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         
         resetWizard();
         localStorage.setItem('prism_activate_staged_filter', 'true');
+        localStorage.setItem('prism_show_post_upload_dialog', 'staged');
         if (onNavigate) {
             onNavigate('results-store');
         }
@@ -1334,6 +1220,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             // Close and reset
             resetWizard();
             localStorage.setItem('prism_activate_my_submissions_filter', 'true');
+            localStorage.setItem('prism_show_post_upload_dialog', 'submitted');
             if (onNavigate) {
                 onNavigate('results-store');
             } else if (onNavigateBack) {
@@ -1353,7 +1240,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         setWizardStep(1);
         setDcoSigned(false);
         setSelectedReviewers([]);
-        setSelectionMade(false);
         try {
             const params = new URLSearchParams(window.location.search);
             params.delete('intent');
@@ -1420,15 +1306,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-900/80 shadow-inner">
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">GitHub Username</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">GitHub Username</label>
                                     <div className="text-xs font-semibold text-slate-200">@{githubSession.username}</div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">Contributor Name</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">Contributor Name</label>
                                     <div className="text-xs font-semibold text-slate-200">{githubSession.name}</div>
                                 </div>
                                 <div>
-                                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">Verified Email</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5 select-none">Verified Email</label>
                                     <div className="text-xs font-semibold text-slate-200">{githubSession.email || 'No public email'}</div>
                                 </div>
                             </div>
@@ -1538,138 +1424,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         );
     };
 
-    if (!selectionMade) {
-        return (
-            <div className="h-screen bg-[#02050b] text-slate-100 flex flex-col font-sans antialiased relative overflow-hidden pt-0 pl-28">
-                {/* Ambient Aurora Glow */}
-                <div className="absolute top-[-10%] left-[20%] w-[600px] h-[400px] bg-cyan-950/15 rounded-full blur-[120px] pointer-events-none animate-pulse" style={{ animationDuration: '10s' }} />
-                <div className="absolute bottom-[5%] right-[5%] w-[500px] h-[350px] bg-purple-950/15 rounded-full blur-[130px] pointer-events-none animate-pulse" style={{ animationDelay: '2s', animationDuration: '12s' }} />
-                
-                {/* Dotted Backdrop Mesh */}
-                <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none z-[1]" />
-                <div className="absolute top-1/4 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent -skew-y-12 pointer-events-none z-[1]" />
-                <div className="absolute top-2/3 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-purple-500/5 to-transparent -skew-y-12 pointer-events-none z-[1]" />
-                {/* Header */}
-                <header className="w-full h-16 border-b border-slate-900/65 flex justify-between items-center px-6 bg-slate-950/20 backdrop-blur-md sticky top-0 z-[49]">
-                    <div className="flex items-center gap-4">
-                        <button onClick={onNavigateBack} className="p-1.5 rounded-xl hover:bg-slate-900/60 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800/60">
-                            <ArrowLeft className="h-5 w-5" />
-                        </button>
-                        
-                        <div className="flex items-center gap-2.5 border-r border-slate-800 pr-4">
-                            <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
-                            <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none">
-                                Prism
-                            </span>
-                        </div>
 
-                        <div className="flex items-center">
-                            <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">Upload Benchmarks</h1>
-                        </div>
-                    </div>
-                </header>
-
-                <main className="flex-1 flex flex-col items-center justify-center p-8 relative overflow-hidden">
-
-                    {/* Header */}
-                    <div className="text-center mb-8 relative">
-                        <span className="text-[10px] text-cyan-400 font-extrabold tracking-widest uppercase bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full">Prism Ingestion Suite</span>
-                        <h2 className="text-2xl font-extrabold text-white flex items-center justify-center gap-2 tracking-tight mt-3">
-                            <Upload className="text-cyan-400 w-6 h-6 animate-pulse" />
-                            Manage Benchmarks & Ingestion
-                        </h2>
-                        <p className="text-slate-400 text-xs mt-2 max-w-lg mx-auto leading-relaxed font-medium">
-                            Choose the preferred workflow pathway to upload, validate, and compare your performance telemetry curves.
-                        </p>
-                    </div>
-
-                    {/* Cards Grid */}
-                    <div className="grid grid-cols-2 gap-6 relative z-10 w-full max-w-3xl">
-                        {/* Option 1: Stage Locally */}
-                        <div 
-                            onClick={() => {
-                                setUploadIntent('stage-locally');
-                                setIngestionSource('local');
-                                if (clearAllBrv02Runs) clearAllBrv02Runs();
-                                setSelectionMade(true);
-                            }}
-                            className="bg-gradient-to-b from-cyan-950/5 to-slate-950/80 p-6 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-cyan-500/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(6,182,212,0.08)] relative overflow-hidden h-full min-h-[380px]"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                            
-                            <div>
-                                {/* Tech Illustration */}
-                                <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/15 transition-colors">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0c1322_1px,transparent_1px),linear-gradient(to_bottom,#0c1322_1px,transparent_1px)] bg-[size:10px_10px]" />
-                                    <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
-                                        <line x1="20" y1="10" x2="20" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                                        <line x1="100" y1="10" x2="100" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                                        <line x1="180" y1="10" x2="180" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                                        <rect x="25" y="25" width="30" height="30" rx="6" fill="rgba(34,211,238,0.05)" stroke="#22d3ee" strokeWidth="1.5" strokeDasharray="3 2" />
-                                        <text x="40" y="44" fill="#22d3ee" fontSize="8" fontWeight="bold" textAnchor="middle">LOCAL</text>
-                                        <path d="M65 40 H 125 M 121 36 L 125 40 L 121 44" stroke="#22d3ee" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        <rect x="135" y="25" width="40" height="30" rx="6" fill="rgba(34,211,238,0.1)" stroke="#22d3ee" strokeWidth="2" />
-                                        <text x="155" y="43" fill="#22d3ee" fontSize="8" fontWeight="extrabold" textAnchor="middle">STAGED</text>
-                                        <circle cx="170" cy="30" r="2.5" fill="#22d3ee" className="animate-ping" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Zap className="h-5 w-5 text-cyan-400" />
-                                    <h3 className="text-base font-extrabold text-slate-100 group-hover:text-cyan-400 transition-colors tracking-tight">Stage Locally</h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed font-medium">
-                                    Load benchmark runs directly into browser memory for immediate visualization and schema validation. Merge results into Intelligent Routing and Agentic Serving dashboards to compare performance without publishing.
-                                </p>
-                            </div>
-
-                            <div className="mt-8 pt-4 border-t border-slate-900/60 flex items-center justify-between text-xs font-bold text-cyan-400 group-hover:text-cyan-300 relative">
-                                <span>Start Local Preview Session</span>
-                                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                            </div>
-                        </div>
-
-                        {/* Option 2: Upload Benchmarks */}
-                        <div 
-                            onClick={() => {
-                                setUploadIntent('submit-review');
-                                setSelectionMade(true);
-                            }}
-                            className="bg-gradient-to-b from-emerald-950/5 to-slate-950/80 p-6 rounded-2xl cursor-pointer group transition-all duration-300 flex flex-col justify-between border border-slate-900 hover:border-emerald-500/35 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_8px_30px_rgba(16,185,129,0.08)] relative overflow-hidden h-full min-h-[380px]"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-
-                            <div>
-                                {/* Tech Illustration */}
-                                <div className="relative h-28 w-full mb-4 bg-slate-950/50 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-emerald-500/15 transition-colors">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0c1322_1px,transparent_1px),linear-gradient(to_bottom,#0c1322_1px,transparent_1px)] bg-[size:10px_10px]" />
-                                    <svg className="w-full h-full p-4 relative z-10" viewBox="0 0 200 80" fill="none">
-                                        <line x1="20" y1="10" x2="20" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                                        <line x1="100" y1="10" x2="100" y2="70" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-                                        <circle cx="45" cy="40" r="15" fill="rgba(16,185,129,0.05)" stroke="rgba(16,185,129,0.4)" strokeWidth="1.5" />
-                                        <path d="M40 40 L 44 44 L 51 36" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                        <path d="M70 40 Q 100 20, 130 35 M 126 31 L 130 35 L 125 38" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 3" />
-                                        <path d="M135 48 C 130 48, 126 44, 126 40 C 126 36, 129 33, 133 32 C 135 28, 140 25, 145 25 C 151 25, 156 29, 157 34 C 160 34, 163 37, 163 41 C 163 45, 159 48, 155 48 Z" fill="rgba(16,185,129,0.1)" stroke="#10b981" strokeWidth="1.5" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <UploadCloud className="h-5 w-5 text-emerald-400" />
-                                    <h3 className="text-base font-extrabold text-slate-100 group-hover:text-emerald-400 transition-colors tracking-tight">Upload Benchmarks</h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed font-medium">
-                                    Sign telemetry DCO and publish runs to the official Results Store. Telemetry undergoes compliance checks and maintainer review before merging into public production dashboards. Supports GCS/S3.
-                                </p>
-                            </div>
-
-                            <div className="mt-8 pt-4 border-t border-slate-900/60 flex items-center justify-between text-xs font-bold text-emerald-400 group-hover:text-emerald-300 relative">
-                                <span>Initiate Submission Wizard</span>
-                                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                            </div>
-                        </div>
-                    </div>
-                </main>
-            </div>
-        );
-    }
 
 
 
@@ -1682,9 +1437,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     if (parsedData) {
                         stagesList.push({
                             id: `${bundle.id}-${sIdx}`,
+                            bundleId: bundle.id,
+                            stage: sIdx + 1,
                             bundleName: bundle.name,
-                            model: parsedData.scenario?.model || bundle.payload?.model_name || 'Unknown',
-                            hardware: parsedData.scenario?.hardware || bundle.payload?.hardware?.hardware_name || 'Unknown',
+                            model: bundle.payload?.model_name || parsedData.scenario?.model || 'Unknown',
+                            hardware: bundle.payload?.hardware?.hardware_name || parsedData.scenario?.hardware || 'Unknown',
                             qps: parsedData.performance?.requestRate || 0,
                             throughput: parsedData.performance?.outputTokenRate || parsedData.performance?.requestRate || 0,
                             ttft: parsedData.performance?.ttftMean || 0,
@@ -1726,6 +1483,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             qps: s.qps,
             model_name: s.model,
             hardware: s.hardware,
+            stage: s.stage,
             
             // Map output rate
             router_output_token_rate: s.throughput,
@@ -1751,6 +1509,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             router_ntpot_p90: s.tpotP50,
             router_ntpot_p99: s.tpotP99
         }));
+
+        // Compute chart metadata dynamically from the resolved staged files
+        const firstStage = filteredStagesList[0];
+        const matchingBundle = firstStage ? stagedFiles.find(b => b.id === firstStage.bundleId) : null;
+        
+        const chartMetadata = firstStage ? {
+            machineType: 'local-instance',
+            accelerator: matchingBundle?.payload?.hardware?.hardware_name || firstStage.hardware,
+            replicas: matchingBundle?.payload?.run_metadata?.accelerator_count || 1,
+            model: matchingBundle?.payload?.model_name || firstStage.model,
+            precision: 'BF16',
+            engine: matchingBundle?.payload?.inference_tool || 'vLLM'
+        } : null;
 
         return (
             <div className="flex flex-col gap-4 w-full h-full text-slate-800 dark:text-slate-100 p-1 animate-in fade-in duration-300">
@@ -1784,6 +1555,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             data={chartFormattedData} 
                             initialXAxis="ttft" 
                             initialYAxis="output" 
+                            metadata={chartMetadata}
                         />
                     </div>
 
@@ -1911,19 +1683,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 {uploadIntent === 'stage-locally' ? (
                                     <>
                                         <p className="text-xs font-bold text-slate-200">
-                                            Stage & Preview Telemetry Runs
+                                            Stage & Preview Benchmark Runs
                                         </p>
-                                        <p className="text-[10px] text-slate-500 leading-normal">
-                                            Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public registry.
+                                        <p className="text-xs text-slate-500 leading-normal">
+                                            Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public Results store.
                                         </p>
                                     </>
                                 ) : (
                                     <>
                                         <p className="text-xs font-bold text-slate-200">
-                                            Publish Telemetry to Registry
+                                            Publish Benchmarks to Results Store
                                         </p>
-                                        <p className="text-[10px] text-slate-500 leading-normal">
-                                            Upload your benchmark run files to validate them, edit their metadata, add developer attribution, and submit them to be reviewed and published to the public registry.
+                                        <p className="text-xs text-slate-500 leading-normal">
+                                            Upload your benchmark run files to validate them, edit their metadata, add developer attribution, and submit them to be reviewed and published to the public Results store.
                                         </p>
                                     </>
                                 )}
@@ -1968,7 +1740,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             >
                                 <UploadCloud size={48} className={`mb-4 ${isDragging ? 'text-cyan-400' : 'text-slate-500'}`} />
                                 <h3 className="font-semibold text-slate-200 mb-2 select-none">Drag & Drop files here</h3>
-                                <p className="text-[10px] text-slate-500 mb-6">Supports .yaml and .json benchmark reports.</p>
+                                <p className="text-xs text-slate-500 mb-6">Supports .yaml and .json benchmark reports.</p>
                                 
                                 <div className="flex flex-col gap-2 w-full max-w-xs">
                                     <label className="relative flex items-center justify-center px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer transition-all shadow-md">
@@ -1989,12 +1761,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         <UploadCloud size={16} />
                                         <span>Cloud Bucket Import</span>
                                     </div>
-                                    <p className="text-[10px] text-slate-500">
+                                    <p className="text-xs text-slate-500">
                                         Ingest verified benchmark runs directly from object storage (Google Cloud Storage or AWS S3).
                                     </p>
                                     
                                     <div>
-                                        <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Provider</label>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Provider</label>
                                         <select 
                                             value={cloudProvider}
                                             onChange={(e) => setCloudProvider(e.target.value)}
@@ -2006,7 +1778,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     </div>
 
                                     <div>
-                                        <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Bucket or Folder Path</label>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Bucket or Folder Path</label>
                                         <input 
                                             type="text"
                                             value={cloudPath}
@@ -2047,9 +1819,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     Benchmark Staging Area
                                 </h3>
                                 <p className="text-xs text-slate-500 max-w-xs leading-relaxed mb-6 select-none">
-                                    Select or scan telemetry runs on the left to begin. Ingested runs will be staged here for validation checks.
+                                    Select or scan benchmark runs on the left to begin. Ingested runs will be staged here for validation checks.
                                 </p>
-                                <div className="text-[10px] text-slate-500 border-t border-slate-900 pt-4 space-y-1.5 w-full max-w-[240px] text-left select-none">
+                                <div className="text-xs text-slate-500 border-t border-slate-900 pt-4 space-y-1.5 w-full max-w-[240px] text-left select-none">
                                     <div className="flex items-center gap-1.5">
                                         <Check size={12} className="text-cyan-400" />
                                         <span>Supports `prism_benchmark_v0.2` logs</span>
@@ -2067,199 +1839,20 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
                                         <div className="flex-1">
                                             <span className="font-bold text-amber-450 block mb-0.5">Verification Required for Inferred Metadata</span>
-                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <span className="bg-amber-500/10 text-amber-450 border border-amber-500/20 px-1 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase tracking-wider mx-0.5">Inferred</span> before continuing to publish to the registry.
+                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <span className="bg-amber-500/10 text-amber-450 border border-amber-500/20 px-1 py-0.5 rounded text-[10px] font-extrabold font-mono uppercase tracking-wider mx-0.5">Inferred</span> before continuing to publish to the Results store.
                                         </div>
                                     </div>
                                 )}
-                                {/* Batch Edit Control Bar */}
-                                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">
-                                    <div className="flex items-center gap-3">
-                                        {wizardStep === 1 && (
-                                            <button 
-                                                onClick={() => setIsUploadSidebarCollapsed(!isUploadSidebarCollapsed)}
-                                                className="mr-1 p-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-cyan-400 cursor-pointer transition-all flex items-center gap-1 select-none"
-                                                title={isUploadSidebarCollapsed ? "Show Ingestion panel" : "Hide Ingestion panel"}
-                                            >
-                                                {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-cyan-400" /> : <ChevronLeft size={14} />}
-                                                <span className="text-[9px] font-extrabold uppercase tracking-wider px-0.5">{isUploadSidebarCollapsed ? "Upload Benchmarks" : "Maximize"}</span>
-                                            </button>
-                                        )}
-                                        <input 
-                                            type="checkbox"
-                                            checked={stagedFiles.filter(f => !f.isSkipped).length > 0 && selectedBundleIds.length === stagedFiles.filter(f => !f.isSkipped).length}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setSelectedBundleIds(stagedFiles.filter(f => !f.isSkipped).map(f => f.id));
-                                                } else {
-                                                    setSelectedBundleIds([]);
-                                                }
-                                            }}
-                                            className="rounded-lg border-slate-900 bg-slate-950 text-cyan-400 focus:ring-cyan-500 h-4 w-4 focus:ring-offset-slate-950 cursor-pointer"
-                                        />
-                                        <span className="font-semibold text-slate-300 text-xs select-none">
-                                            {selectedBundleIds.length} of {stagedFiles.filter(f => !f.isSkipped).length} run(s) selected
-                                        </span>
-                                    </div>
-                                    
-                                    <button 
-                                        onClick={() => setShowBatchEdit(!showBatchEdit)}
-                                        disabled={selectedBundleIds.length === 0}
-                                        className={`px-3 py-1.5 rounded-xl font-semibold transition-all flex items-center gap-1.5 text-xs ${
-                                            selectedBundleIds.length > 0 
-                                            ? 'bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30 cursor-pointer' 
-                                            : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        Batch Edit Selected
-                                    </button>
-                                </div>
-
-                                {/* Batch Edit Panel */}
-                                {showBatchEdit && (
-                                    <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-900 text-xs animate-in slide-in-from-top duration-200 shadow-inner">
-                                        <h4 className="font-bold text-slate-200 mb-3 flex items-center gap-1 text-xs select-none">
-                                            Batch Edit Metadata ({selectedBundleIds.length} runs selected)
-                                        </h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                            <div>
-                                                <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Well-lit Path</label>
-                                                <select 
-                                                    value={batchWellLitPath}
-                                                    onChange={(e) => {
-                                                        const val = e.target.value;
-                                                        setBatchWellLitPath(val);
-                                                        setIsCustomWellLitPath(val === 'custom');
-                                                    }}
-                                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-semibold cursor-pointer outline-none focus:border-cyan-500/50"
-                                                >
-                                                    <option value="">-- No Change --</option>
-                                                    <option value="none">None</option>
-                                                    <option value="optimized-baseline">optimized-baseline</option>
-                                                    <option value="tiered-prefix-cache">tiered-prefix-cache</option>
-                                                    <option value="intelligent-routing">intelligent-routing</option>
-                                                    <option value="pd-disaggregation">pd-disaggregation</option>
-                                                    <option value="custom">-- Enter New Custom Path... --</option>
-                                                </select>
-                                                {isCustomWellLitPath && (
-                                                    <input 
-                                                        type="text"
-                                                        value={customWellLitPath}
-                                                        onChange={(e) => setCustomWellLitPath(e.target.value)}
-                                                        placeholder="Enter custom path (e.g. speculative-decoding)"
-                                                        className="w-full bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 mt-2 font-mono text-[11px] outline-none focus:border-cyan-500/50"
-                                                     />
-                                                )}
-                                            </div>
-                                            <div>
-                                                <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Hardware</label>
-                                                <input 
-                                                    type="text"
-                                                    value={batchHardware}
-                                                    onChange={(e) => setBatchHardware(e.target.value)}
-                                                    placeholder="Accelerator e.g. H100, TPU v6e (or empty to keep)"
-                                                    className="w-full bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-semibold outline-none focus:border-cyan-500/50"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                            <div>
-                                                <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Batch Add Manifest / Deployment</label>
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        type="text"
-                                                        value={batchManifestName}
-                                                        onChange={(e) => setBatchManifestName(e.target.value)}
-                                                        placeholder="Name (e.g. vllm_deployment)"
-                                                        className="w-1/3 bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-semibold outline-none focus:border-cyan-500/50"
-                                                    />
-                                                    <input 
-                                                        type="text"
-                                                        value={batchManifestUrl}
-                                                        onChange={(e) => setBatchManifestUrl(e.target.value)}
-                                                        placeholder="URL (e.g. https://github.com...)"
-                                                        className="w-2/3 bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-mono text-[11px] outline-none focus:border-cyan-500/50"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <label className="block text-[9px] font-extrabold text-slate-500 mb-1 uppercase tracking-wider">Batch Add Evidence Log</label>
-                                                <div className="flex gap-2">
-                                                    <input 
-                                                        type="text"
-                                                        value={batchEvidenceName}
-                                                        onChange={(e) => setBatchEvidenceName(e.target.value)}
-                                                        placeholder="Name (e.g. run_log)"
-                                                        className="w-1/3 bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-semibold outline-none focus:border-cyan-500/50"
-                                                    />
-                                                    <input 
-                                                        type="text"
-                                                        value={batchEvidenceUrl}
-                                                        onChange={(e) => setBatchEvidenceUrl(e.target.value)}
-                                                        placeholder="Logs URL (e.g. gs://...)"
-                                                        className="w-2/3 bg-slate-950 border border-slate-900 rounded-xl px-2.5 py-1.5 text-slate-300 font-mono text-[11px] outline-none focus:border-cyan-500/50"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="mb-4 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <label className="block text-slate-500 dark:text-slate-400 font-bold">CUSTOM METADATA TAGS</label>
-                                                <button
-                                                    type="button"
-                                                    onClick={addMetadataPair}
-                                                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold uppercase tracking-wider flex items-center gap-1 bg-cyan-500/5 hover:bg-cyan-500/10 border border-cyan-500/25 px-2 py-0.5 rounded-lg transition-all"
-                                                >
-                                                    + Add Tag
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                                                {batchMetadataPairs.map((pair, idx) => (
-                                                    <div key={idx} className="flex items-center gap-2">
-                                                        <input 
-                                                            type="text"
-                                                            value={pair.key}
-                                                            onChange={(e) => updateMetadataPair(idx, 'key', e.target.value)}
-                                                            placeholder="Key (e.g. machine_type)"
-                                                            className="w-1/2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1 text-slate-800 dark:text-slate-100 text-xs font-semibold"
-                                                        />
-                                                        <input 
-                                                            type="text"
-                                                            value={pair.value}
-                                                            onChange={(e) => updateMetadataPair(idx, 'value', e.target.value)}
-                                                            placeholder="Value (e.g. a3-highgpu)"
-                                                            className="w-1/2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded px-2.5 py-1 text-slate-800 dark:text-slate-100 text-xs font-mono"
-                                                        />
-                                                        {batchMetadataPairs.length > 1 && (
-                                                            <button 
-                                                                type="button"
-                                                                onClick={() => removeMetadataPair(idx)}
-                                                                className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-slate-800/40 transition-colors"
-                                                            >
-                                                                <Trash2 size={12} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex justify-end gap-2">
-                                            <button 
-                                                onClick={() => setShowBatchEdit(false)}
-                                                className="px-3 py-1.5 rounded font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button 
-                                                onClick={applyBatchEdit}
-                                                className="px-4 py-1.5 rounded font-semibold bg-cyan-500 text-white hover:bg-cyan-600 transition-colors shadow-sm"
-                                            >
-                                                Apply to Selected
-                                            </button>
-                                        </div>
+                                {wizardStep === 1 && (
+                                    <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs mb-1">
+                                        <button 
+                                            onClick={() => setIsUploadSidebarCollapsed(!isUploadSidebarCollapsed)}
+                                            className="p-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-cyan-400 cursor-pointer transition-all flex items-center gap-1 select-none"
+                                            title={isUploadSidebarCollapsed ? "Show Ingestion panel" : "Hide Ingestion panel"}
+                                        >
+                                            {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-cyan-400" /> : <ChevronLeft size={14} />}
+                                            <span className="text-[9px] font-extrabold uppercase tracking-wider px-0.5">{isUploadSidebarCollapsed ? "Upload Benchmarks" : "Maximize"}</span>
+                                        </button>
                                     </div>
                                 )}
 
@@ -2306,21 +1899,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                 onClick={() => toggleExpand(bundle.id)}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    {wizardStep === 2 && (
-<input 
-                                                        type="checkbox"
-                                                        checked={selectedBundleIds.includes(bundle.id)}
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        onChange={() => {
-                                                            setSelectedBundleIds(prev => 
-                                                                prev.includes(bundle.id) 
-                                                                ? prev.filter(id => id !== bundle.id) 
-                                                                : [...prev, bundle.id]
-                                                            );
-                                                        }}
-                                                        className="rounded border-slate-300 dark:border-slate-700 text-cyan-500 focus:ring-cyan-500 h-4 w-4"
-                                                    />
-)}
                                                     {(!bundle.validation.format || bundle.validation.errors.length > 0) && (
                                                         <AlertCircle size={18} className="text-red-500 shrink-0" />
                                                     )}
@@ -2401,28 +1979,42 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                                                         <div className="lg:col-span-2 space-y-4">
                                                     
-                                                    {bundle.validation.errors.length > 0 && (
-                                                        <div className="mb-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 text-xs">
-                                                            <h4 className="font-semibold mb-1 flex items-center gap-1"><ShieldAlert size={14}/> Errors:</h4>
-                                                            <ul className="list-disc pl-5 space-y-1">
-                                                                {bundle.validation.errors.map((e, i) => <li key={i}>{e}</li>)}
-                                                            </ul>
-                                                        </div>
-                                                    )}
-                                                    {bundle.validation.warnings.filter(w => 
-                                                        !w.toLowerCase().includes("hardware metadata is missing") && 
-                                                        !w.toLowerCase().includes("missing attribution fields")
-                                                    ).length > 0 && (
-                                                        <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-amber-700 dark:text-amber-300 text-xs">
-                                                            <h4 className="font-semibold mb-1 flex items-center gap-1"><AlertCircle size={14}/> Warnings:</h4>
-                                                            <ul className="list-disc pl-5 space-y-1">
-                                                                {bundle.validation.warnings.filter(w => 
-                                                                    !w.toLowerCase().includes("hardware metadata is missing") && 
-                                                                    !w.toLowerCase().includes("missing attribution fields")
-                                                                ).map((e, i) => <li key={i}>{e}</li>)}
-                                                            </ul>
-                                                        </div>
-                                                    )}
+                                                    {(() => {
+                                                        const activeErrors = bundle.validation.errors || [];
+                                                        const activeWarnings = (bundle.validation.warnings || []).filter(w => 
+                                                            !w.toLowerCase().includes("hardware metadata is missing") && 
+                                                            !w.toLowerCase().includes("missing attribution fields")
+                                                        );
+
+                                                        if (activeErrors.length === 0 && activeWarnings.length === 0) return null;
+
+                                                        const hasErrors = activeErrors.length > 0;
+                                                        
+                                                        return (
+                                                            <div className={`mb-3 p-3 rounded-lg border text-xs ${
+                                                                hasErrors 
+                                                                    ? 'bg-red-50 dark:bg-red-900/25 border-red-200 dark:border-red-900/50 text-red-750 dark:text-red-300' 
+                                                                    : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/80 text-amber-700 dark:text-amber-300'
+                                                            }`}>
+                                                                {hasErrors && (
+                                                                    <div className={activeWarnings.length > 0 ? "mb-2" : ""}>
+                                                                        <h4 className="font-semibold mb-1 flex items-center gap-1 text-red-750 dark:text-red-300"><ShieldAlert size={14}/> Errors:</h4>
+                                                                        <ul className="list-disc pl-5 space-y-1 font-semibold">
+                                                                            {activeErrors.map((e, i) => <li key={i}>{e}</li>)}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
+                                                                {activeWarnings.length > 0 && (
+                                                                    <div>
+                                                                        <h4 className="font-semibold mb-1 flex items-center gap-1 text-amber-750 dark:text-amber-300"><AlertCircle size={14}/> Warnings:</h4>
+                                                                        <ul className="list-disc pl-5 space-y-1">
+                                                                            {activeWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                     <div className="text-[10px] text-slate-500 italic mb-2 px-1 select-none font-semibold">
                                                           * Fields marked with "Inferred" are auto-populated by guessing from configuration files and should be verified.
                                                       </div>
@@ -2870,23 +2462,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
                 {/* Footer */}
                 <div className="p-4 border-t border-slate-900/60 bg-slate-950/40 backdrop-blur-md flex items-center justify-between">
-                    {/* Left Side: Back or Cancel */}
+                    {/* Left Side: Back */}
                     <div>
-                        {wizardStep > 1 ? (
-                            <button 
-                                onClick={() => setWizardStep(prev => prev - 1)}
-                                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:bg-slate-900/60 border border-transparent hover:border-slate-800/40 transition-all flex items-center gap-1.5 cursor-pointer"
-                            >
-                                <ArrowLeft size={14} /> Back
-                            </button>
-                        ) : (
-                            <button 
-                                onClick={() => setSelectionMade(false)}
-                                className="px-4 py-2 text-xs font-semibold text-slate-450 hover:text-slate-350 transition-all cursor-pointer flex items-center gap-1"
-                            >
-                                <ArrowLeft size={12} /> Change Ingestion Mode
-                            </button>
-                        )}
+                        <button 
+                            onClick={wizardStep > 1 ? () => setWizardStep(prev => prev - 1) : onNavigateBack}
+                            className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:bg-slate-900/60 border border-transparent hover:border-slate-800/40 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                            <ArrowLeft size={14} /> Back
+                        </button>
                     </div>
 
                     {/* Middle: Step Progress Label */}
@@ -2932,27 +2515,17 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         <ArrowRight size={14} />
                                     </button>
                                 ) : (
-                                    <>
-                                        <button 
-                                            onClick={handleStageLocally}
-                                            disabled={validCount === 0}
-                                            className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 border border-slate-900 hover:border-slate-800 rounded-xl bg-slate-950/20 hover:bg-slate-900/40 transition-all cursor-pointer mr-2"
-                                            title="Stage directly to local memory only."
-                                        >
-                                            Stage locally only
-                                        </button>
-                                        <button 
-                                            onClick={() => setWizardStep(3)}
-                                            disabled={validCount === 0}
-                                            className={`px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
-                                                validCount > 0 
-                                                ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md' 
-                                                : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
-                                            }`}
-                                        >
-                                            Next <ArrowRight size={14} />
-                                        </button>
-                                    </>
+                                    <button 
+                                        onClick={() => setWizardStep(3)}
+                                        disabled={validCount === 0}
+                                        className={`px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${
+                                            validCount > 0 
+                                            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md' 
+                                            : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        Next <ArrowRight size={14} />
+                                    </button>
                                 )}
                             </div>
                         )}
@@ -2981,13 +2554,6 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         {wizardStep === 4 && (
                             <div className="flex items-center gap-3">
                                 <button 
-                                    onClick={handleStageLocally}
-                                    className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 border border-slate-900 hover:border-slate-800 rounded-xl bg-slate-950/20 hover:bg-slate-900/40 transition-all cursor-pointer"
-                                    title="Load directly to your browser staging area without submitting to review."
-                                >
-                                    Stage Locally
-                                </button>
-                                <button 
                                     onClick={handleSubmit}
                                     disabled={isSubmitting}
                                     className="px-5 py-2 text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl shadow-md hover:shadow-emerald-500/10 flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-500/20"
@@ -2996,6 +2562,13 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 </button>
                             </div>
                         )}
+
+                        <button 
+                            onClick={onNavigateBack}
+                            className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-400 hover:text-slate-200 border border-slate-900 hover:border-slate-800 hover:bg-slate-900/40 transition-all cursor-pointer"
+                        >
+                            Cancel
+                        </button>
                     </div>
                 </div>
 

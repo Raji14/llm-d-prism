@@ -24,6 +24,75 @@ const getCleanModelName = (name) => {
     return name.replace(/\s*\[.*?\]/g, '').replace(/\s*\(.*?\)/g, '').trim();
 };
 
+const getCardStatusAccent = (isBrv02, runId, submissionsMap) => {
+    if (!isBrv02) return {
+        borderClass: 'border-slate-200 dark:border-slate-800 hover:border-slate-700',
+        badge: null,
+        accentBar: null
+    };
+
+    const sub = submissionsMap ? submissionsMap[runId] : null;
+    const status = sub?.status || 'staged';
+
+    if (status === 'staged') {
+        return {
+            borderClass: 'border-amber-500/30 dark:border-amber-500/20 hover:border-amber-400/50',
+            bgClass: 'bg-amber-500/[0.02]',
+            badge: (
+                <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-wider font-extrabold select-none animate-pulse">
+                    Locally Staged
+                </span>
+            ),
+            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-amber-500 z-10" />
+        };
+    }
+    
+    if (status === 'submitted_pending_processing' || status === 'submitted_pending_review' || status === 'in_review') {
+        return {
+            borderClass: 'border-purple-500/30 dark:border-purple-500/20 hover:border-purple-400/50',
+            bgClass: 'bg-purple-500/[0.02]',
+            badge: (
+                <span className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-wider font-extrabold select-none animate-pulse">
+                    Under Review
+                </span>
+            ),
+            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-purple-500 z-10" />
+        };
+    }
+
+    if (status === 'public' || status === 'promoted' || status === 'approved') {
+        return {
+            borderClass: 'border-emerald-500/30 dark:border-emerald-500/20 hover:border-emerald-400/50',
+            bgClass: 'bg-emerald-500/[0.02]',
+            badge: (
+                <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-wider font-extrabold select-none">
+                    Published
+                </span>
+            ),
+            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-emerald-500 z-10" />
+        };
+    }
+
+    if (status === 'rejected' || status === 'changes_requested') {
+        return {
+            borderClass: 'border-red-500/30 dark:border-red-500/20 hover:border-red-400/50',
+            bgClass: 'bg-red-500/[0.02]',
+            badge: (
+                <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-wider font-extrabold select-none">
+                    Rejected
+                </span>
+            ),
+            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-500 z-10" />
+        };
+    }
+
+    return {
+        borderClass: 'border-slate-200 dark:border-slate-800 hover:border-slate-700',
+        badge: null,
+        accentBar: null
+    };
+};
+
 const getKpiFilterLabel = (filter) => {
     switch (filter) {
         case 'my-submissions': return 'My Submissions';
@@ -595,13 +664,13 @@ export const UnifiedDataTable = (props) => {
                     glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
                     radialGlow: 'bg-cyan-500/10',
                     title: 'No submitted benchmarks found',
-                    description: "You have not submitted any benchmark runs to the registry yet. Staged and submitted benchmarks will appear here.",
+                    description: "You have not submitted any benchmark runs to the Results store yet. Staged and submitted benchmarks will appear here.",
                     action: (
                         <button
                             onClick={() => onOpenSubmitDialog && onOpenSubmitDialog('submit-review')}
                             className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
                         >
-                            Publish to registry
+                            Publish to Results store
                         </button>
                     )
                 };
@@ -629,7 +698,7 @@ export const UnifiedDataTable = (props) => {
                     glowClass: 'shadow-[0_0_30px_rgba(16,185,129,0.2)] bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
                     radialGlow: 'bg-emerald-500/10',
                     title: 'No production-ready runs found',
-                    description: "No benchmarks currently meet the validation criteria. To publish to the registry, ensure your runs comply with all validation rules.",
+                    description: "No benchmarks currently meet the validation criteria. To publish to the Results store, ensure your runs comply with all validation rules.",
                     action: (
                         <button
                             onClick={clearFilters}
@@ -742,6 +811,17 @@ export const UnifiedDataTable = (props) => {
                     )
                 };
             default:
+                if (modelStats.length === 0) {
+                    return {
+                        icon: <FileText className="w-8 h-8" />,
+                        themeColor: 'cyan',
+                        glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
+                        radialGlow: 'bg-cyan-500/10',
+                        title: 'No benchmarks found',
+                        description: "The Results store is currently empty. You can stage your runs locally or publish them to the Results store using the buttons above.",
+                        action: null
+                    };
+                }
                 return {
                     icon: <Search className="w-8 h-8" />,
                     themeColor: 'cyan',
@@ -914,7 +994,7 @@ export const UnifiedDataTable = (props) => {
                         </p>
                         {emptyConfig.action}
 
-                        {!isFiltered && (
+                        {!isFiltered && modelStats.length > 0 && (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-4xl mx-auto">
                                 {/* Card 1: Cloud Store */}
                                 <div 
@@ -1010,15 +1090,18 @@ export const UnifiedDataTable = (props) => {
                                     const isl = uniqueIsl.length === 1 ? uniqueIsl[0] : (uniqueIsl.length > 1 ? 'Var' : '-');
                                     const osl = uniqueOsl.length === 1 ? uniqueOsl[0] : (uniqueOsl.length > 1 ? 'Var' : '-');
 
+                                    const statusAccent = getCardStatusAccent(isBrv02, runId, submissionsMap);
+                                    const cardBorderClass = isSelected 
+                                        ? 'border-blue-400 dark:border-blue-600 ring-1 ring-blue-400 dark:ring-blue-600/50' 
+                                        : statusAccent.borderClass;
+                                    const cardBgClass = isSelected ? '' : (statusAccent.bgClass || '');
+
                                     return (
                                         <div 
                                             key={stat.benchmarkKey || stat.model}
-                                            className={`flex flex-col bg-white dark:bg-slate-900 border rounded-lg overflow-hidden transition-all shadow-sm ${
-                                                isSelected 
-                                                    ? 'border-blue-400 dark:border-blue-600 ring-1 ring-blue-400 dark:ring-blue-600/50' 
-                                                    : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
-                                            } ${isBaseline ? 'ring-2 ring-cyan-400/50' : ''}`}
+                                            className={`flex flex-col bg-white dark:bg-slate-900 border rounded-lg overflow-hidden transition-all shadow-sm relative ${cardBorderClass} ${cardBgClass} ${isBaseline ? 'ring-2 ring-cyan-400/50' : ''}`}
                                         >
+                                            {statusAccent.accentBar}
                                             {/* Card Main Row (Header) */}
                                             <div className="flex items-stretch min-h-[60px]">
                                                 {/* Left Checkbox Area (Dedicated Click Target) */}
@@ -1312,6 +1395,7 @@ export const UnifiedDataTable = (props) => {
                                                                                                 ? brv02CustomLabels[runId] 
                                                                                                 : (stat.model_name || stat.model || meta.model_name)}
                                                                                         </span>
+                                                                                        {statusAccent.badge}
                                                                                         {isBrv02 && (
                                                                                             <button
                                                                                                 onClick={(e) => {
@@ -1377,7 +1461,7 @@ export const UnifiedDataTable = (props) => {
                                                                                                                     updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware);
                                                                                                                 }
                                                                                                             }}
-                                                                                                            title="Approve this run and publish it to the global registry"
+                                                                                                            title="Approve this run and publish it to the global Results store"
                                                                                                             className="px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-455 text-[10px] font-extrabold uppercase tracking-wider transition-colors cursor-pointer select-none"
                                                                                                         >
                                                                                                             Approve
@@ -1417,7 +1501,7 @@ export const UnifiedDataTable = (props) => {
                                                                                     </div>
                                                                                     {rejectingRunId === runId && (
                                                                                         <div onClick={e => e.stopPropagation()} className="p-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-lg shadow-inner w-64 flex flex-col gap-2 mt-1 z-30">
-                                                                                            <div className="text-[10px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wider">Reason for Rejecting Run</div>
+                                                                                            <div className="text-xs font-bold text-red-500 dark:text-red-400 uppercase tracking-wider">Reason for Rejecting Run</div>
                                                                                             <textarea
                                                                                                 autoFocus
                                                                                                 value={rejectionFeedback}
@@ -1425,7 +1509,7 @@ export const UnifiedDataTable = (props) => {
                                                                                                 placeholder="Reason details..."
                                                                                                 className="w-full text-xs p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded text-slate-800 dark:text-slate-200 focus:outline-none focus:border-red-500/50 resize-none h-12 font-sans"
                                                                                             />
-                                                                                            <div className="flex justify-end gap-2 text-[10px]">
+                                                                                            <div className="flex justify-end gap-2 text-xs">
                                                                                                 <button
                                                                                                     onClick={() => setRejectingRunId(null)}
                                                                                                     className="px-2 py-0.5 text-slate-500 hover:text-slate-750 dark:text-slate-400 dark:hover:text-slate-250 transition-colors uppercase font-bold"
@@ -1863,7 +1947,7 @@ export const UnifiedDataTable = (props) => {
                                                                 </span>
                                                             ) : (
                                                                 <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/40 text-emerald-400 border border-emerald-900/35">
-                                                                    Production Registry
+                                                                    Production Results Store
                                                                 </span>
                                                             )}
                                                             
@@ -1948,7 +2032,7 @@ export const UnifiedDataTable = (props) => {
                                                 {/* Drawer Rejection inline input */}
                                                 {runId !== null && drawerRejectingRunId === runId && (
                                                     <div className="w-full mt-4 p-4 bg-slate-950/60 border border-red-500/20 rounded-2xl animate-fadeIn flex flex-col gap-3">
-                                                        <div className="text-[10px] font-bold text-red-400 uppercase tracking-widest flex items-center justify-between select-none">
+                                                        <div className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center justify-between select-none">
                                                             <span>Provide Revision Feedback</span>
                                                             <button 
                                                                 onClick={() => setDrawerRejectingRunId(null)}
@@ -1966,7 +2050,7 @@ export const UnifiedDataTable = (props) => {
                                                         <div className="flex justify-end gap-2 mt-1">
                                                             <button
                                                                 onClick={() => setDrawerRejectingRunId(null)}
-                                                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[10px] font-bold uppercase rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                                                                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold uppercase rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
                                                             >
                                                                 Cancel
                                                             </button>
@@ -1978,7 +2062,7 @@ export const UnifiedDataTable = (props) => {
                                                                     }
                                                                 }}
                                                                 disabled={!drawerRejectionFeedback.trim()}
-                                                                className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all duration-200 ${
+                                                                className={`px-3 py-1.5 text-xs font-bold uppercase rounded-lg transition-all duration-200 ${
                                                                     drawerRejectionFeedback.trim()
                                                                     ? 'bg-red-500 hover:bg-red-400 text-slate-950 cursor-pointer hover:scale-105'
                                                                     : 'bg-slate-800 text-slate-500 cursor-not-allowed'

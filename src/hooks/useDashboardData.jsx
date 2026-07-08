@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { CacheManager } from '../utils/cacheManager';
 import { QualityParser } from '../utils/qualityParser';
 import { normalizeHardware, normalizeModelName } from '../utils/dataParser';
@@ -267,15 +267,15 @@ export const useDashboardData = (initialState, dashboardState) => {
         localStorage.setItem('prism_saved_sources', JSON.stringify(toSave));
     }, [bucketConfigs, awsBucketConfigs, apiConfigs, selectedSources, enableLLMDResults]);
 
-    const removeToast = (id) => {
+    const removeToast = useCallback((id) => {
         setToasts(prev => prev.filter(t => t.id !== id));
-    };
+    }, []);
 
-    const addToast = (message, type = 'info') => {
+    const addToast = useCallback((message, type = 'info') => {
         const id = Date.now() + Math.random();
         setToasts(prev => [...prev, { id, message, type }]);
         setTimeout(() => removeToast(id), 8000); // 8 Seconds
-    };
+    }, [removeToast]);
 
     // --- Extracted Block ---
     // Drive Sync Function
@@ -989,7 +989,7 @@ export const useDashboardData = (initialState, dashboardState) => {
                 // Ensure valid source info
                 newD.source_info = {
                     type: 'drive_archive',
-                    origin: sweepId !== 'unknown' ? sweepId : 'llm-d Registry', // Fallback for fixed static files
+                    origin: sweepId !== 'unknown' ? sweepId : 'llm-d Results Store', // Fallback for fixed static files
                     run_id: runId,   // Keep original run_id
                     file_identifier: d._source_file || d.filename || 'archived_data'
                 };
@@ -1773,27 +1773,53 @@ export const useDashboardData = (initialState, dashboardState) => {
                 const config = bundle.metadataFiles.config ? bundle.metadataFiles.config.parsed : null;
                 const summary = bundle.metadataFiles.summary ? bundle.metadataFiles.summary.parsed : null;
 
-                for (const sf of bundle.stageFiles) {
-                    const identifier = sf.file.webkitRelativePath || sf.file.name;
-                    const record = await parseReportV02(sf.content, identifier);
-                    if (record) {
-                        if (!isSubmit) {
-                            record.runId = `${record.runId}-preview`;
+                if (bundle.stageFiles && bundle.stageFiles.length > 0) {
+                    for (const sf of bundle.stageFiles) {
+                        const identifier = sf.file.webkitRelativePath || sf.file.name;
+                        const record = await parseReportV02(sf.content, identifier);
+                        if (record) {
+                            if (!isSubmit) {
+                                record.runId = `${record.runId}-preview`;
+                            }
+                            // Enrich stage record with bundle metadata
+                            record.run_metadata = metadata;
+                            record.config = config;
+                            record.summary = summary;
+                            record.wellLitPath = bundle.payload.well_lit_path;
+                            record.well_lit_path = bundle.payload.well_lit_path;
+                            record.targetDashboards = bundle.targetDashboards;
+                            
+                            const isDupInBatch = trulyNewStages.some(s => s.filename === record.filename);
+                            const isDupInExisting = brv02Runs.some(run => 
+                                run.stages.some(existingStage => existingStage.filename === record.filename)
+                            );
+                            if (!isDupInBatch && !isDupInExisting) {
+                                trulyNewStages.push(record);
+                            }
                         }
-                        // Enrich stage record with bundle metadata
-                        record.run_metadata = metadata;
-                        record.config = config;
-                        record.summary = summary;
-                        record.wellLitPath = bundle.payload.well_lit_path;
-                        record.well_lit_path = bundle.payload.well_lit_path;
-                        record.targetDashboards = bundle.targetDashboards;
-                        
-                        const isDupInBatch = trulyNewStages.some(s => s.filename === record.filename);
-                        const isDupInExisting = brv02Runs.some(run => 
-                            run.stages.some(existingStage => existingStage.filename === record.filename)
-                        );
-                        if (!isDupInBatch && !isDupInExisting) {
-                            trulyNewStages.push(record);
+                    }
+                } else if (bundle.payload?.entries && bundle.payload.entries.length > 0) {
+                    for (const entry of bundle.payload.entries) {
+                        const record = await parseReportV02(entry.raw_report, entry.filename);
+                        if (record) {
+                            if (!isSubmit) {
+                                record.runId = `${record.runId}-preview`;
+                            }
+                            // Enrich stage record with bundle metadata
+                            record.run_metadata = metadata || bundle.payload.run_metadata || null;
+                            record.config = config || bundle.payload.config || null;
+                            record.summary = summary || bundle.payload.summary || null;
+                            record.wellLitPath = bundle.payload.well_lit_path;
+                            record.well_lit_path = bundle.payload.well_lit_path;
+                            record.targetDashboards = bundle.targetDashboards;
+                            
+                            const isDupInBatch = trulyNewStages.some(s => s.filename === record.filename);
+                            const isDupInExisting = brv02Runs.some(run => 
+                                run.stages.some(existingStage => existingStage.filename === record.filename)
+                            );
+                            if (!isDupInBatch && !isDupInExisting) {
+                                trulyNewStages.push(record);
+                            }
                         }
                     }
                 }
@@ -1820,7 +1846,7 @@ export const useDashboardData = (initialState, dashboardState) => {
     const [submissions, setSubmissions] = useState([]);
     const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
 
-    const loadSubmissions = useCallback(async () => {
+    const loadSubmissions = useCallback(async (isManual = false) => {
         setIsLoadingSubmissions(true);
         try {
             const res = await fetch('/api/local/list');
@@ -1844,10 +1870,9 @@ export const useDashboardData = (initialState, dashboardState) => {
                                 model: runPayload.model_name || "Custom Model",
                                 hardware: runPayload.hardware?.hardware_name || runPayload.run_metadata?.accelerator || "Detected Hardware",
                                 wellLitPath: runPayload.wellLitPath || runPayload.well_lit_path || "none / custom",
-                                submittedAt: runPayload.timestamp || runPayload.run_metadata?.timestamp || new Date().toISOString().split('T')[0],
+                                submittedAt: runPayload.timestamp || runPayload.run_metadata?.timestamp || (runPayload.entries?.[0]?.raw_report?.run?.time?.start) || new Date().toISOString().split('T')[0],
                                 status: runPayload.status || "staged",
-                                feedback: runPayload.feedback || "",
-                                attribution: runPayload.attribution || null
+                                feedback: runPayload.feedback || ""
                             };
                         }
                     } catch (err) {
@@ -1862,16 +1887,97 @@ export const useDashboardData = (initialState, dashboardState) => {
                 });
             }
 
-            // Sort chronologically
-            serverSubmissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-            setSubmissions(serverSubmissions);
+            const mergedList = [...serverSubmissions];
+            if (brv02Runs && brv02Runs.length > 0) {
+                brv02Runs.forEach(run => {
+                    if (!mergedList.some(s => s.runId === run.runId)) {
+                        const firstStage = run.stages?.[0];
+                        const resolvedModel = firstStage?.scenario?.model || run.run_metadata?.model || "Custom Model";
+                        const resolvedHw = firstStage?.scenario?.hardware || run.run_metadata?.accelerator || "Detected Hardware";
+                        const submittedAt = firstStage?.timestamp || run.run_metadata?.timestamp || new Date().toISOString().split('T')[0];
+
+                        mergedList.push({
+                            id: `dyn-${run.runId}`,
+                            runId: run.runId,
+                            model: resolvedModel,
+                            hardware: resolvedHw,
+                            wellLitPath: run.wellLitPath || "none / custom",
+                            submittedAt: typeof submittedAt === 'string' ? submittedAt.split('T')[0] : new Date().toISOString().split('T')[0],
+                            status: "staged",
+                            feedback: ""
+                        });
+                    }
+                });
+            }
+
+            // Sort chronologically (latest submissions first)
+            mergedList.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+            setSubmissions(mergedList);
 
         } catch (error) {
             console.error("Failed to load submissions:", error);
+            if (isManual && addToast) {
+                addToast("Failed to load submitted runs from backend server.", "error");
+            }
         } finally {
             setIsLoadingSubmissions(false);
         }
-    }, []);
+    }, [brv02Runs, addToast]);
+
+    const updateSubmissionStatus = useCallback(async (runId, status, feedback = '', model = '', hardware = '') => {
+        try {
+            let reviewer = 'user';
+            try {
+                const saved = localStorage.getItem('prism_github_session');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    reviewer = parsed.username || 'user';
+                }
+            } catch {}
+
+            const res = await fetch('/api/local/status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    runId,
+                    status,
+                    feedback,
+                    reviewer,
+                    model_name: model,
+                    hardware: { hardware_name: hardware }
+                })
+            });
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const data = await res.json();
+            if (data.success) {
+                if (addToast) {
+                    const friendlyStatus = 
+                        status === 'submitted_pending_processing' ? 'submitted' :
+                        status === 'submitted_pending_review' ? 'submitted for review' :
+                        status === 'public' ? 'published' : status;
+                    addToast(`Run has been ${friendlyStatus} successfully.`, 'success');
+                }
+                loadSubmissions();
+            }
+        } catch (err) {
+            console.error('[Status Update Error]', err);
+            if (addToast) {
+                addToast(`Failed to update status for run ${runId}: ${err.message}`, 'error');
+            }
+        }
+    }, [loadSubmissions, addToast]);
+
+    const submissionsMap = useMemo(() => {
+        const map = {};
+        (submissions || []).forEach(sub => {
+            if (sub && sub.runId) {
+                map[sub.runId] = sub;
+            }
+        });
+        return map;
+    }, [submissions]);
 
     useEffect(() => {
         loadSubmissions();
@@ -1923,6 +2029,6 @@ export const useDashboardData = (initialState, dashboardState) => {
         brv02CustomLabels, setBrv02CustomLabels,
         brv02BaselineRunId, setBrv02BaselineRunId,
         brv02SelectedStages, setBrv02SelectedStages,
-        submissions, isLoadingSubmissions, loadSubmissions
+        submissions, isLoadingSubmissions, loadSubmissions, updateSubmissionStatus, submissionsMap
     };
 };

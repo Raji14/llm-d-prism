@@ -1752,7 +1752,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                             {mode === 'manager' ? 'Results store' : 'Benchmark browser'}
                         </h1>
                         <span className="ml-3 px-2 py-0.5 rounded text-[10px] font-extrabold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase tracking-wider font-mono">
-                            {mode === 'manager' ? 'Results registry' : 'Expert mode'}
+                            {mode === 'manager' ? 'Results store' : 'Expert mode'}
                         </span>
                     </div>
                 </div>

@@ -304,7 +304,7 @@ export default function RegressionsAnalysisDashboard({ onNavigateBack, onToggleM
                 infraTag: infra,
                 methodTag: method,
                 sig: meta.sig,
-                desc: `Telemetry suite for benchmark scenario: ${s}`
+                desc: `Benchmark suite for benchmark scenario: ${s}`
             };
         });
     }, [runs]);
@@ -511,7 +511,7 @@ export default function RegressionsAnalysisDashboard({ onNavigateBack, onToggleM
                                 <span>Defined Test Runs</span>
                             </h3>
                             <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                                Select a nightly CI regression pipeline to load historical telemetry.
+                                Select a nightly CI regression pipeline to load historical benchmarks.
                             </p>
                         </div>
 
@@ -650,7 +650,7 @@ export default function RegressionsAnalysisDashboard({ onNavigateBack, onToggleM
                                 <div className="flex items-center gap-2 shrink-0">
                                     <button 
                                         onClick={handleExportJson} 
-                                        title="Export Raw Telemetry JSON"
+                                        title="Export Raw Benchmark JSON"
                                         className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-all text-[10px] font-extrabold uppercase tracking-widest border border-slate-700/50 cursor-pointer"
                                     >
                                         <Download className="w-3.5 h-3.5" />

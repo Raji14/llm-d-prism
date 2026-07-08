@@ -61,7 +61,7 @@ const PrismHome = ({ onNavigate }) => {
 
             <div className="max-w-6xl w-full z-10 flex flex-col items-center">
                 {/* Hero Header */}
-                <header className="mb-12 text-center relative pt-6 flex flex-col items-center">
+                <header className="mb-8 text-center relative pt-3 flex flex-col items-center">
                     <div className="flex items-center justify-center mb-3 space-x-3">
                         <a href="https://llm-d.ai" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
                             <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-9 object-contain" />
@@ -78,13 +78,13 @@ const PrismHome = ({ onNavigate }) => {
                 </header>
 
                 {/* Well-lit paths */}
-                <section className="mb-20 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
+                <section className="mb-10 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
                     {/* Grid mesh backdrop decorative lines */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
                     <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="relative p-6 md:p-8 z-10">
-                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-8">
+                    <div className="relative p-5 md:p-6 z-10">
+                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-5">
                             <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
                                 Well-lit paths
                             </h2>
@@ -93,21 +93,21 @@ const PrismHome = ({ onNavigate }) => {
                             </p>
                         </div>
                         
-                        <div className="flex flex-row overflow-x-auto gap-5 pb-5 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
+                        <div className="flex flex-row overflow-x-auto gap-5 pt-4 pb-5 px-2 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
                         {/* Path 1: Intelligent routing */}
                         <div 
                             onClick={() => onNavigate('inference-scheduling')}
                             className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-cyan-500/50 w-[290px] shrink-0 min-h-[320px] overflow-hidden"
                         >
                             <div>
-                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
+                                <h3 className="text-base font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-cyan-400">
                                     Intelligent routing
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mb-2.5">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Prefix-cache</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Load balance</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Prefix-cache</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 rounded-full font-medium border border-cyan-500/30 whitespace-nowrap">Load balance</span>
                                 </div>
-                                <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
+                                <p className="text-slate-400 text-xs leading-relaxed mb-3">
                                     Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
                                 </p>
                                 
@@ -145,14 +145,14 @@ const PrismHome = ({ onNavigate }) => {
                             className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl p-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(16,185,129,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-emerald-500/50 w-[290px] shrink-0 min-h-[320px] overflow-hidden"
                         >
                             <div>
-                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-emerald-450">
+                                <h3 className="text-base font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-emerald-450">
                                     Agentic serving
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mb-2.5">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Multi-turn</span>
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Tool use</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Multi-turn</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 rounded-full font-medium border border-emerald-500/30 whitespace-nowrap">Tool use</span>
                                 </div>
-                                <p className="text-slate-400 text-[11px] leading-relaxed mb-3">
+                                <p className="text-slate-400 text-xs leading-relaxed mb-3">
                                     Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
                                 </p>
                                 
@@ -188,25 +188,28 @@ const PrismHome = ({ onNavigate }) => {
                             </button>
                         </div>
 
+                        {/* Divider */}
+                        <div className="w-px bg-slate-800/60 self-stretch my-4 shrink-0" />
+
                         {/* Card 3: Consolidated Roadmap */}
                         <div 
                             onMouseEnter={() => setIsHoveringRoadmap(true)}
                             onMouseLeave={() => setIsHoveringRoadmap(false)}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl border border-slate-800/80 rounded-xl p-4 transition-all duration-300 flex flex-col justify-between opacity-95 w-[290px] shrink-0 min-h-[320px] overflow-hidden hover:border-purple-500/50 hover:shadow-[0_0_30px_rgba(168,85,247,0.25)]"
+                            className="group relative bg-gradient-to-br from-purple-950/20 via-slate-950/80 to-slate-950 backdrop-blur-xl border border-dashed border-purple-900/40 hover:border-purple-500/40 rounded-xl p-4 transition-all duration-300 flex flex-col justify-between w-[290px] shrink-0 min-h-[320px] overflow-hidden hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
                         >
                             <div>
-                                <h3 className="text-sm font-bold text-slate-200 tracking-wide mb-2 transition-colors group-hover:text-purple-400">
-                                    Roadmap
+                                <h3 className="text-base font-bold text-slate-300 tracking-wide mb-2 transition-colors group-hover:text-purple-400">
+                                    Coming soon
                                 </h3>
                                 <div className="flex flex-wrap gap-1 mb-2.5">
-                                    <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded-full font-medium border border-purple-500/30 whitespace-nowrap">Coming soon</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded-full font-medium border border-purple-500/30 whitespace-nowrap">Roadmap</span>
                                 </div>
-                                <p className="text-slate-400 text-[10.5px] leading-relaxed mb-4">
+                                <p className="text-slate-400 text-xs leading-relaxed mb-4">
                                     Upcoming performance optimizations and architectural templates on the Prism roadmap.
                                 </p>
 
                                 {/* Slideshow Item Container */}
-                                <div className="relative p-2.5 bg-slate-950/70 rounded-xl flex items-start gap-2.5 mt-2 min-h-[110px] group/item transition-all duration-300">
+                                <div className="relative p-2.5 bg-slate-950/40 border border-slate-900/60 rounded-xl flex items-start gap-2.5 mt-2 min-h-[110px] group/item transition-all duration-300">
                                     {/* Left/Right manual controls inside the carousel */}
                                     <button 
                                         onClick={(e) => {
@@ -235,10 +238,10 @@ const PrismHome = ({ onNavigate }) => {
                                             <div className="flex items-start gap-2.5 px-1.5 w-full animate-fadeIn">
                                                 <div className="flex-1 min-w-0 pr-1.5">
                                                     <div className="flex items-center justify-between gap-1">
-                                                        <h4 className="text-[10.5px] font-bold text-slate-200 truncate">{item.title}</h4>
-                                                        <span className="text-[7px] font-mono text-slate-500 shrink-0">{currentRoadmapIndex + 1}/4</span>
+                                                        <h4 className="text-xs font-bold text-slate-200 truncate">{item.title}</h4>
+                                                        <span className="text-[8px] font-mono text-slate-500 shrink-0">{currentRoadmapIndex + 1}/4</span>
                                                     </div>
-                                                    <p className="text-[9px] text-slate-400 leading-normal mt-1 line-clamp-3">{item.description}</p>
+                                                    <p className="text-[11px] text-slate-400 leading-normal mt-1 line-clamp-3">{item.description}</p>
                                                 </div>
                                             </div>
                                         );
@@ -271,13 +274,13 @@ const PrismHome = ({ onNavigate }) => {
             </section>
                 
                 {/* Section: Utility Suite */}
-                <section className="mb-20 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
+                <section className="mb-10 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
                     {/* Grid mesh backdrop decorative lines */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
                     <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
                     
-                    <div className="relative p-6 md:p-8 z-10">
-                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-8">
+                    <div className="relative p-5 md:p-6 z-10">
+                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-5">
                             <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
                                 Utility suite
                             </h2>
@@ -294,7 +297,7 @@ const PrismHome = ({ onNavigate }) => {
                         >
                             <div>
                                 {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-3 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-emerald-500/20 transition-all duration-300">
+                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-emerald-500/20 transition-all duration-300">
                                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
@@ -314,7 +317,7 @@ const PrismHome = ({ onNavigate }) => {
                                         <path d="M60 22 H 95" stroke="#10b981" strokeWidth="1.5" strokeDasharray="3 3" />
                                         <path d="M90 18 L 96 22 L 90 26" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                         
-                                        {/* Registry / Results Store Database (Solid pop) */}
+                                        {/* Results Store Database (Solid pop) */}
                                         <rect x="108" y="9" width="30" height="26" rx="2.5" fill="rgba(16,185,129,0.18)" stroke="#10b981" strokeWidth="1.5" />
                                         <line x1="108" y1="17.5" x2="138" y2="17.5" stroke="#10b981" strokeWidth="1.2" />
                                         <line x1="108" y1="26" x2="138" y2="26" stroke="#10b981" strokeWidth="1.2" />
@@ -324,9 +327,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </svg>
                                 </div>
                                 <div className="flex items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-200 tracking-wide transition-colors group-hover:text-emerald-400 select-none">Results store</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-emerald-400 select-none">Results store</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-relaxed mb-4">Stage, validate, and submit standardized benchmark report files and system execution telemetry.</p>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Stage, validate, and submit standardized benchmark report files and system execution benchmarks.</p>
                             </div>
                             <button className="w-full py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-emerald-400 hover:to-teal-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -340,7 +343,7 @@ const PrismHome = ({ onNavigate }) => {
                         >
                             <div>
                                 {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-3 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/20 transition-all duration-300">
+                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/20 transition-all duration-300">
                                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-cyan-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
@@ -364,9 +367,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </svg>
                                 </div>
                                 <div className="flex items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-200 tracking-wide transition-colors group-hover:text-cyan-400 select-none">Workload catalog</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-cyan-400 select-none">Workload catalog</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-relaxed mb-4">Browse, import, and configure production-grade Inference Workloads for latency & throughput testing.</p>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Browse, import, and configure production-grade Inference Workloads for latency & throughput testing.</p>
                             </div>
                             <button className="w-full py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -380,7 +383,7 @@ const PrismHome = ({ onNavigate }) => {
                         >
                             <div>
                                 {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-3 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-rose-500/20 transition-all duration-300">
+                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-rose-500/20 transition-all duration-300">
                                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-rose-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
@@ -394,9 +397,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </svg>
                                 </div>
                                 <div className="flex items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-200 tracking-wide transition-colors group-hover:text-rose-450 select-none">Regressions & analysis</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-rose-455 select-none">Regressions & analysis</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-relaxed mb-4">Track system performance trends, compare nightly metrics, and auto-detect regressions on well-lit paths.</p>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Track system performance trends, compare nightly metrics, and auto-detect regressions on well-lit paths.</p>
                             </div>
                             <button className="w-full py-1.5 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-rose-400 hover:to-red-500 shadow-[0_0_15px_rgba(244,63,94,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -410,7 +413,7 @@ const PrismHome = ({ onNavigate }) => {
                         >
                             <div>
                                 {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-3 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-amber-500/20 transition-all duration-300">
+                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-amber-500/20 transition-all duration-300">
                                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
@@ -426,9 +429,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </svg>
                                 </div>
                                 <div className="flex items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-200 tracking-wide transition-colors group-hover:text-amber-400 select-none">Benchmark browser</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-amber-400 select-none">Benchmark browser</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-relaxed mb-4">Search, filter, and compare benchmark results interactively across hardware and framework configs.</p>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Search, filter, and compare benchmark results interactively across hardware and framework configs.</p>
                             </div>
                             <button className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-amber-400 hover:to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -442,7 +445,7 @@ const PrismHome = ({ onNavigate }) => {
                         >
                             <div>
                                 {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-3 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-purple-500/20 transition-all duration-300">
+                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-purple-500/20 transition-all duration-300">
                                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
                                     <div className="absolute inset-0 bg-gradient-to-t from-purple-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
@@ -458,9 +461,9 @@ const PrismHome = ({ onNavigate }) => {
                                     </svg>
                                 </div>
                                 <div className="flex items-center mb-2">
-                                    <h3 className="text-xs font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400 select-none">Schema explorer</h3>
+                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400 select-none">Schema explorer</h3>
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-relaxed mb-4">Browse standard schema structures, validation rules, and metric definitions for benchmark reports.</p>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Browse standard schema structures, validation rules, and metric definitions for benchmark reports.</p>
                             </div>
                             <button className="w-full py-1.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-purple-400 hover:to-violet-500 shadow-[0_0_15px_rgba(168,85,247,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
                                 Launch <ArrowRight className="ml-1 h-3 w-3" />
@@ -472,29 +475,29 @@ const PrismHome = ({ onNavigate }) => {
                 
 
                 {/* Section: How it works */}
-                <section className="mb-20 w-full max-w-5xl">
+                <section className="mb-10 w-full max-w-5xl">
                      <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
                           How it works: the full benchmark lifecycle
                      </h2>
-                     <p className="text-xs text-slate-450 text-center mb-12 max-w-2xl mx-auto">
+                     <p className="text-xs text-slate-450 text-center mb-6 max-w-2xl mx-auto">
                           Designed for human insight and agent automation. Standardizing the end-to-end lifecycle from routing optimization to high-fidelity reproduction.
                      </p>
                      
-                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-6">
+                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-4">
                           
                           {/* Ambient glowing background in center */}
                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
                           {/* Left Column: Roles & Actions */}
                           <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
-                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-cyan-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
+                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-cyan-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
                               
                               {/* Feature Developer */}
                               <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
                                   <div className="mb-2">
-                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Feature developer</h3>
+                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Feature developer</h3>
                                   </div>
-                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
                                       <div className="flex items-start gap-1">
                                           <span className="text-cyan-400">•</span>
                                           <span>Isolate component and system benchmarks.</span>
@@ -513,9 +516,9 @@ const PrismHome = ({ onNavigate }) => {
                               {/* Benchmark Developer */}
                               <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
                                   <div className="mb-2">
-                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Benchmark developer</h3>
+                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Benchmark developer</h3>
                                   </div>
-                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
                                       <div className="flex items-start gap-1">
                                           <span className="text-cyan-400">•</span>
                                           <span>Publish reproducible workloads to the open catalog.</span>
@@ -537,18 +540,18 @@ const PrismHome = ({ onNavigate }) => {
                           <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
                               
                               {/* Column Label */}
-                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-purple-400/90 uppercase tracking-widest mb-1.5 font-mono">Central pipeline</div>
+                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-purple-400/90 uppercase tracking-widest mb-1.5 font-mono">Central pipeline</div>
 
                               {/* Prism */}
                               <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
-                                  <h3 className="text-sm font-bold text-purple-400 mb-1">Prism</h3>
-                                  <p className="text-[11px] text-slate-400 leading-normal">Visualize and compare metrics across benchmarks.</p>
+                                  <h3 className="text-base font-bold text-purple-400 mb-1">Prism</h3>
+                                  <p className="text-xs text-slate-400 leading-normal">Visualize and compare metrics across benchmarks.</p>
                               </div>
 
-                              {/* Llm-d Benchmark Registry */}
+                              {/* Llm-d Results Store */}
                               <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-3 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-blue-500/50 transition-all">
-                                  <h3 className="text-sm font-bold text-blue-400 mb-1">llm-d benchmark registry</h3>
-                                  <p className="text-[11px] text-slate-400 leading-normal">Unified repository for schema-validated benchmark results.</p>
+                                  <h3 className="text-base font-bold text-blue-400 mb-1">llm-d results store</h3>
+                                  <p className="text-xs text-slate-400 leading-normal">Unified repository for schema-validated benchmark results.</p>
                               </div>
 
                               {/* Standard Benchmark Format / Report */}
@@ -558,11 +561,11 @@ const PrismHome = ({ onNavigate }) => {
                                   rel="noopener noreferrer"
                                   className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
                               >
-                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
                                       Standard benchmark report
                                       <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
                                   </h3>
-                                  <p className="text-[11px] text-slate-400 leading-normal">Unified JSON schema guarantees data interoperability.</p>
+                                  <p className="text-xs text-slate-400 leading-normal">Unified JSON schema guarantees data interoperability.</p>
                               </a>
 
                               {/* Test Harness */}
@@ -572,11 +575,11 @@ const PrismHome = ({ onNavigate }) => {
                                   rel="noopener noreferrer"
                                   className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
                               >
-                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
                                       Test harness
                                       <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
                                   </h3>
-                                  <p className="text-[11px] text-slate-400 leading-normal">Stress distributed systems with agentic serving workloads.</p>
+                                  <p className="text-xs text-slate-400 leading-normal">Stress distributed systems with agentic serving workloads.</p>
                               </a>
 
                               {/* Real World Workload Catalog */}
@@ -586,25 +589,25 @@ const PrismHome = ({ onNavigate }) => {
                                   rel="noopener noreferrer"
                                   className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
                               >
-                                  <h3 className="text-sm font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
+                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
                                       Real world workload catalog
                                       <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
                                   </h3>
-                                  <p className="text-[11px] text-slate-400 leading-normal">Access standardized workloads for evaluation.</p>
+                                  <p className="text-xs text-slate-400 leading-normal">Access standardized workloads for evaluation.</p>
                               </a>
 
                           </div>
 
                           {/* Right Column: Roles & Actions */}
                           <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
-                              <div className="w-full max-w-[320px] text-center text-[10px] font-bold text-purple-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
+                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-purple-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
                               
                               {/* Solutions Architect */}
                               <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
                                   <div className="mb-2">
-                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Solutions architect</h3>
+                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Solutions architect</h3>
                                   </div>
-                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
                                       <div className="flex items-start gap-1">
                                           <span className="text-purple-400">•</span>
                                           <span>Analyze features for optimal architectural fit.</span>
@@ -623,9 +626,9 @@ const PrismHome = ({ onNavigate }) => {
                               {/* Stack Operator */}
                               <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
                                   <div className="mb-2">
-                                      <h3 className="text-sm font-bold text-slate-200 tracking-wide">Stack operator</h3>
+                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Stack operator</h3>
                                   </div>
-                                  <div className="space-y-1 text-slate-400 text-[11px] leading-relaxed">
+                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
                                       <div className="flex items-start gap-1">
                                           <span className="text-purple-400">•</span>
                                           <span>Compare price vs performance of serving stacks.</span>
@@ -646,7 +649,7 @@ const PrismHome = ({ onNavigate }) => {
                  </section>
 
                 {/* Secondary Actions / Footer */}
-                <div className="flex space-x-4 mb-16">
+                <div className="flex space-x-4 mb-8">
                     <a 
                         href="https://llm-d.ai/" 
                         target="_blank" 

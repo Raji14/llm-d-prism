@@ -199,7 +199,7 @@ function App() {
             </div>
           ) : (
             <>
-              {/* Global staged telemetry banner removed in favor of localized Results Store dashboard alert banner */}
+              {/* Global staged benchmarks banner removed in favor of localized Results Store dashboard alert banner */}
               {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
               {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
               {currentView === 'agentic-serving' && <AgenticWorkloadsDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}

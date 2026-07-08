@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useMemo } from 'react';
-import { Database, Eye, ArrowLeft, ArrowRight, MessageCircle, X, Loader, HelpCircle, Upload } from 'lucide-react';
+import { Database, Eye, ArrowLeft, ArrowRight, MessageCircle, X, Loader, HelpCircle, Upload, UploadCloud, CheckCircle } from 'lucide-react';
 import { FilterPanel } from './ManageBenchmarks/FilterPanel';
 import { UnifiedDataTable } from './ManageBenchmarks/UnifiedDataTable';
 import { INTEGRATIONS, getSourceTag, getBenchmarkKey, getBucket, getRatioType, getAcceleratorCount, getEffectiveTp, sortBuckets } from '../utils/dashboardHelpers';
@@ -54,7 +54,12 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         expandedModels,
         setExpandedModels,
         handleValidatedUpload,
-        qualityMetrics
+        qualityMetrics,
+        submissions,
+        isLoadingSubmissions,
+        loadSubmissions,
+        updateSubmissionStatus,
+        submissionsMap
     } = dashboardData;
 
 
@@ -64,6 +69,24 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             return saved ? JSON.parse(saved) : null;
         } catch { return null; }
     });
+
+    const [postUploadType, setPostUploadType] = React.useState(() => {
+        try {
+            return localStorage.getItem('prism_show_post_upload_dialog') || null;
+        } catch { return null; }
+    });
+
+    React.useEffect(() => {
+        if (postUploadType) {
+            try {
+                localStorage.removeItem('prism_show_post_upload_dialog');
+            } catch {}
+        }
+    }, [postUploadType]);
+
+    const handleCloseDialog = () => {
+        setPostUploadType(null);
+    };
 
     const [stagedBundles, setStagedBundles] = React.useState(() => {
         try {
@@ -122,150 +145,6 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         }
     }, [addToast, onNavigate]);
 
-    const [submissions, setSubmissions] = React.useState([]);
-    const [isLoadingSubmissions, setIsLoadingSubmissions] = React.useState(false);
-
-    // Queries the server's filesystem for actually staged runs, falling back to and
-    // merging with browser local storage runs for a seamless and responsive experience.
-    const loadSubmissions = React.useCallback(async (isManual = false) => {
-        setIsLoadingSubmissions(true);
-        try {
-            const res = await fetch('/api/local/list');
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            const listData = await res.json();
-            
-            const uploadFiles = (listData.items || []).filter(item => 
-                item.name.endsWith('prism_run_upload.json')
-            );
-
-            const serverSubmissions = [];
-            if (uploadFiles.length > 0) {
-                const fetchPromises = uploadFiles.map(async (file) => {
-                    try {
-                        const fileRes = await fetch(file.mediaLink);
-                        if (fileRes.ok) {
-                            const runPayload = await fileRes.json();
-                            return {
-                                id: runPayload.runId || file.name.split('/')[0],
-                                runId: runPayload.runId || file.name.split('/')[0],
-                                model: runPayload.model_name || "Custom Model",
-                                hardware: runPayload.hardware?.hardware_name || runPayload.run_metadata?.accelerator || "Detected Hardware",
-                                wellLitPath: runPayload.well_lit_path || "none / custom",
-                                submittedAt: runPayload.timestamp || runPayload.run_metadata?.timestamp || (runPayload.entries?.[0]?.raw_report?.run?.time?.start) || new Date().toISOString().split('T')[0],
-                                status: runPayload.status || "staged",
-                                feedback: runPayload.feedback || ""
-                            };
-                        }
-                    } catch (err) {
-                        console.error(`Error loading submission from ${file.name}:`, err);
-                    }
-                    return null;
-                });
-                
-                const resolved = await Promise.all(fetchPromises);
-                serverSubmissions.push(...resolved.filter(Boolean));
-            }
-
-            const mergedList = [...serverSubmissions];
-            if (brv02Runs && brv02Runs.length > 0) {
-                brv02Runs.forEach(run => {
-                    if (!mergedList.some(s => s.runId === run.runId)) {
-                        const firstStage = run.stages?.[0];
-                        const resolvedModel = firstStage?.scenario?.model || run.run_metadata?.model || "Custom Model";
-                        const resolvedHw = firstStage?.scenario?.hardware || run.run_metadata?.accelerator || "Detected Hardware";
-                        const submittedAt = firstStage?.timestamp || run.run_metadata?.timestamp || new Date().toISOString().split('T')[0];
-
-                        mergedList.push({
-                            id: `dyn-${run.runId}`,
-                            runId: run.runId,
-                            model: resolvedModel,
-                            hardware: resolvedHw,
-                            wellLitPath: run.wellLitPath || "none / custom",
-                            submittedAt: typeof submittedAt === 'string' ? submittedAt.split('T')[0] : new Date().toISOString().split('T')[0],
-                            status: "staged",
-                            feedback: ""
-                        });
-                    }
-                });
-            }
-
-            // Sort chronologically (latest submissions first)
-            mergedList.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
-
-            setSubmissions(mergedList);
-        } catch (error) {
-            console.error("Failed to load submissions:", error);
-            if (isManual && addToast) {
-                addToast("Failed to load submitted runs from backend server.", "error");
-            }
-            
-            const fallbackList = [];
-            if (brv02Runs && brv02Runs.length > 0) {
-                brv02Runs.forEach(run => {
-                    const firstStage = run.stages?.[0];
-                    const resolvedModel = firstStage?.scenario?.model || run.run_metadata?.model || "Custom Model";
-                    const resolvedHw = firstStage?.scenario?.hardware || run.run_metadata?.accelerator || "Detected Hardware";
-                    const submittedAt = firstStage?.timestamp || run.run_metadata?.timestamp || new Date().toISOString().split('T')[0];
-
-                    fallbackList.push({
-                        id: `dyn-${run.runId}`,
-                        runId: run.runId,
-                        model: resolvedModel,
-                        hardware: resolvedHw,
-                        wellLitPath: run.wellLitPath || "none / custom",
-                        submittedAt: typeof submittedAt === 'string' ? submittedAt.split('T')[0] : new Date().toISOString().split('T')[0],
-                        status: "staged",
-                        feedback: ""
-                    });
-                });
-                fallbackList.sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
-            }
-            setSubmissions(fallbackList);
-        } finally {
-            setIsLoadingSubmissions(false);
-        }
-    }, [brv02Runs, addToast]);
-
-    const updateSubmissionStatus = React.useCallback(async (runId, status, feedback = '', model = '', hardware = '') => {
-        try {
-            const res = await fetch('/api/local/status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    runId,
-                    status,
-                    feedback,
-                    reviewer: githubSession?.username || 'user',
-                    model_name: model,
-                    hardware: { hardware_name: hardware }
-                })
-            });
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            const data = await res.json();
-            if (data.success) {
-                if (addToast) {
-                    const friendlyStatus = 
-                        status === 'submitted_pending_processing' ? 'submitted' :
-                        status === 'submitted_pending_review' ? 'submitted for review' :
-                        status === 'public' ? 'published' : status;
-                    addToast(`Run has been ${friendlyStatus} successfully.`, 'success');
-                }
-                loadSubmissions();
-            }
-        } catch (err) {
-            console.error('[Status Update Error]', err);
-            if (addToast) {
-                addToast(`Failed to update status for run ${runId}: ${err.message}`, 'error');
-            }
-        }
-    }, [githubSession, loadSubmissions, addToast]);
-
-    React.useEffect(() => {
-        loadSubmissions();
-    }, [loadSubmissions]);
-
     React.useEffect(() => {
         if (setSelectedBenchmarks) {
             setSelectedBenchmarks(new Set());
@@ -279,6 +158,9 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         if (triggerStaged === 'true' || triggerMySubs === 'true') {
             localStorage.removeItem('prism_activate_staged_filter');
             localStorage.removeItem('prism_activate_my_submissions_filter');
+            if (setShowSelectedOnly) {
+                setShowSelectedOnly(false);
+            }
             if (setActiveFilters) {
                 setActiveFilters({
                     models: new Set(),
@@ -296,21 +178,14 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
                     pdRatio: new Set(),
                     acc_count: new Set(),
                     useCase: new Set(),
-                    optimizations: new Set()
+                    optimizations: new Set(),
+                    connectionNames: new Set()
                 });
             }
         }
-    }, [setActiveFilters]);
+    }, [setActiveFilters, setShowSelectedOnly]);
 
-    const submissionsMap = useMemo(() => {
-        const map = {};
-        (submissions || []).forEach(sub => {
-            if (sub && sub.runId) {
-                map[sub.runId] = sub;
-            }
-        });
-        return map;
-    }, [submissions]);
+
 
 
 
@@ -863,35 +738,158 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
             </header>
 
             <main className="w-full px-8 py-6 pl-28 flex flex-col space-y-8 z-10 relative">
-                <div className="relative bg-[#0b0f19] border border-slate-900 rounded-3xl p-6 shadow-2xl backdrop-blur-xl">
-                    <FilterPanel
-                        {...{
-                            showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
-                            selectedModels: selectedBenchmarks, modelStats, filteredBySource, showSelectedOnly, setShowSelectedOnly,
-                            selectedBenchmarks, setSelectedBenchmarks, setActiveFilters, expandedModels,
-                            toggleBenchmark, toggleModelExpansion,
-                            baselineBenchmarkKey, setBaselineBenchmarkKey,
-                            UnifiedDataTable,
-                            hideShowSelectedOnly: true,
-                            renameClearToUnselectAll: true,
-                            brv02Runs, brv02CustomLabels, setBrv02CustomLabels, removeBrv02Run,
-                            searchTerm, setSearchTerm, kpiFilter, setKpiFilter,
-                            submissionsMap,
-                            updateSubmissionStatus,
-                            qualityMetrics,
-                            gcsProfiles: dashboardData.gcsProfiles,
-                            loadingConnections: dashboardData.gcsProfiles?.some(p => p.loading) || dashboardData.loading,
-                            onOpenSubmitDialog: (intent) => onNavigate('submit-benchmarks', { intent }),
-                            showDataPanel,
-                            setShowDataPanel
-                        }}
-                    />
-                </div>
+                <FilterPanel
+                    {...{
+                        showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
+                        selectedModels: selectedBenchmarks, modelStats, filteredBySource, showSelectedOnly, setShowSelectedOnly,
+                        selectedBenchmarks, setSelectedBenchmarks, setActiveFilters, expandedModels,
+                        toggleBenchmark, toggleModelExpansion,
+                        baselineBenchmarkKey, setBaselineBenchmarkKey,
+                        UnifiedDataTable,
+                        hideShowSelectedOnly: true,
+                        renameClearToUnselectAll: true,
+                        brv02Runs, brv02CustomLabels, setBrv02CustomLabels, removeBrv02Run,
+                        searchTerm, setSearchTerm, kpiFilter, setKpiFilter,
+                        submissionsMap,
+                        updateSubmissionStatus,
+                        qualityMetrics,
+                        gcsProfiles: dashboardData.gcsProfiles,
+                        loadingConnections: dashboardData.gcsProfiles?.some(p => p.loading) || dashboardData.loading,
+                        onOpenSubmitDialog: (intent) => onNavigate('submit-benchmarks', { intent }),
+                        showDataPanel,
+                        setShowDataPanel
+                    }}
+                />
             </main>
 
+            {/* Post-Upload Guided Action Dialog */}
+            {postUploadType && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                    {/* Backdrop */}
+                    <div 
+                        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity" 
+                        onClick={handleCloseDialog}
+                    />
+                    {/* Modal Container */}
+                    <div className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl z-10 flex flex-col space-y-4 text-left overflow-hidden bg-gradient-to-b from-[#0e172a] to-[#090d16] animate-in zoom-in-95 duration-200">
+                        {/* Header Glowing Accent */}
+                        <div className={`absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r ${
+                            postUploadType === 'staged' 
+                            ? 'from-amber-500 via-orange-400 to-yellow-500' 
+                            : 'from-emerald-500 via-cyan-400 to-blue-500'
+                        }`} />
 
-            
+                        {/* Close Button */}
+                        <button 
+                            onClick={handleCloseDialog}
+                            className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                        >
+                            <X size={18} />
+                        </button>
 
+                        {/* Icon and Title */}
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg ${
+                                postUploadType === 'staged' 
+                                ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 shadow-amber-500/5' 
+                                : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 shadow-emerald-500/5'
+                            }`}>
+                                {postUploadType === 'staged' ? <UploadCloud size={20} /> : <CheckCircle size={20} />}
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-white tracking-wide">
+                                    {postUploadType === 'staged' ? 'Runs Staged Successfully!' : 'Benchmark Submitted for Review!'}
+                                </h3>
+                                <span className="text-[10px] text-slate-500 font-mono">
+                                    {postUploadType === 'staged' ? 'LOCAL SESSION STAGING' : 'SUBMISSION QUEUED'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Description */}
+                        <p className="text-xs text-slate-300 leading-relaxed pt-1">
+                            {postUploadType === 'staged' 
+                                ? "Your benchmark files have been validated and staged locally in your browser session. They are currently visible only to you and ready for analysis."
+                                : "Your runs have been successfully posted to the validation server and are currently in the maintainer review queue. A public preview is available in your catalog."
+                            }
+                        </p>
+
+                        {/* Steps / Guide */}
+                        <div className="bg-slate-950/40 border border-slate-900 rounded-2xl p-4 space-y-3">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 border-b border-slate-900 pb-1.5">
+                                Recommended Next Steps
+                            </div>
+                            
+                            {postUploadType === 'staged' ? (
+                                <div className="space-y-3.5">
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="w-5 h-5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">1</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200">Compare & Inspect</span>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                                                Select the staged run in the table (marked in <span className="text-amber-400 font-medium">amber</span>) along with public runs, and click <span className="text-cyan-400 font-medium">Compare & Inspect</span> to compare their performance curves.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="w-5 h-5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">2</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200">Add Metadata & Manifests</span>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                                                Expand the run row in the table, verify details, and upload manifests or evidence files to make your benchmark review-ready.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="w-5 h-5 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">3</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200">Publish Globally</span>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                                                When you're ready to share the benchmarks, click <span className="text-cyan-400 font-medium">Publish to Results Store</span> in the top portal to submit them for review.
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-3.5">
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="w-5 h-5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">1</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200">Track Ingestion Status</span>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                                                Your run is listed as <span className="text-purple-400 font-semibold">Under Review</span>. Click this status step on the tracker timeline above to filter the catalog.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-2.5">
+                                        <span className="w-5 h-5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold font-mono flex items-center justify-center shrink-0 mt-0.5">2</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-bold text-slate-200">Public Preview Validation</span>
+                                            <span className="text-[11px] text-slate-400 mt-0.5 leading-normal">
+                                                View how your submitted runs perform compared to existing baseline models right in the registry.
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button
+                                onClick={handleCloseDialog}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    postUploadType === 'staged'
+                                    ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-md shadow-amber-500/10'
+                                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-500/10'
+                                }`}
+                            >
+                                {postUploadType === 'staged' ? "Got it, show staged runs" : "Got it"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -846,12 +846,15 @@ export const UnifiedDataTable = (props) => {
     return (
         <div className="flex flex-col gap-3">
             {/* Action Bar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-1 border-b border-slate-200 dark:border-slate-700/50 pb-3">
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col gap-0.5">
+            {/* Action Bar */}
+            {selectedBenchmarks.size === 0 ? (
+                /* Default State: Display Stats & Simple Filter Clear/Select All options */
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-1 border-b border-slate-200 dark:border-slate-800/60 pb-3 select-none">
+                    <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300 font-mono">
-                                {filteredStats.length} matching benchmarks
+                            <Database size={15} className="text-cyan-400" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-350 font-mono">
+                                {filteredStats.length} Matching Runs
                             </span>
                             {kpiFilter && (
                                 <span className={`text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full border flex items-center gap-1.5 transition-all select-none ${
@@ -878,104 +881,91 @@ export const UnifiedDataTable = (props) => {
                                 </span>
                             )}
                         </div>
-                        <span className="text-xs text-slate-500">
-                            {selectedBenchmarks.size} selected
-                        </span>
+                        
+                        {!hideShowSelectedOnly && (
+                            <>
+                                <div className="h-5 w-px bg-slate-300 dark:bg-slate-800" />
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Show selected only</span>
+                                    <button 
+                                        onClick={() => setShowSelectedOnly(!showSelectedOnly)}
+                                        className={`w-9 h-5 rounded-full relative transition-colors shadow-inner cursor-pointer ${showSelectedOnly ? 'bg-cyan-500' : 'bg-slate-950 border border-slate-800'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${showSelectedOnly ? 'translate-x-4.5 left-0.5' : 'translate-x-0 left-0.5'}`} />
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                     
-                    {!hideShowSelectedOnly && (
-                        <>
-                            <div className="h-8 w-px bg-slate-300 dark:bg-slate-700" />
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Show selected only</span>
-                                <button 
-                                    onClick={() => setShowSelectedOnly(!showSelectedOnly)}
-                                    className={`w-9 h-5 rounded-full relative transition-colors shadow-inner ${showSelectedOnly ? 'bg-blue-500' : 'bg-slate-300 dark:bg-slate-600'}`}
-                                >
-                                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${showSelectedOnly ? 'translate-x-4' : 'translate-x-0'}`} />
-                                </button>
-                            </div>
-                        </>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {sortedStats.length > 0 && (
+                            <button
+                                onClick={selectAllVisible}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800 bg-[#070b13] hover:border-slate-700 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
+                            >
+                                Select All Visible
+                            </button>
+                        )}
+                        {isFiltered && (
+                            <button
+                                onClick={clearFilters}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800 bg-[#070b13] hover:border-slate-700 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
+                            >
+                                Clear Filters
+                            </button>
+                        )}
+                    </div>
                 </div>
-
-                <div className="flex items-center gap-2 flex-wrap">
-                    {/* Compare Selected Button */}
-                    <button
-                        onClick={() => selectedBenchmarks.size > 0 && sortedStats.length > 0 && setShowComparisonDrawer(true)}
-                        disabled={selectedBenchmarks.size === 0 || sortedStats.length === 0}
-                        className={
-                            (selectedBenchmarks.size === 0 || sortedStats.length === 0)
-                            ? "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-50 flex items-center gap-1.5"
-                            : "px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
-                        }
-                    >
-                        {hasPromotableSelected ? `Compare & Promote (${selectedBenchmarks.size})` : `Compare & Inspect (${selectedBenchmarks.size})`}
-                    </button>
-
-                    {/* Select All Visible */}
-                    <button
-                        onClick={selectAllVisible}
-                        disabled={sortedStats.length === 0}
-                        className={
-                            sortedStats.length === 0
-                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
-                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
-                        }
-                    >
-                        Select All Visible
-                    </button>
-
-                    {/* Invert Selected */}
-                    <button
-                        onClick={invertSelected}
-                        disabled={sortedStats.length === 0}
-                        className={
-                            sortedStats.length === 0
-                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
-                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
-                        }
-                    >
-                        Invert Selected
-                    </button>
-
-                    {/* Unselect All / Clear Selected */}
-                    <button
-                        onClick={clearSelected}
-                        disabled={selectedBenchmarks.size === 0}
-                        className={
-                            selectedBenchmarks.size === 0
-                            ? "px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] text-slate-600 cursor-not-allowed opacity-50"
-                            : "px-3 py-1.5 text-xs font-semibold rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500/20 cursor-pointer transition-all duration-200"
-                        }
-                    >
-                        {renameClearToUnselectAll ? "Unselect All" : "Clear Selected"}
-                    </button>
-
-                    {/* Clear Filters */}
-                    <button
-                        onClick={clearFilters}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800/40 bg-[#0b0f17] hover:border-slate-700/45 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
-                    >
-                        Clear Filters
-                    </button>
-
-                    {/* Delete Staged Runs */}
-                    {hasAnyLocalRuns && (
+            ) : (
+                /* Selected State: Highlighted context toolbar with primary actions */
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 py-2.5 rounded-2xl bg-cyan-950/15 border border-cyan-500/25 animate-in fade-in slide-in-from-top-1.5 duration-200 select-none shadow-md">
+                    <div className="flex items-center gap-3">
+                        <div className="text-xs font-bold text-cyan-400 font-mono bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-0.5 rounded-lg">
+                            {selectedBenchmarks.size} Selected
+                        </div>
                         <button
-                            onClick={handleDeleteSelected}
-                            disabled={localSelectedCount === 0}
-                            className={
-                                localSelectedCount === 0
-                                ? "px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed opacity-50"
-                                : "px-3 py-1.5 text-xs font-semibold rounded-xl bg-red-600/90 hover:bg-red-500 text-white shadow-sm border border-transparent cursor-pointer transition-all duration-200"
-                            }
+                            onClick={clearSelected}
+                            className="text-xs text-slate-455 hover:text-slate-200 transition-colors underline cursor-pointer font-medium"
                         >
-                            Delete Staged Runs ({localSelectedCount})
+                            Unselect all
                         </button>
-                    )}
+                    </div>
+                    
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Compare Selected Button */}
+                        <button
+                            onClick={() => sortedStats.length > 0 && setShowComparisonDrawer(true)}
+                            className="px-4 py-1.5 text-xs font-mono font-bold uppercase tracking-wider rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
+                        >
+                            {hasPromotableSelected ? `Compare & Promote (${selectedBenchmarks.size})` : `Compare & Inspect (${selectedBenchmarks.size})`}
+                        </button>
+
+                        {/* Invert Selected */}
+                        <button
+                            onClick={invertSelected}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-800 bg-[#070b13] hover:border-slate-700 hover:bg-[#101622] text-slate-300 cursor-pointer transition-all duration-200"
+                        >
+                            Invert Selection
+                        </button>
+
+                        {/* Delete Staged Runs */}
+                        {hasAnyLocalRuns && (
+                            <button
+                                onClick={handleDeleteSelected}
+                                disabled={localSelectedCount === 0}
+                                className={
+                                    localSelectedCount === 0
+                                    ? "px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed opacity-50"
+                                    : "px-3 py-1.5 text-xs font-semibold rounded-xl bg-red-650/95 hover:bg-red-500 text-white shadow-sm border border-transparent cursor-pointer transition-all duration-200"
+                                }
+                            >
+                                Delete Staged ({localSelectedCount})
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Stacked Cards List Container */}
             <div className="relative">

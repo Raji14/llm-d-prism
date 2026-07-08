@@ -139,6 +139,8 @@ export const FilterPanel = ({
     };
 
     const [showSpecsDropdown, setShowSpecsDropdown] = useState(false);
+    const [showViewSettings, setShowViewSettings] = useState(false);
+    const [showPresetsDropdown, setShowPresetsDropdown] = useState(false);
     const [isTimelineExpanded, setIsTimelineExpanded] = useState(() => {
         try {
             const saved = localStorage.getItem('prism_manage_timeline_expanded');
@@ -292,6 +294,9 @@ export const FilterPanel = ({
         setIsAdvancedExpanded(true);
     };
 
+    const activePreset = React.useMemo(() => {
+        return presets.find(isPresetActive) || null;
+    }, [presets, isPresetActive]);
 
     const [groupBy, setGroupBy] = useState(() => {
         try {
@@ -579,7 +584,7 @@ export const FilterPanel = ({
                                                     </div>
                                                 </div>
 
-                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+                                                <ArrowRight className="w-3 h-3 text-slate-800 shrink-0" />
 
                                                 {/* Step 2: Submitted */}
                                                 <div 
@@ -602,7 +607,7 @@ export const FilterPanel = ({
                                                     </div>
                                                 </div>
 
-                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+                                                <ArrowRight className="w-3 h-3 text-slate-800 shrink-0" />
 
                                                 {/* Step 3: Under Review */}
                                                 <div 
@@ -625,7 +630,7 @@ export const FilterPanel = ({
                                                     </div>
                                                 </div>
 
-                                                <ArrowRight className="w-3 h-3 text-slate-855 shrink-0" />
+                                                <ArrowRight className="w-3 h-3 text-slate-800 shrink-0" />
 
                                                 {/* Step 4: Published */}
                                                 <div 
@@ -731,24 +736,24 @@ export const FilterPanel = ({
             </div>
 
             {/* Section 2: Explorer & Registry Catalog */}
-            <div className="flex flex-col gap-6 bg-[#070b13]/65 border border-slate-900/90 rounded-3xl p-6 shadow-2xl backdrop-blur-md relative z-30">
+            <div className="flex flex-col gap-3.5 bg-[#070b13]/65 border border-slate-900/90 rounded-3xl p-5 shadow-2xl backdrop-blur-md relative z-30">
 
                     {/* Primary Row Controls (Always Visible) */}
-                    <div className="flex flex-wrap items-center gap-3 bg-[#0d1527] backdrop-blur-xl p-4 border border-slate-800/80 rounded-2xl mb-1 shadow-[inset_0_1px_1px_rgba(255,255,255,0.02)] relative z-30">
+                    <div className="flex flex-wrap items-center gap-3 bg-[#0a0f1d] border border-slate-800/60 p-3 rounded-2xl relative z-30 shadow-md">
                         {/* Search Bar */}
                         <div id="manage-tour-search" className="relative flex-1 min-w-[240px]">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                             <input
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Search by model name or hardware..."
-                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-800/40 bg-slate-950 text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-medium"
+                                className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-800/50 bg-[#070b13] text-slate-100 placeholder-slate-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all font-medium"
                             />
                         </div>
 
                         {/* Primary Dropdowns */}
-                        <div className="w-44 flex-shrink-0">
+                        <div className="w-40 flex-shrink-0">
                             <MultiSelectDropdown 
                                 label="Models"
                                 options={filterOptions.models}
@@ -758,7 +763,7 @@ export const FilterPanel = ({
                             />
                         </div>
 
-                        <div className="w-44 flex-shrink-0 border-r border-slate-800/40 pr-3 mr-1">
+                        <div className="w-40 flex-shrink-0 border-r border-slate-800/40 pr-3">
                             <MultiSelectDropdown 
                                 label="Accelerators"
                                 options={filterOptions.hardware}
@@ -768,83 +773,197 @@ export const FilterPanel = ({
                             />
                         </div>
 
-                        {/* Grouping Selector */}
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Group:</span>
-                            <select 
-                                className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
-                                value={groupBy}
-                                onChange={(e) => setGroupBy(e.target.value)}
-                            >
-                                <option value="None">None</option>
-                                <option value="Model">Model</option>
-                                <option value="Hardware">Hardware</option>
-                                <option value="Origin">Source Connections</option>
-                                <option value="OriginFolder">Origin/Folder</option>
-                            </select>
-                        </div>
-
-                        {/* Sorting Selector */}
-                        <div className="flex items-center gap-1 border-r border-slate-900/60 pr-3 mr-1">
-                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap select-none">Sort:</span>
-                            <select 
-                                className="text-xs bg-slate-950/60 border border-slate-900/60 rounded-xl px-2.5 py-2 outline-none focus:border-cyan-500/50 text-slate-200 hover:border-slate-800/80 hover:bg-slate-900/40 transition-all duration-200 font-semibold cursor-pointer"
-                                value={sortByField}
-                                onChange={(e) => setSortByField(e.target.value)}
-                            >
-                                <option value="timestamp">Timestamp</option>
-                                <option value="maxTput">Max Throughput</option>
-                                <option value="minLat">Min Latency</option>
-                                <option value="model">Model Name</option>
-                                <option value="qps">QPS</option>
-                                <option value="inputTput">Input Tok/s</option>
-                                <option value="outputTput">Output Tok/s</option>
-                                <option value="totalTput">Total Tok/s</option>
-                                <option value="ntpot">NTPOT</option>
-                                <option value="tpot">TPOT</option>
-                                <option value="itl">ITL</option>
-                                <option value="ttft">TTFT</option>
-                                <option value="e2e">E2E Latency</option>
-                                <option value="costIn">Cost/1M In</option>
-                                <option value="costOut">Cost/1M Out</option>
-                            </select>
-                            <button
-                                onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                                title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                                className="p-2 text-slate-400 hover:text-slate-200 bg-slate-950/60 rounded-xl border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 transition-colors cursor-pointer flex items-center justify-center"
-                            >
-                                {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
-                            </button>
-                        </div>
-
-                        {/* Columns Dropdown (Metrics Selector) */}
+                        {/* View Options Dropdown Popover */}
                         <div className="relative">
                             <button 
-                                onClick={() => setShowSpecsDropdown(!showSpecsDropdown)}
-                                className="px-3 py-2 text-xs font-semibold rounded-xl border border-slate-900/60 bg-slate-950/60 hover:border-slate-850 hover:bg-slate-900/40 text-slate-200 cursor-pointer flex items-center gap-1.5 transition-colors"
+                                onClick={() => {
+                                    setShowViewSettings(!showViewSettings);
+                                    setShowPresetsDropdown(false);
+                                }}
+                                className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                                    showViewSettings || groupBy !== 'None' || sortByField !== 'timestamp'
+                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-bold' 
+                                    : 'bg-[#070b13] border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-205'
+                                }`}
                             >
-                                Metrics ({Object.values(visibleSpecs).filter(Boolean).length})
+                                <Sliders size={13} />
+                                <span>View Options</span>
                             </button>
-                            {showSpecsDropdown && (
+                            {showViewSettings && (
                                 <>
-                                    <div className="fixed inset-0 z-20" onClick={() => setShowSpecsDropdown(false)} />
-                                    <div className="absolute right-0 mt-2 w-72 bg-slate-950/95 border border-slate-900 rounded-xl shadow-2xl p-4 z-[100] grid grid-cols-1 gap-2 max-h-96 overflow-y-auto backdrop-blur-md">
-                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 mb-1">Toggle visible columns</div>
-                                        {Object.entries(SPEC_LABELS).map(([key, label]) => {
-                                            const isSelected = visibleSpecs[key];
-                                            return (
-                                                <button
-                                                    key={key}
-                                                    onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
-                                                    className={`w-full text-left px-2 py-1.5 text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer ${isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+                                    <div className="fixed inset-0 z-20" onClick={() => setShowViewSettings(false)} />
+                                    <div className="absolute right-0 mt-2 w-72 bg-[#090d16] border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-4 backdrop-blur-md">
+                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 pb-1 border-b border-slate-800">Display Options</div>
+                                        
+                                        {/* Grouping */}
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Group By</label>
+                                            <select 
+                                                className="text-xs bg-[#06080e] border border-slate-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-cyan-500/50 text-slate-200 cursor-pointer"
+                                                value={groupBy}
+                                                onChange={(e) => setGroupBy(e.target.value)}
+                                            >
+                                                <option value="None">None</option>
+                                                <option value="Model">Model</option>
+                                                <option value="Hardware">Hardware</option>
+                                                <option value="Origin">Source Connections</option>
+                                                <option value="OriginFolder">Origin/Folder</option>
+                                            </select>
+                                        </div>
+
+                                        {/* Sorting */}
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Sort By</label>
+                                            <div className="flex gap-1.5">
+                                                <select 
+                                                    className="flex-1 text-xs bg-[#06080e] border border-slate-800 rounded-lg px-2.5 py-1.5 outline-none focus:border-cyan-500/50 text-slate-200 cursor-pointer"
+                                                    value={sortByField}
+                                                    onChange={(e) => setSortByField(e.target.value)}
                                                 >
-                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-slate-950'}`}>
-                                                        {isSelected && <Check size={10} strokeWidth={3} />}
-                                                    </div>
-                                                    {label}
+                                                    <option value="timestamp">Timestamp</option>
+                                                    <option value="maxTput">Max Throughput</option>
+                                                    <option value="minLat">Min Latency</option>
+                                                    <option value="model">Model Name</option>
+                                                    <option value="qps">QPS</option>
+                                                    <option value="inputTput">Input Tok/s</option>
+                                                    <option value="outputTput">Output Tok/s</option>
+                                                    <option value="totalTput">Total Tok/s</option>
+                                                    <option value="ntpot">NTPOT</option>
+                                                    <option value="tpot">TPOT</option>
+                                                    <option value="itl">ITL</option>
+                                                    <option value="ttft">TTFT</option>
+                                                    <option value="e2e">E2E Latency</option>
+                                                    <option value="costIn">Cost/1M In</option>
+                                                    <option value="costOut">Cost/1M Out</option>
+                                                </select>
+                                                <button
+                                                    onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                                    title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+                                                    className="p-1.5 text-slate-400 hover:text-slate-200 bg-[#06080e] rounded-lg border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer flex items-center justify-center"
+                                                >
+                                                    {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
                                                 </button>
-                                            );
-                                        })}
+                                            </div>
+                                        </div>
+
+                                        {/* Columns (Metrics) */}
+                                        <div className="flex flex-col gap-1.5">
+                                            <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider">Metrics Columns</label>
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
+                                                {Object.entries(SPEC_LABELS).map(([key, label]) => {
+                                                    const isColSelected = visibleSpecs[key];
+                                                    return (
+                                                        <button
+                                                            key={key}
+                                                            onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                            className={`text-left px-1.5 py-1 text-[10px] rounded transition-all flex items-center gap-1.5 cursor-pointer ${
+                                                                isColSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-450 hover:text-slate-200'
+                                                            }`}
+                                                        >
+                                                            <div className={`w-3 h-3 rounded-sm border flex items-center justify-center ${
+                                                                isColSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-[#06080e]'
+                                                            }`}>
+                                                                {isColSelected && <Check size={8} strokeWidth={4} />}
+                                                            </div>
+                                                            <span className="truncate">{label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Presets Dropdown */}
+                        <div className="relative">
+                            <button 
+                                onClick={() => {
+                                    setShowPresetsDropdown(!showPresetsDropdown);
+                                    setShowViewSettings(false);
+                                }}
+                                className={`px-3 py-2 text-xs font-semibold rounded-xl border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                    activePreset 
+                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-bold' 
+                                    : 'bg-[#070b13] border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-205'
+                                }`}
+                            >
+                                <Bookmark size={13} />
+                                <span>{activePreset ? activePreset.name : 'Presets'}</span>
+                            </button>
+                            {showPresetsDropdown && (
+                                <>
+                                    <div className="fixed inset-0 z-20" onClick={() => setShowPresetsDropdown(false)} />
+                                    <div className="absolute right-0 mt-2 w-72 bg-[#090d16] border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-3 backdrop-blur-md">
+                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 pb-1 border-b border-slate-800">Filter Presets</div>
+                                        {/* Presets List */}
+                                        <div className="flex flex-col gap-1 max-h-40 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
+                                            {presets.length === 0 ? (
+                                                <div className="text-xs text-slate-500 italic p-1 select-none">No saved presets</div>
+                                            ) : (
+                                                presets.map(preset => {
+                                                    const isActive = isPresetActive(preset);
+                                                    return (
+                                                        <div key={preset.id} className="flex items-center justify-between gap-2 hover:bg-slate-900/50 rounded-lg p-1">
+                                                            <button 
+                                                                onClick={() => {
+                                                                    applyPreset(preset);
+                                                                    setShowPresetsDropdown(false);
+                                                                }}
+                                                                className={`flex-1 text-left text-xs font-medium cursor-pointer transition-colors ${isActive ? 'text-cyan-400 font-bold' : 'text-slate-450 hover:text-cyan-400'}`}
+                                                            >
+                                                                <span className="flex items-center gap-1.5">
+                                                                    {isActive && <Check className="w-3 h-3 text-cyan-400 stroke-[2.5]" />}
+                                                                    {preset.name}
+                                                                </span>
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    openEditPreset(preset);
+                                                                    setIsAdvancedExpanded(true);
+                                                                    setShowPresetsDropdown(false);
+                                                                }}
+                                                                className="text-slate-500 hover:text-cyan-400 p-1 rounded hover:bg-slate-800/40"
+                                                                title="Edit Preset"
+                                                            >
+                                                                <Pencil size={11} />
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+                                        {/* Save Preset Form */}
+                                        <form 
+                                            onSubmit={(e) => {
+                                                handleSavePreset(e);
+                                                setShowPresetsDropdown(false);
+                                            }}
+                                            className="flex flex-col gap-2 pt-2 border-t border-slate-800"
+                                        >
+                                            <div className="text-[9px] uppercase tracking-wider font-bold text-slate-500">Save current filters</div>
+                                            <div className="flex gap-1.5">
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Name..."
+                                                    value={newPresetName}
+                                                    onChange={(e) => setNewPresetName(e.target.value)}
+                                                    className="bg-[#0b0f17] border border-slate-800 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 outline-none focus:border-cyan-500/40 flex-1 font-medium placeholder-slate-500"
+                                                />
+                                                <button 
+                                                    type="submit"
+                                                    disabled={!newPresetName.trim() || !hasFiltersToSave}
+                                                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                                                        (newPresetName.trim() && hasFiltersToSave)
+                                                        ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm'
+                                                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-800/20'
+                                                    }`}
+                                                >
+                                                    Save
+                                                </button>
+                                            </div>
+                                        </form>
                                     </div>
                                 </>
                             )}
@@ -854,37 +973,11 @@ export const FilterPanel = ({
                         <button 
                             id="manage-tour-filter-toggle"
                             onClick={() => setIsAdvancedExpanded(!isAdvancedExpanded)}
-                            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950/60 text-slate-200 border border-slate-900/60 hover:border-slate-850 hover:bg-slate-900/40 cursor-pointer flex items-center gap-1 transition-colors"
+                            className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-950/60 text-slate-300 border border-slate-900/60 hover:border-slate-800 hover:bg-slate-900/40 cursor-pointer flex items-center gap-1 transition-colors"
                         >
                             {isAdvancedExpanded ? "Basic Filters" : `Advanced Filters${activeFiltersCount > 0 ? ` (${activeFiltersCount})` : ''}`}
                         </button>
                     </div>
-
-                    {/* Saved Preset Chips Row (Always Visible on Main Page) */}
-                    {presets.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 mb-1 px-1 select-none animate-in fade-in duration-200">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
-                                <Bookmark className="w-3 h-3 text-cyan-500" /> Presets:
-                            </span>
-                            {presets.map((preset) => {
-                                const isActive = isPresetActive(preset);
-                                return (
-                                    <button
-                                        key={preset.id}
-                                        onClick={() => applyPreset(preset)}
-                                        className={`px-3 py-1 text-xs rounded-xl font-medium transition-all cursor-pointer border flex items-center gap-1.5 ${
-                                            isActive 
-                                            ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40 font-semibold shadow-sm shadow-cyan-500/10' 
-                                            : 'bg-slate-950/40 text-slate-400 border-slate-850 hover:text-slate-200 hover:border-slate-800'
-                                        }`}
-                                    >
-                                        {isActive && <Check className="w-3 h-3 text-cyan-400 stroke-[2.5] animate-in zoom-in-50 duration-200" />}
-                                        <span>{preset.name}</span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
 
                 {/* Advanced Filters Backdrop */}
                 {isAdvancedExpanded && createPortal(
@@ -1054,7 +1147,7 @@ export const FilterPanel = ({
                                 <>
                                     <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto custom-scrollbar">
                                         {presets.length === 0 ? (
-                                            <span className="text-xs text-slate-650 italic px-1 select-none">No saved presets</span>
+                                            <span className="text-xs text-slate-500 italic px-1 select-none">No saved presets</span>
                                         ) : (
                                             presets.map((preset) => {
                                                 const isActive = isPresetActive(preset);
@@ -1314,8 +1407,7 @@ export const FilterPanel = ({
                 document.body
             )}
             
-            {/* Divider Line */}
-            <div className="border-t border-slate-900/60 my-2" />
+
 
             <div id="manage-tour-table" className="relative flex flex-col gap-4">
                 <UnifiedDataTable

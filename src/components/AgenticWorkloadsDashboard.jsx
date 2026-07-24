@@ -5,7 +5,7 @@ import {
 import {
     ExternalLink, ChevronDown, ChevronUp, Check, Code,
 } from 'lucide-react';
-import { WellLitHeader, Button, Badge, Modal, Panel, ToggleGroup, Spinner, ChartTooltip, ChartXAxis, ChartYAxis, seriesColor, gridProps, getChartTheme } from './ui';
+import { WellLitHeader, Button, Badge, Modal, Panel, ToggleGroup, Spinner, ChartTooltip, ChartXAxis, ChartYAxis, seriesColor, gridProps, getChartTheme, getAxisConfig } from './ui';
 import { cn } from '../utils/cn';
 import { scanAgenticWorkloads } from '../utils/gcsScanner';
 import { getLocalDashboardRuns } from '../utils/dashboardHelpers';
@@ -307,15 +307,19 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onNavigate, 
         data: line.data.filter(point => point.x <= effectiveXMax),
     })), [buildChartLines, effectiveXMax]);
 
-    const chartDomains = useMemo(() => {
+    const chartAxesConfig = useMemo(() => {
         const visiblePoints = visibleChartLines.flatMap(line => line.data);
         const yValues = visiblePoints.map(point => point.y);
 
+        const yMin = yValues.length ? Math.min(...yValues) : 0;
         const yMax = yValues.length ? Math.max(...yValues) : 1;
 
+        const xAxisConfig = getAxisConfig(chartDataMin, effectiveXMax, zoomLogScale, { includeZero: !zoomLogScale, padding: 0.05 });
+        const yAxisConfig = getAxisConfig(yMin, yMax, false, { includeZero: true, padding: 0.05 });
+
         return {
-            x: [zoomLogScale ? chartDataMin : 'auto', effectiveXMax],
-            y: [0, Math.max(1, Math.ceil(yMax * 1.05))],
+            x: xAxisConfig,
+            y: yAxisConfig,
         };
     }, [chartDataMin, effectiveXMax, visibleChartLines, zoomLogScale]);
 
@@ -499,10 +503,10 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onNavigate, 
             <div className="bg-slate-950/30 rounded-xl p-4 border border-slate-800/40 m-4 flex flex-col flex-1 select-none">
                 <div className="relative w-full h-[380px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ top: 10, right: 30, left: 10, bottom: 20 }}>
+                        <ScatterChart margin={{ top: 15, right: 30, left: 60, bottom: 45 }}>
                             <CartesianGrid {...gridProps()} opacity={0.4} />
-                            <ChartXAxis dataKey="x" type="number" name={zoomXAxis.toUpperCase()} label={xAxisLabel} domain={chartDomains.x} scale={zoomLogScale ? 'log' : 'auto'} allowDataOverflow />
-                            <ChartYAxis dataKey="y" type="number" name="Throughput" label={yAxisLabel} domain={chartDomains.y} allowDataOverflow />
+                            <ChartXAxis dataKey="x" type="number" name={zoomXAxis.toUpperCase()} label={xAxisLabel} domain={chartAxesConfig.x.domain} ticks={chartAxesConfig.x.ticks} scale={zoomLogScale ? 'log' : 'auto'} allowDataOverflow />
+                            <ChartYAxis dataKey="y" type="number" name="Throughput" label={yAxisLabel} domain={chartAxesConfig.y.domain} ticks={chartAxesConfig.y.ticks} allowDataOverflow />
                             <Tooltip
                                 content={<RichAgentWorkloadTooltip metadata={metadata} />}
                                 wrapperStyle={{ outline: 'none', zIndex: 100 }}

@@ -36,3 +36,4 @@ export { ChartLegend } from './charts/ChartLegend';
 export { ChartXAxis, ChartYAxis } from './charts/Axis';
 export { CHART_SERIES, seriesColor, CHART_STATUS } from './charts/palette';
 export { getChartTheme, gridProps, tooltipProps } from './charts/theme';
+export { getAxisConfig } from './charts/utils';

@@ -93,6 +93,7 @@ All from `import { ... } from './ui'` (or the relative path to `src/components/u
   one row above the plot).
 - Axes: `ChartXAxis` / `ChartYAxis` (theme-aware; same tick formatting as the
   old `CustomXAxis`/`CustomYAxis`). Grid: `<CartesianGrid {...gridProps()} />`.
+- **Axis domain and ticks**: Prefer including zero on linear scales for a proper baseline. Ticks must be normalized (even, clean distributions). Extend domains slightly beyond the max data point (e.g. 5% upper padding) so data marks are not clipped at the outer edges of the plot. Use the shared utility `getAxisConfig(minVal, maxVal, isLog, options)` from `./ui` to compute domains and ticks, and always configure sufficient margins (e.g., `left: 60`, `bottom: 45` on the chart component) to avoid clipping labels.
 - Series colors: `CHART_SERIES` in fixed order — emerald, sky, amber, violet,
   pink. Assign by entity, never by rank: a series keeps its color when filters
   change the series count. More than 5 series → fold into "Other" or use small

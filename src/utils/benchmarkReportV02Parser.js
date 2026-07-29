@@ -510,8 +510,8 @@ export function stageToEntry(stage) {
         hardware: hardware,
         precision: 'Unknown',
         backend: scenario.harness || 'Unknown',
-        isl: scenario.isl || 0,
-        osl: scenario.osl || 0,
+        isl: scenario.isl ?? null,
+        osl: scenario.osl ?? null,
         timestamp: ts,
         throughput,
         latency,
@@ -519,6 +519,12 @@ export function stageToEntry(stage) {
         components: components || [],
         well_lit_path: stage.well_lit_path || stage.wellLitPath || null,
         wellLitPath: stage.well_lit_path || stage.wellLitPath || null,
+
+        // Hoist key metrics to root for Chart compatibility
+        time_per_output_token: performance.tpotMean ?? null,
+        tpot: performance.tpotMean ?? null,
+        ntpot: performance.tpotMean ?? null,
+        itl: performance.itlMean ?? null,
 
         source: `brv02:${runId}`,
         source_info: {
@@ -545,9 +551,9 @@ export function stageToEntry(stage) {
         },
 
         workload: {
-            input_tokens: scenario.isl || 0,
-            output_tokens: scenario.osl || 0,
-            target_qps: scenario.rateQps || 0,
+            input_tokens: scenario.isl ?? null,
+            output_tokens: scenario.osl ?? null,
+            target_qps: scenario.rateQps ?? null,
             concurrency: scenario.concurrency ?? null,
             stage: stage.stageIndex,
         },

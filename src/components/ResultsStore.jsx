@@ -101,6 +101,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         loadSubmissions,
         updateSubmissionStatus,
         bulkUpdateSubmissionStatus,
+        deleteSubmission,
         submissionsMap,
         newBucketName, setNewBucketName,
         newBucketAlias, setNewBucketAlias,
@@ -194,11 +195,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         }
     }, [isAuthenticated, onNavigate]);
 
-    React.useEffect(() => {
-        if (setSelectedBenchmarks) {
-            setSelectedBenchmarks(new Set());
-        }
-    }, [setSelectedBenchmarks]);
+
 
     React.useEffect(() => {
         const triggerStaged = localStorage.getItem('prism_activate_staged_filter');
@@ -800,6 +797,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
                         isLoadingSubmissions,
                         updateSubmissionStatus,
                         bulkUpdateSubmissionStatus,
+                        deleteSubmission,
                         qualityMetrics,
                         gcsProfiles: gcsProfiles,
                         loadingConnections: gcsProfiles?.some(p => p.loading) || gcsLoading,
@@ -824,6 +822,7 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
         isLoadingSubmissions,
         updateSubmissionStatus,
         bulkUpdateSubmissionStatus,
+        deleteSubmission,
         qualityMetrics,
         gcsProfiles,
         gcsLoading,

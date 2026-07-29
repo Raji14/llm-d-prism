@@ -696,6 +696,12 @@ export const useDashboardData = (initialState, dashboardState) => {
 
                     setSelectedBenchmarks(prev => {
                         if (prev.size > 0) return prev;
+                        try {
+                            const savedSel = localStorage.getItem('prism_selected_benchmarks');
+                            if (savedSel !== null) return prev;
+                        } catch {
+                            // ignore
+                        }
                         // Default to qwen3-coder-next if present
                         const qwenKeys = Array.from(allKeys).filter(k => {
                             const parts = k.split('::');
@@ -1199,7 +1205,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                     newD.ttft = newD.metrics.ttft || newD.ttft || { mean: 0, p50: 0 };
                     if (newD.ttft && typeof newD.ttft.mean !== 'number') newD.ttft.mean = Number(newD.ttft.mean || 0);
 
-                    newD.qps = Number(newD.workload?.target_qps || newD.metrics.request_rate || 0);
+                    const qpsVal = newD.workload?.target_qps ?? newD.metrics?.request_rate;
+                    newD.qps = qpsVal != null ? Number(qpsVal) : null;
                     // Critical for chart filtering/plotting (chartMode === 'tpot')
                     newD.time_per_output_token = Number(newD.metrics.time_per_output_token || newD.metrics.tpot || newD.metrics.mean_tpot_ms || 0);
                     newD.tpot = newD.time_per_output_token;
@@ -1213,10 +1220,10 @@ export const useDashboardData = (initialState, dashboardState) => {
 
                 // FLATTEN WORKLOAD
                 if (newD.workload) {
-                    newD.isl = newD.workload.input_tokens || newD.isl || 0;
-                    newD.osl = newD.workload.output_tokens || newD.osl || 0;
-                    newD.prompt_len = newD.workload.input_tokens || newD.isl || 0;
-                    newD.output_len = newD.workload.output_tokens || newD.osl || 0;
+                    newD.isl = newD.workload.input_tokens ?? newD.isl ?? null;
+                    newD.osl = newD.workload.output_tokens ?? newD.osl ?? null;
+                    newD.prompt_len = newD.workload.input_tokens ?? newD.isl ?? null;
+                    newD.output_len = newD.workload.output_tokens ?? newD.osl ?? null;
                 }
 
                 // FLATTEN DISAGGREGATED CONFIG (Critical for Table/Chart Display)
@@ -2386,6 +2393,46 @@ export const useDashboardData = (initialState, dashboardState) => {
         }
     }, [loadSubmissions, addToast, user, accessToken]);
 
+    const deleteSubmission = useCallback(async (runId, shouldReload = true) => {
+        setIsLoadingSubmissions(true);
+        try {
+            const headers = {};
+            if (accessToken) {
+                headers['X-Prism-Github-Token'] = accessToken;
+            }
+
+            const res = await fetch(`/api/results/${runId}`, {
+                method: 'DELETE',
+                headers
+            });
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({}));
+                throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.success) {
+                if (addToast) {
+                    addToast(data.message || `Rejected benchmark ${runId} deleted permanently.`, 'success');
+                }
+                if (shouldReload) {
+                    // Clear GCS IndexedDB cache and force-refetch data from GCS Results Store
+                    await CacheManager.clearAll();
+                    await loadSubmissions();
+                    if (loadAllData) {
+                        await loadAllData(null, true);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Delete Submission Error]', err);
+            if (addToast) {
+                addToast(`Failed to delete benchmark run ${runId}: ${err.message}`, 'error');
+            }
+        } finally {
+            setIsLoadingSubmissions(false);
+        }
+    }, [loadSubmissions, loadAllData, addToast, accessToken]);
+
     const submissionsMap = useMemo(() => {
         const map = {};
         (submissions || []).forEach(sub => {
@@ -2451,6 +2498,6 @@ export const useDashboardData = (initialState, dashboardState) => {
         brv02CustomLabels, setBrv02CustomLabels,
         brv02BaselineRunId, setBrv02BaselineRunId,
         brv02SelectedStages, setBrv02SelectedStages,
-        submissions, isLoadingSubmissions, loadSubmissions, updateSubmissionStatus, bulkUpdateSubmissionStatus, submissionsMap
+        submissions, isLoadingSubmissions, loadSubmissions, updateSubmissionStatus, bulkUpdateSubmissionStatus, deleteSubmission, submissionsMap
     };
 };

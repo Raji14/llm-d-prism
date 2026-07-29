@@ -190,8 +190,6 @@ export const UnifiedDataTable = (props) => {
     const [viewingPayloadRun, setViewingPayloadRun] = useState(null);
     const [rejectingRunId, setRejectingRunId] = useState(null);
     const [rejectionFeedback, setRejectionFeedback] = useState('');
-    const [drawerRejectingRunId, setDrawerRejectingRunId] = useState(null);
-    const [drawerRejectionFeedback, setDrawerRejectionFeedback] = useState('');
 
     const actionPendingRef = React.useRef(false);
     const [isLocalActionPending, setIsLocalActionPending] = React.useState(false);
@@ -210,7 +208,12 @@ export const UnifiedDataTable = (props) => {
 
 
     const [isDraggingSelection, setIsDraggingSelection] = useState(false);
-    const dragStartPagePos = React.useRef({ x: 0, y: 0 });
+    const clickedCheckboxEl = React.useRef(null);
+    const clickedCheckboxOffset = React.useRef({ x: 0, y: 0 });
+    const dragStartClientPos = React.useRef({ x: 0, y: 0 });
+    const initialScrollPos = React.useRef({ x: 0, y: 0 });
+    const scrollContainerRef = React.useRef(null);
+    const animFrameRef = React.useRef(null);
     const lastPointerPos = React.useRef({ x: 0, y: 0 });
     const [dragBox, setDragBox] = useState(null);
     const dragActionSelect = React.useRef(true);
@@ -235,6 +238,7 @@ export const UnifiedDataTable = (props) => {
         isLoadingSubmissions = false,
         updateSubmissionStatus,
         bulkUpdateSubmissionStatus,
+        deleteSubmission,
         qualityMetrics,
         onOpenSubmitDialog,
         isFiltered = false,
@@ -397,12 +401,34 @@ export const UnifiedDataTable = (props) => {
 
 
     const drawerMetricAvailability = React.useMemo(() => {
-        const hasNtpot = filteredBySource?.some(d => d.metrics?.ntpot != null);
-        const hasTtft = filteredBySource?.some(d => d.metrics?.ttft?.mean != null || d.ttft?.mean != null);
-        const hasTokensPerSec = filteredBySource?.some(d => d.tokens_per_second != null);
-        const hasItl = filteredBySource?.some(d => d.metrics?.itl != null || d.itl != null);
-        return { ntpot: hasNtpot, ttft: hasTtft, tokens_per_sec: hasTokensPerSec, itl: hasItl };
-    }, [filteredBySource]);
+        const dataToCheck = drawerFilteredData || [];
+        
+        const hasNtpot = dataToCheck.some(d => d.metrics?.ntpot != null);
+        const hasTtft = dataToCheck.some(d => d.metrics?.ttft?.mean != null || d.ttft?.mean != null);
+        const hasTokensPerSec = dataToCheck.some(d => d.tokens_per_second != null);
+        const hasItl = dataToCheck.some(d => d.metrics?.itl != null || d.itl != null);
+        
+        const hasInput = dataToCheck.length > 0 && dataToCheck.every(d => d.throughput <= 0 || (d.metrics?.input_tput || 0) > 0);
+        const hasTotal = dataToCheck.length > 0 && dataToCheck.every(d => d.throughput <= 0 || (d.metrics?.total_tput || 0) > 0);
+        const hasQPS = dataToCheck.length > 0 && dataToCheck.every(d => d.throughput <= 0 || (d.qps || d.metrics?.request_rate || 0) > 0);
+        const hasCost = dataToCheck.some(d => d.metrics?.cost && (
+            (d.metrics.cost.spot || 0) > 0 ||
+            (d.metrics.cost.on_demand || 0) > 0 ||
+            (d.metrics.cost.cud_1y || 0) > 0 ||
+            (d.metrics.cost.cud_3y || 0) > 0
+        ));
+        
+        return { 
+            ntpot: hasNtpot, 
+            ttft: hasTtft, 
+            tokens_per_sec: hasTokensPerSec, 
+            itl: hasItl,
+            input: hasInput,
+            total: hasTotal,
+            qps: hasQPS,
+            cost: hasCost
+        };
+    }, [drawerFilteredData]);
 
     const localSelectedCount = React.useMemo(() => {
         let count = 0;
@@ -464,8 +490,23 @@ export const UnifiedDataTable = (props) => {
         if (!isDraggingSelection) return;
 
         const updateDragSelection = () => {
-            const vStartX = dragStartPagePos.current.x - window.scrollX;
-            const vStartY = dragStartPagePos.current.y - window.scrollY;
+            let vStartX;
+            let vStartY;
+
+            if (clickedCheckboxEl.current && clickedCheckboxEl.current.isConnected) {
+                const cbRect = clickedCheckboxEl.current.getBoundingClientRect();
+                vStartX = cbRect.left + clickedCheckboxOffset.current.x;
+                vStartY = cbRect.top + clickedCheckboxOffset.current.y;
+            } else {
+                const container = scrollContainerRef.current;
+                const currentScrollX = container === window ? window.scrollX : container?.scrollLeft || 0;
+                const currentScrollY = container === window ? window.scrollY : container?.scrollTop || 0;
+                const deltaX = currentScrollX - initialScrollPos.current.x;
+                const deltaY = currentScrollY - initialScrollPos.current.y;
+                vStartX = dragStartClientPos.current.x - deltaX;
+                vStartY = dragStartClientPos.current.y - deltaY;
+            }
+
             const vCurrentX = lastPointerPos.current.x;
             const vCurrentY = lastPointerPos.current.y;
 
@@ -502,6 +543,50 @@ export const UnifiedDataTable = (props) => {
             setSelectedBenchmarks(newSelected);
         };
 
+        const EDGE_THRESHOLD = 80;
+        const MAX_SPEED = 25;
+
+        const autoScrollAndSelect = () => {
+            const container = scrollContainerRef.current;
+            let containerTop = 0;
+            let containerBottom = window.innerHeight;
+
+            if (container && container !== window) {
+                const containerRect = container.getBoundingClientRect();
+                containerTop = containerRect.top;
+                containerBottom = containerRect.bottom;
+            }
+
+            const currentY = lastPointerPos.current.y;
+            let scrollDeltaY = 0;
+
+            if (currentY > containerBottom - EDGE_THRESHOLD) {
+                const distance = currentY - (containerBottom - EDGE_THRESHOLD);
+                const intensity = Math.min(1, Math.max(0, distance / EDGE_THRESHOLD));
+                scrollDeltaY = intensity * MAX_SPEED;
+            } else if (currentY < containerTop + EDGE_THRESHOLD) {
+                const distance = (containerTop + EDGE_THRESHOLD) - currentY;
+                const intensity = Math.min(1, Math.max(0, distance / EDGE_THRESHOLD));
+                scrollDeltaY = -intensity * MAX_SPEED;
+            }
+
+            if (scrollDeltaY !== 0) {
+                if (!container || container === window) {
+                    window.scrollBy(0, scrollDeltaY);
+                    if (document.documentElement) {
+                        document.documentElement.scrollTop += scrollDeltaY;
+                    }
+                } else {
+                    container.scrollTop += scrollDeltaY;
+                }
+            }
+
+            updateDragSelection();
+            animFrameRef.current = requestAnimationFrame(autoScrollAndSelect);
+        };
+
+        animFrameRef.current = requestAnimationFrame(autoScrollAndSelect);
+
         const handlePointerMove = (e) => {
             lastPointerPos.current = { x: e.clientX, y: e.clientY };
             updateDragSelection();
@@ -514,20 +599,40 @@ export const UnifiedDataTable = (props) => {
         const handlePointerUp = () => {
             setIsDraggingSelection(false);
             setDragBox(null);
+            if (animFrameRef.current) {
+                cancelAnimationFrame(animFrameRef.current);
+            }
         };
 
         window.addEventListener('pointermove', handlePointerMove);
         window.addEventListener('pointerup', handlePointerUp);
         window.addEventListener('pointercancel', handlePointerUp);
-        window.addEventListener('scroll', handleScroll, { passive: true });
+        window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
 
         return () => {
             window.removeEventListener('pointermove', handlePointerMove);
             window.removeEventListener('pointerup', handlePointerUp);
             window.removeEventListener('pointercancel', handlePointerUp);
-            window.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('scroll', handleScroll, { capture: true });
+            if (animFrameRef.current) {
+                cancelAnimationFrame(animFrameRef.current);
+            }
         };
     }, [isDraggingSelection, setSelectedBenchmarks]);
+
+    const getScrollContainer = (el) => {
+        let current = el?.parentElement;
+        while (current && current !== document.body && current !== document.documentElement) {
+            const style = window.getComputedStyle(current);
+            const hasOverflow = style.overflowY === 'auto' || style.overflowY === 'scroll';
+            const canScroll = current.scrollHeight - current.clientHeight > 5;
+            if (hasOverflow && canScroll) {
+                return current;
+            }
+            current = current.parentElement;
+        }
+        return window;
+    };
 
     const handleCheckboxPointerDown = (e, key, isCurrentlySelected) => {
         // Only trigger on left mouse button or touch
@@ -536,8 +641,21 @@ export const UnifiedDataTable = (props) => {
         e.preventDefault();
         e.stopPropagation();
         
-        dragStartPagePos.current = { x: e.clientX + window.scrollX, y: e.clientY + window.scrollY };
+        const cbEl = e.currentTarget;
+        const cbRect = cbEl.getBoundingClientRect();
+
+        clickedCheckboxEl.current = cbEl;
+        clickedCheckboxOffset.current = { x: e.clientX - cbRect.left, y: e.clientY - cbRect.top };
+        dragStartClientPos.current = { x: e.clientX, y: e.clientY };
         lastPointerPos.current = { x: e.clientX, y: e.clientY };
+
+        const container = getScrollContainer(cbEl);
+        scrollContainerRef.current = container;
+        initialScrollPos.current = {
+            x: container === window ? window.scrollX : container.scrollLeft,
+            y: container === window ? window.scrollY : container.scrollTop
+        };
+
         setDragBox({
             startX: e.clientX,
             startY: e.clientY,
@@ -926,6 +1044,42 @@ export const UnifiedDataTable = (props) => {
         }
     };
 
+    const onlyRejectedSelected = React.useMemo(() => {
+        if (selectedBenchmarks.size === 0) return false;
+        return Array.from(selectedBenchmarks).every(key => {
+            const stat = modelStats.find(s => s.benchmarkKey === key);
+            const firstEntry = stat?.data?.[0];
+            if (!firstEntry) return false;
+            const src = firstEntry.source || '';
+            const runId = src.startsWith('brv02:') ? src.replace('brv02:', '') : firstEntry.run_id;
+            const sub = submissionsMap ? submissionsMap[runId] : null;
+            const status = sub?.status || firstEntry.source_info?.submission_state || 'staged';
+            return status === 'rejected';
+        });
+    }, [selectedBenchmarks, modelStats, submissionsMap]);
+
+    const handleBulkDeleteRejected = async () => {
+        if (selectedBenchmarks.size === 0) return;
+        if (!confirm(`Are you sure you want to permanently delete the ${selectedBenchmarks.size} selected rejected benchmarks from the Results Store? This action cannot be undone.`)) {
+            return;
+        }
+
+        const runIds = Array.from(selectedBenchmarks).map(key => {
+            const stat = modelStats.find(s => s.benchmarkKey === key);
+            const firstEntry = stat?.data?.[0];
+            const src = firstEntry?.source || '';
+            return src.startsWith('brv02:') ? src.replace('brv02:', '') : firstEntry?.run_id;
+        }).filter(Boolean);
+
+        if (deleteSubmission) {
+            for (let i = 0; i < runIds.length; i++) {
+                const isLast = i === runIds.length - 1;
+                await deleteSubmission(runIds[i], isLast);
+            }
+            clearSelected();
+        }
+    };
+
     // Computes metric-specific empty state messaging, icons, colors and actions
     const getEmptyStateConfig = () => {
         switch (kpiFilter) {
@@ -1209,6 +1363,17 @@ export const UnifiedDataTable = (props) => {
                             </>
                         )}
 
+                        {isAdmin && onlyRejectedSelected && (
+                            <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleActionClick(handleBulkDeleteRejected)}
+                                disabled={isLoadingSubmissions || isLocalActionPending}
+                            >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete ({selectedBenchmarks.size})
+                            </Button>
+                        )}
+
                         {/* Compare Selected Button */}
                         <button
                             onClick={() => sortedStats.length > 0 && setShowComparisonDrawer(true)}
@@ -1376,6 +1541,7 @@ export const UnifiedDataTable = (props) => {
                                             handleSubmitStagedRunForReview={handleSubmitStagedRunForReview}
                                             handleActionClick={handleActionClick}
                                             updateSubmissionStatus={updateSubmissionStatus}
+                                            deleteSubmission={deleteSubmission}
                                             toggleModelExpansion={toggleModelExpansion}
                                             handleCheckboxPointerDown={handleCheckboxPointerDown}
                                             brv02CustomLabels={brv02CustomLabels}
@@ -1391,7 +1557,7 @@ export const UnifiedDataTable = (props) => {
                 )}
                 </div>
             </div>
-            {dragBox && (
+            {dragBox && createPortal(
                 <div
                     style={{
                         position: 'fixed',
@@ -1400,12 +1566,14 @@ export const UnifiedDataTable = (props) => {
                         width: Math.abs(dragBox.currentX - dragBox.startX),
                         height: Math.abs(dragBox.currentY - dragBox.startY),
                         pointerEvents: 'none',
-                        zIndex: 9999,
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        border: '1px solid rgba(59, 130, 246, 0.4)',
+                        zIndex: 99999,
+                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                        border: '1.5px solid rgba(59, 130, 246, 0.6)',
                         borderRadius: '2px',
+                        boxSizing: 'border-box'
                     }}
-                />
+                />,
+                document.body
             )}
             {rawYamlContent !== null && createPortal(
                 <Modal
@@ -1582,7 +1750,7 @@ export const UnifiedDataTable = (props) => {
                                             <button
                                                 id="drawer-publish-selected-btn"
                                                 onClick={handlePublishSelected}
-                                                className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-650 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all hover:scale-[1.02] cursor-pointer flex items-center gap-1.5"
+                                                className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all hover:scale-[1.02] cursor-pointer flex items-center gap-1.5"
                                             >
                                                 <Send size={12} />
                                                 Publish Selected ({selectedStagedRuns.length})
@@ -1601,203 +1769,39 @@ export const UnifiedDataTable = (props) => {
                                 </div>
                                 
                                 <div className="grid grid-cols-1 gap-3.5">
-                                    {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => {
-                                        const firstEntry = stat.data?.[0];
-                                        if (!firstEntry) return null;
-                                        const src = firstEntry.source || '';
-                                        const isBrv02 = src.startsWith('brv02:') || firstEntry.source_info?.type === 'benchmark_report_v02';
-                                        const runId = isBrv02 ? (src.startsWith('brv02:') ? src.replace('brv02:', '') : firstEntry.run_id) : null;
-                                        const sub = runId && submissionsMap ? submissionsMap[runId] : null;
-                                        const status = sub?.status || firstEntry.source_info?.submission_state || 'staged';
-                                        const isResultsStore = firstEntry.source_info?.type === 'benchmark_report_v02';
-                                        const isMine = isResultsStore && user && firstEntry.github_author?.username === user.username;
-                                        const isLocal = src.startsWith('brv02:');
-                                        const canResubmit = isLocal || isMine || isAdmin;
-                                        
-                                        return (
-                                            <div key={stat.benchmarkKey} className="flex flex-col p-4 rounded-2xl border border-slate-800/50 bg-[#0d131f]/20 hover:bg-[#0d131f]/40 hover:border-slate-700/40 transition-all duration-200">
-                                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                                    <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    toggleBaseline(stat.benchmarkKey);
-                                                                }}
-                                                                title={stat.benchmarkKey === baselineBenchmarkKey ? 'Clear baseline' : 'Set as baseline'}
-                                                                className={cn(
-                                                                    'p-1.5 rounded-xl border transition-colors flex-shrink-0 cursor-pointer',
-                                                                    stat.benchmarkKey === baselineBenchmarkKey
-                                                                        ? 'bg-cyan-500/10 border-cyan-500/35 text-cyan-400'
-                                                                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-cyan-400 hover:border-cyan-500/20'
-                                                                )}
-                                                            >
-                                                                <Pin size={11} className={cn('transition-transform duration-300', stat.benchmarkKey === baselineBenchmarkKey ? 'rotate-[45deg]' : '-rotate-45 opacity-65')} fill={stat.benchmarkKey === baselineBenchmarkKey ? 'currentColor' : 'none'} />
-                                                            </button>
-                                                            <span className="text-sm font-semibold text-white tracking-tight truncate max-w-[280px]" title={stat.model}>
-                                                                {stat.model}
-                                                            </span>
-                                                            {isBrv02 ? (
-                                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-cyan-950/40 text-cyan-400 border border-cyan-900/35">
-                                                                    {stat.hardware}
-                                                                </span>
-                                                            ) : (
-                                                                <Badge tone="success" size="xs" className="normal-case tracking-normal">
-                                                                    Production Results Store
-                                                                </Badge>
-                                                            )}
-
-                                                            {/* Status Badge */}
-                                                            {isBrv02 ? (
-                                                                (status === 'rejected' || status === 'changes_requested') ? (
-                                                                    <StatusChip status="rejected" label="Changes Requested" />
-                                                                ) : status === 'submitted_pending_processing' ? (
-                                                                    <StatusChip status="processing" label="Verifying Format" className="animate-pulse" />
-                                                                ) : (status === 'submitted_pending_review' || status === 'in_review') ? (
-                                                                    <StatusChip status="in_review" label="Pending Review" className="animate-pulse" />
-                                                                ) : (status === 'public' || status === 'promoted' || status === 'approved') ? (
-                                                                    <StatusChip status="approved" label="Public" />
-                                                                ) : (
-                                                                    <StatusChip status={status} />
-                                                                )
-                                                            ) : (
-                                                                <Badge tone="success">
-                                                                    <ShieldCheck className="w-3 h-3" /> Verified
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                        <div className="text-xs text-slate-500 truncate" title={stat.configuration}>
-                                                            {stat.configuration || 'Default Settings'}
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* Actions */}
-                                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                                        {isBrv02 && (
-                                                            <div className="flex items-center gap-2">
-                                                                {canResubmit && status === 'staged' && (
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            const run = brv02Runs.find(r => r.runId === runId);
-                                                                            if (run) {
-                                                                                handleSubmitStagedRunForReview(run);
-                                                                            }
-                                                                        }}
-                                                                        disabled={isLoadingSubmissions || isLocalActionPending}
-                                                                        className="flex items-center gap-1 px-3 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                                                                    >
-                                                                        <Play className="w-3 h-3 fill-slate-950 text-slate-950" /> Verify Format
-                                                                    </button>
-                                                                )}
-                                                                {canResubmit && status === 'submitted_pending_processing' && (
-                                                                    user?.permission === 'none' ? (
-                                                                        <div className="relative group/tooltip inline-block">
-                                                                            <button
-                                                                                disabled
-                                                                                className="flex items-center gap-1 px-3 py-2 bg-slate-800 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-xl border border-slate-700/50 cursor-not-allowed opacity-60"
-                                                                            >
-                                                                                <Send className="w-3 h-3" /> Submit for Review
-                                                                            </button>
-                                                                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-350 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
-                                                                                You are not in the Results Store closed-beta. Check back later once the feature is released.
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <button
-                                                                            onClick={() => handleActionClick(async () => updateSubmissionStatus && await updateSubmissionStatus(runId, 'submitted_pending_review', '', stat.model, stat.hardware))}
-                                                                            disabled={isLoadingSubmissions || isLocalActionPending}
-                                                                            className="flex items-center gap-1 px-3 py-2 bg-purple-500 hover:bg-purple-400 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                                                                        >
-                                                                            <Send className="w-3 h-3" /> Submit for Review
-                                                                        </button>
-                                                                    )
-                                                                )}
-                                                                {isAdmin && (status === 'submitted_pending_review' || status === 'in_review') && (
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Button
-                                                                            variant="primary"
-                                                                            size="sm"
-                                                                            className="uppercase tracking-wider"
-                                                                            onClick={() => handleActionClick(async () => updateSubmissionStatus && await updateSubmissionStatus(runId, 'public', '', stat.model, stat.hardware))}
-                                                                            disabled={isLoadingSubmissions || isLocalActionPending}
-                                                                        >
-                                                                            <Check className="w-3 h-3 stroke-[3]" /> Publish Run
-                                                                        </Button>
-                                                                        <Button
-                                                                            variant="danger"
-                                                                            size="sm"
-                                                                            className="uppercase tracking-wider"
-                                                                            onClick={() => {
-                                                                                setDrawerRejectingRunId(runId);
-                                                                                setDrawerRejectionFeedback('');
-                                                                            }}
-                                                                            disabled={isLoadingSubmissions || isLocalActionPending}
-                                                                        >
-                                                                            <X className="w-3 h-3" /> Reject
-                                                                        </Button>
-                                                                    </div>
-                                                                )}
-                                                                {canResubmit && (status === 'rejected' || status === 'changes_requested') && (
-                                                                    <button
-                                                                        onClick={() => updateSubmissionStatus && updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware)}
-                                                                        disabled={isLoadingSubmissions}
-                                                                        className="flex items-center gap-1 px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold uppercase tracking-wider rounded-xl shadow transition-all hover:scale-[1.03] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                                                                    >
-                                                                        <RotateCcw className="w-3.5 h-3.5" /> Resubmit Validation
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* Drawer Rejection inline input */}
-                                                {runId !== null && drawerRejectingRunId === runId && (
-                                                    <div className="w-full mt-4 p-4 bg-slate-950/60 border border-red-500/20 rounded-2xl animate-fadeIn flex flex-col gap-3">
-                                                        <div className="text-xs font-bold text-red-400 uppercase tracking-widest flex items-center justify-between select-none">
-                                                            <span>Provide Revision Feedback</span>
-                                                            <button 
-                                                                onClick={() => setDrawerRejectingRunId(null)}
-                                                                className="text-slate-400 hover:text-white"
-                                                            >
-                                                                <X className="w-4 h-4" />
-                                                            </button>
-                                                        </div>
-                                                        <Textarea
-                                                            value={drawerRejectionFeedback}
-                                                            onChange={(e) => setDrawerRejectionFeedback(e.target.value)}
-                                                            placeholder="Explain why this run is rejected or what changes are required..."
-                                                            className="p-3 rounded-xl min-h-[70px] resize-y font-sans focus:border-red-500/40 focus:ring-red-500/40"
-                                                        />
-                                                        <div className="flex justify-end gap-2 mt-1">
-                                                            <Button
-                                                                variant="secondary"
-                                                                size="sm"
-                                                                className="uppercase font-bold"
-                                                                onClick={() => setDrawerRejectingRunId(null)}
-                                                            >
-                                                                Cancel
-                                                            </Button>
-                                                            <Button
-                                                                variant="danger"
-                                                                size="sm"
-                                                                className="uppercase font-bold"
-                                                                onClick={() => {
-                                                                    if (drawerRejectionFeedback.trim() && updateSubmissionStatus) {
-                                                                        updateSubmissionStatus(runId, 'rejected', drawerRejectionFeedback, stat.model, stat.hardware);
-                                                                        setDrawerRejectingRunId(null);
-                                                                    }
-                                                                }}
-                                                                disabled={!drawerRejectionFeedback.trim() || isLoadingSubmissions}
-                                                            >
-                                                                Confirm Rejection
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                    {modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).map(stat => (
+                                        <BenchmarkRow
+                                            key={stat.benchmarkKey || stat.model}
+                                            stat={stat}
+                                            isSelected={true}
+                                            isExpanded={expandedModels.has(stat.benchmarkKey || stat.model)}
+                                            isBaseline={stat.benchmarkKey === baselineBenchmarkKey}
+                                            user={user}
+                                            isAdmin={isAdmin}
+                                            submissionsMap={submissionsMap}
+                                            brv02Runs={brv02Runs}
+                                            visibleSpecs={visibleSpecs}
+                                            isLoadingSubmissions={isLoadingSubmissions}
+                                            isLocalActionPending={isLocalActionPending}
+                                            rejectingRunId={rejectingRunId}
+                                            rejectionFeedback={rejectionFeedback}
+                                            setRejectingRunId={setRejectingRunId}
+                                            setRejectionFeedback={setRejectionFeedback}
+                                            setViewingPayloadRun={setViewingPayloadRun}
+                                            setRawYamlContent={setRawYamlContent}
+                                            setRawYamlTitle={setRawYamlTitle}
+                                            handleSubmitStagedRunForReview={handleSubmitStagedRunForReview}
+                                            handleActionClick={handleActionClick}
+                                            updateSubmissionStatus={updateSubmissionStatus}
+                                            deleteSubmission={deleteSubmission}
+                                            toggleModelExpansion={toggleModelExpansion}
+                                            handleCheckboxPointerDown={handleCheckboxPointerDown}
+                                            brv02CustomLabels={brv02CustomLabels}
+                                            handleEditStagedRun={handleEditStagedRun}
+                                            defaultSources={defaultSources}
+                                            readOnly={true}
+                                        />
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -1850,6 +1854,16 @@ export const UnifiedDataTable = (props) => {
                             </Button>
                         </>
                     )}
+                    {isAdmin && onlyRejectedSelected && (
+                        <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleActionClick(handleBulkDeleteRejected)}
+                            disabled={isLoadingSubmissions || isLocalActionPending}
+                        >
+                            <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </Button>
+                    )}
                     <button
                         id="bottom-compare-publish-btn"
                         onClick={() => setShowComparisonDrawer(true)}
@@ -1886,11 +1900,13 @@ const BenchmarkRow = React.memo(({
     handleSubmitStagedRunForReview,
     handleActionClick,
     updateSubmissionStatus,
+    deleteSubmission,
     toggleModelExpansion,
     handleCheckboxPointerDown,
     brv02CustomLabels,
     handleEditStagedRun,
     defaultSources,
+    readOnly = false,
 }) => {
     const benchmarkData = stat.data || [];
     const meta = benchmarkData[0]?.metadata || {};
@@ -1994,34 +2010,39 @@ const BenchmarkRow = React.memo(({
                                                 isBaseline && 'ring-2 ring-cyan-400/50'
                                             )}
                                         >
-                                            {statusAccent.accentBar}
+                                            {!readOnly && statusAccent.accentBar}
                                             {/* Card Main Row (Header) */}
                                             <div className="flex items-stretch min-h-[60px]">
                                                 {/* Left Checkbox Area (Dedicated Click Target) */}
-                                                <div 
-                                                    onPointerDown={(e) => handleCheckboxPointerDown(e, stat.benchmarkKey, isSelected)}
-                                                    className={cn(
-                                                        'benchmark-checkbox-area w-12 flex-shrink-0 flex items-center justify-center cursor-pointer border-r transition-colors select-none',
-                                                        statusAccent.accentBar && 'pl-1.5',
-                                                        isSelected
-                                                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                                                            : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/50'
-                                                    )}
-                                                    data-benchmark-key={stat.benchmarkKey}
-                                                    style={{ touchAction: 'none' }}
-                                                >
-                                                    <div className={cn(
-                                                        'w-5 h-5 rounded flex items-center justify-center border transition-all',
-                                                        isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
-                                                    )}>
-                                                        {isSelected && <Check size={14} strokeWidth={3} />}
+                                                {!readOnly && (
+                                                    <div 
+                                                        onPointerDown={(e) => handleCheckboxPointerDown(e, stat.benchmarkKey, isSelected)}
+                                                        className={cn(
+                                                            'benchmark-checkbox-area w-12 flex-shrink-0 flex items-center justify-center cursor-pointer border-r transition-colors select-none',
+                                                            statusAccent.accentBar && 'pl-1.5',
+                                                            isSelected
+                                                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                                                                : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/50'
+                                                        )}
+                                                        data-benchmark-key={stat.benchmarkKey}
+                                                        style={{ touchAction: 'none' }}
+                                                    >
+                                                        <div className={cn(
+                                                            'w-5 h-5 rounded flex items-center justify-center border transition-all',
+                                                            isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'
+                                                        )}>
+                                                            {isSelected && <Check size={14} strokeWidth={3} />}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
 
                                                 {/* Card Content Area (Expand Toggle) */}
                                                 <div 
                                                     onClick={() => toggleModelExpansion(stat.benchmarkKey || stat.model)}
-                                                    className="flex-1 flex items-center justify-between p-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors gap-3"
+                                                    className={cn(
+                                                        'flex-1 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors gap-3 overflow-hidden',
+                                                        readOnly ? 'p-3.5 sm:p-4' : 'p-3'
+                                                    )}
                                                 >
                                                     {/* Left side info block */}
                                                     <div className="flex-1 flex flex-wrap sm:flex-nowrap items-center gap-4 min-w-0">
@@ -2249,15 +2270,15 @@ const BenchmarkRow = React.memo(({
                                                              return (
                                                                  <div className="flex-1 flex flex-col min-w-0">
                                                                      {/* Line 1: Model Title on left, Source Tag & Date on right */}
-                                                                     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 w-full">
-                                                                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                                     <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-                                                                                         <span className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate">
+                                                                     <div className="flex items-center justify-between gap-x-4 gap-y-1 w-full min-w-0">
+                                                                         <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+                                                                                     <div className="flex items-center gap-1.5 min-w-0 flex-nowrap overflow-hidden">
+                                                                                         <span className="font-bold text-sm sm:text-base text-slate-800 dark:text-slate-100 truncate block">
                                                                                              {isBrv02 
                                                                                                  ? (brv02CustomLabels[runId] || benchmarkData[0]?.runLabel || stat.model_name || stat.model || meta.model_name)
                                                                                                  : (stat.model_name || stat.model || meta.model_name)}
                                                                                          </span>
-                                                                                         {isBrv02 && runStatus === 'staged' && (
+                                                                                         {isBrv02 && runStatus === 'staged' && !readOnly && (
                                                                                              <button
                                                                                                  onClick={(e) => {
                                                                                                      e.stopPropagation();
@@ -2267,14 +2288,14 @@ const BenchmarkRow = React.memo(({
                                                                                                      }
                                                                                                  }}
                                                                                                  title="Edit staged benchmark metadata"
-                                                                                                 className="p-1 text-slate-300 dark:text-slate-600 hover:text-cyan-400 transition-colors flex-shrink-0 cursor-pointer"
+                                                                                                 className="p-1 text-slate-300 dark:text-slate-600 hover:text-cyan-400 transition-colors flex-shrink-0 cursor-pointer whitespace-nowrap"
                                                                                              >
                                                                                                  <Pencil size={12} />
                                                                                              </button>
                                                                                          )}
                                                                                      </div>
 
-                                                                            {isBrv02 && (
+                                                                            {isBrv02 && !readOnly && (
                                                                                 <div className="flex flex-col items-end gap-1.5 relative">
                                                                                     <div className="flex items-center gap-2">
                                                                                         {(() => {
@@ -2286,7 +2307,7 @@ const BenchmarkRow = React.memo(({
                                                                                                     <div className="relative group/tooltip inline-block">
                                                                                                         <button
                                                                                                             disabled
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-500 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-not-allowed select-none flex items-center gap-1 opacity-60"
+                                                                                                            className="px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-500 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-not-allowed select-none flex items-center gap-1 opacity-60 whitespace-nowrap"
                                                                                                         >
                                                                                                             <Send className="w-2.5 h-2.5" /> Submit for Review
                                                                                                         </button>
@@ -2305,7 +2326,7 @@ const BenchmarkRow = React.memo(({
                                                                                                         }}
                                                                                                         disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                         title="Submit this benchmark to staging GCS bucket for automated format checks"
-                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1"
+                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                     >
                                                                                                         <Send className="w-2.5 h-2.5" /> Submit for Review
                                                                                                     </button>
@@ -2324,7 +2345,7 @@ const BenchmarkRow = React.memo(({
                                                                                                         }}
                                                                                                         disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                         title="Promote benchmark to the admin review queue"
-                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1"
+                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                     >
                                                                                                         <Play className="w-2.5 h-2.5 fill-current" /> Promote to Review
                                                                                                     </button>
@@ -2344,7 +2365,7 @@ const BenchmarkRow = React.memo(({
                                                                                                             }}
                                                                                                             disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                             title="Approve this run and publish it to the global Results store"
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-455 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1"
+                                                                                                            className="px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-455 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                         >
                                                                                                             <Check className="w-2.5 h-2.5 stroke-[3]" /> Approve
                                                                                                         </button>
@@ -2356,30 +2377,58 @@ const BenchmarkRow = React.memo(({
                                                                                                             }}
                                                                                                             disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                             title="Reject compliance or request changes with custom feedback"
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1"
+                                                                                                            className="px-2.5 py-1 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                         >
                                                                                                             <X className="w-2.5 h-2.5" /> Reject
                                                                                                         </button>
                                                                                                     </>
                                                                                                 );
                                                                                             }
-                                                                                            if (canResubmit && (status === 'rejected' || status === 'changes_requested')) {
+                                                                                            if (status === 'rejected' || status === 'changes_requested') {
+                                                                                                const showResubmit = canResubmit;
+                                                                                                const showDelete = isAdmin && status === 'rejected';
+
+                                                                                                if (!showResubmit && !showDelete) return null;
+
                                                                                                 return (
-                                                                                                    <button
-                                                                                                        onClick={(e) => {
-                                                                                                            e.stopPropagation();
-                                                                                                            handleActionClick(async () => {
-                                                                                                                if (updateSubmissionStatus) {
-                                                                                                                    await updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware);
-                                                                                                                }
-                                                                                                            });
-                                                                                                        }}
-                                                                                                        disabled={isLoadingSubmissions || isLocalActionPending}
-                                                                                                        title="Resubmit this run for automated verification after corrections"
-                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1"
-                                                                                                    >
-                                                                                                        <RotateCcw className="w-2.5 h-2.5" /> Resubmit
-                                                                                                    </button>
+                                                                                                    <div className="flex items-center gap-1.5">
+                                                                                                        {showResubmit && (
+                                                                                                            <button
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.stopPropagation();
+                                                                                                                    handleActionClick(async () => {
+                                                                                                                        if (updateSubmissionStatus) {
+                                                                                                                            await updateSubmissionStatus(runId, 'submitted_pending_processing', '', stat.model, stat.hardware);
+                                                                                                                        }
+                                                                                                                    });
+                                                                                                                }}
+                                                                                                                disabled={isLoadingSubmissions || isLocalActionPending}
+                                                                                                                title="Resubmit this run for automated verification after corrections"
+                                                                                                                className="px-2.5 py-1 rounded-xl border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                            >
+                                                                                                                <RotateCcw className="w-2.5 h-2.5" /> Resubmit
+                                                                                                            </button>
+                                                                                                        )}
+                                                                                                        {showDelete && (
+                                                                                                            <button
+                                                                                                                onClick={(e) => {
+                                                                                                                    e.stopPropagation();
+                                                                                                                    handleActionClick(async () => {
+                                                                                                                        if (window.confirm(`Are you sure you want to permanently delete rejected benchmark ${runId} from the Results Store? This action cannot be undone.`)) {
+                                                                                                                            if (deleteSubmission) {
+                                                                                                                                await deleteSubmission(runId);
+                                                                                                                            }
+                                                                                                                        }
+                                                                                                                    });
+                                                                                                                }}
+                                                                                                                disabled={isLoadingSubmissions || isLocalActionPending}
+                                                                                                                title="Permanently delete this rejected benchmark from cloud storage"
+                                                                                                                className="px-2.5 py-1 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                            >
+                                                                                                                <Trash2 className="w-2.5 h-2.5" /> Delete
+                                                                                                            </button>
+                                                                                                        )}
+                                                                                                    </div>
                                                                                                 );
                                                                                             }
                                                                                             return null;
@@ -2534,7 +2583,7 @@ const BenchmarkRow = React.memo(({
                                                                                     onClick={e => e.stopPropagation()}
                                                                                     className="mt-2 text-[11px] bg-red-500/10 text-red-300 border border-red-500/20 rounded-xl p-3 max-w-3xl italic leading-relaxed flex items-start gap-2 shadow-sm font-sans"
                                                                                 >
-                                                                                    <span className="font-extrabold uppercase text-[9px] not-italic tracking-wider bg-red-500/20 px-1.5 py-0.5 rounded text-red-450 shrink-0 mt-0.5">
+                                                                                    <span className="font-extrabold uppercase text-[9px] not-italic tracking-wider bg-red-500/20 px-1.5 py-0.5 rounded text-red-450 shrink-0 mt-0.5 whitespace-nowrap">
                                                                                         Changes Requested:
                                                                                     </span>
                                                                                     <span>"{sub.feedback}"</span>
@@ -2607,7 +2656,7 @@ const BenchmarkRow = React.memo(({
                                                                  {(() => {
                                                                      const details = getSubmissionStatusDetails(benchmarkData[0]?.source_info?.submission_state);
                                                                      return (
-                                                                         <span className={cn('px-1.5 py-0.5 rounded border text-[11px] font-bold', details.bg, details.text, details.border)}>
+                                                                         <span className={cn('px-1.5 py-0.5 rounded border text-[11px] font-bold whitespace-nowrap', details.bg, details.text, details.border)}>
                                                                              {details.label}
                                                                          </span>
                                                                      );
@@ -2706,7 +2755,7 @@ const BenchmarkRow = React.memo(({
                                                                                       className={cn(
                                                                                           'p-1 rounded transition-colors',
                                                                                           d.rawReport
-                                                                                              ? 'text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 cursor-pointer'
+                                                                                              ? 'text-slate-400 hover:text-blue-500 dark:text-slate-500 dark:hover:text-blue-400 cursor-pointer whitespace-nowrap'
                                                                                               : 'text-slate-200 dark:text-slate-800 cursor-not-allowed opacity-50'
                                                                                       )}
                                                                                   >

@@ -109,7 +109,7 @@ that **dictates all UI/style changes**. It is the written half of the blueprint:
   primitive set proves insufficient; the current need is consistency, not widgets.
 - A full visual redesign. The blueprint codifies the existing look (slate + emerald,
   rounded-xl panels); it does not change it.
-- Backend/server code and the Results Store API (covered by `specs/main/results-api/`).
+- Backend/server code and the Results Store API (covered by `specs/main/completed/results-api/`).
 
 ## Next Artifacts
 

@@ -20,7 +20,7 @@ Focus is on stabilizing core features, publishing the Results Store UI, ensuring
     *   **Description**: Combining the backend ingestion API with a new submission UI.
     *   **Status**: Active Development / Engineering Design
     *   **Next Steps**: Publish UI to prod with an AllowList of approvers. Implement GCS-backed ingestion API, validation checks, and IAM allowlist.
-    *   **Spec/Ref**: [Backend Ingestion API README](results-api/README.md)
+    *   **Spec/Ref**: [Backend Ingestion API README](completed/results-api/README.md)
 
 2.  **Regressions Analysis**
     *   **Description**: Automated regression detection for model serving.
@@ -32,19 +32,19 @@ Focus is on stabilizing core features, publishing the Results Store UI, ensuring
     *   **Description**: Support for Prefill/Decode split visualization.
     *   **Status**: UI/UX
     *   **Next Steps**: MVP UX targeting end of July (stretch goal).
-    *   **Spec/Ref**: [disagg-benchmarks-proposal.md](../changes/disagg-benchmarks-proposal.md)
+    *   **Spec/Ref**: [disagg-benchmarks-proposal.md](completed/disagg-benchmarks-proposal.md)
 
 4.  **KV Cache Offloading Guide (Extension)**
     *   **Description**: Extending the existing guide with more benchmarks and configurations.
     *   **Status**: Completed (V1 published Jul 15, 2026) / Active (Extension)
     *   **Next Steps**: Work with IBM team (Rachel) to extend the benchmarks to cover more workloads and configurations.
-    *   **Spec/Ref**: [prefix-cache-offload-guide-proposal.md](../changes/prefix-cache-offload-guide-proposal.md)
+    *   **Spec/Ref**: [prefix-cache-offload-guide-proposal.md](completed/prefix-cache-offload-guide-proposal.md)
 
 5.  **KV Cache Size & Parameter Insights**
     *   **Description**: Indexing KV Cache sizes from Lohi.
     *   **Status**: Engineering Design
     *   **Next Steps**: Review backend schema changes.
-    *   **Spec/Ref**: [kv_cache_optimizations_prd.md](../changes/kv_cache_optimizations_prd.md)
+    *   **Spec/Ref**: [kv_cache_optimizations_prd.md](completed/kv_cache_optimizations_prd.md)
 
 6.  **llm-d Results Store Scalability**
     *   **Description**: Scaling the database and adding advanced features to support the launch.

@@ -4,9 +4,10 @@ This directory governs the evolution of the codebase. We follow a simplified ver
 
 ## 🏗 Directory Structure
 
-*   `main/`: The "Living Source of Truth." Contains the current architecture and functional specs of the production system.
-*   `changes/`: Active work-in-progress. Every feature, bug fix, or experiment gets its own markdown file (e.g. `[feature-name].md`).
-*   `archive/`: Completed or abandoned proposals. This serves as the "organizational memory" to prevent re-litigating past decisions.
+*   `main/`: The "Living Source of Truth." Contains the current architecture, functional specs of the production system, roadmap, and completed specifications.
+    *   `main/completed/`: Completed and implemented specifications.
+*   `changes/`: Active work-in-progress. Every feature, bug fix, or experiment gets its own markdown file (e.g. `[feature-name].md`) or directory.
+*   `archive/`: Abandoned or rejected proposals. This serves as the "organizational memory" to prevent re-litigating past decisions.
 
 ---
 
@@ -19,11 +20,11 @@ Create a single markdown file `/specs/changes/[short-feature-name].md` that outl
 *   **Must include:** Context/Intent, Proposed Solution, Technical Implementation Details, and Success Criteria.
 *   **Collaboration:** Open a GitHub Pull Request (PR) containing the new spec file. This allows for threaded discussions on the design and requirements before coding begins.
 
-### 2. Implementation & Archiving
+### 2. Implementation & Completion / Archiving
 Once the code is merged:
 1.  **Update Main:** Any permanent changes to the system architecture must be reflected in `specs/main/`.
-2.  **Move to Archive:** The specific change file is moved to `specs/archive/[short-feature-name].md`. 
-    *   *Note:* If a proposal is rejected, move it to archive with a `# Status: Rejected` header explaining why.
+2.  **Move to Completed:** Once implemented, the specific change file is moved to `specs/main/completed/[short-feature-name].md` (or directory if structured as a folder).
+    *   *Note:* If a proposal is abandoned or rejected, move it to `specs/archive/` with a `# Status: Rejected` header explaining why.
 
 ---
 
@@ -31,7 +32,7 @@ Once the code is merged:
 
 When tasked with a new feature or research item, you **must** adhere to the following:
 
-1.  **Check the Archive:** Search `specs/archive/` to ensure this hasn't been attempted or rejected previously.
+1.  **Check Completed & Archive:** Search `specs/main/completed/` and `specs/archive/` to ensure this hasn't been implemented, attempted, or rejected previously.
 2.  **Initialize a Change:** Create the file `/specs/changes/[short-feature-name].md`.
 3.  **Draft the Proposal:** Write the proposal and specification directly inside this file. Do not begin writing application code until the proposal is reviewed by a human.
 4.  **Stay Context-Aware:** Always reference `specs/main/` to understand the current state of the infrastructure (e.g., existing MLOps pipelines or React patterns).

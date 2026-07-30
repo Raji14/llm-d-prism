@@ -99,9 +99,9 @@ A collapsible, multi-column panel that updates dynamically based on indexed data
 Prism exposes a set of endpoints for benchmark ingestion, validation, and retrieval. The implementation is split between the Express backend and GCS storage.
 
 For detailed specifications, refer to the following documents:
-- **[API Schema & Ingestion Reference](results-api/README.md):** Defines the data contract, validation rules, and GCS metadata usage.
-- **[API Route Reference](results-api/routes.md):** Complete catalog of authentication, results, and configuration endpoints.
-- **[Identity & Access Management (IAM)](results-api/iam.md):** Details on GitHub OAuth integration, role resolution, and GCS allowlist management.
+- **[API Schema & Ingestion Reference](completed/results-api/README.md):** Defines the data contract, validation rules, and GCS metadata usage.
+- **[API Route Reference](completed/results-api/routes.md):** Complete catalog of authentication, results, and configuration endpoints.
+- **[Identity & Access Management (IAM)](completed/results-api/iam.md):** Details on GitHub OAuth integration, role resolution, and GCS allowlist management.
 - **[GitHub App Configuration Guide](../../docs/github-oauth-setup.md):** Setup instructions for the GitHub App.
 
 # Directory Structure
@@ -122,12 +122,14 @@ The application is located at the repository root.
 │   ├── main/               # Living Source of Truth
 │   │   ├── main.md         # Main System Architecture
 │   │   ├── roadmap.md      # Feature Roadmap
-│   │   └── results-api/    # Prism Cloud API Specs
-│   │       ├── README.md   # API Schema & Reference
-│   │       ├── iam.md      # Identity & Access Management
-│   │       └── routes.md   # Route Reference
+│   │   └── completed/      # Completed Specifications
+│   │       ├── results-api/ # Prism Cloud API Specs
+│   │       │   ├── README.md # API Schema & Reference
+│   │       │   ├── iam.md    # Identity & Access Management
+│   │       │   └── routes.md # Route Reference
+│   │       └── ...
 │   ├── changes/            # Active Proposals & WIP Specs
-│   └── archive/            # Completed/Rejected Specs
+│   └── archive/            # Abandoned/Rejected Specs
 ├── public/
 │   └── data.json           # Local benchmark data sample
 ├── tools/                  # Utility Scripts
@@ -166,13 +168,13 @@ The application is located at the repository root.
 
 # Ideas & Future Work
 
-- **Optimization Insights:** Surfacing advanced tunables like KV Cache Size, Speculative Decoding tokens, and Chunked Prefill stats. For a detailed roadmap, see the [KV Cache Optimizations PRD](../changes/kv_cache_optimizations_prd.md).
-- **Quality Benchmarking:** Integration of LMArena or similar for Quality (Z-axis) analysis vs Performance/Cost. For details, see the [Quality Metrics PRD](../archive/quality-metrics-prd.md).
-- **Architecture Validation:** Comparison of Aggregated vs. Disaggregated architectures. For details, see the [Disaggregated Benchmarks Proposal](../changes/disagg-benchmarks-proposal.md).
+- **Optimization Insights:** Surfacing advanced tunables like KV Cache Size, Speculative Decoding tokens, and Chunked Prefill stats. For a detailed roadmap, see the [KV Cache Optimizations PRD](completed/kv_cache_optimizations_prd.md).
+- **Quality Benchmarking:** Integration of LMArena or similar for Quality (Z-axis) analysis vs Performance/Cost. For details, see the [Quality Metrics PRD](completed/quality-metrics-prd.md).
+- **Architecture Validation:** Comparison of Aggregated vs. Disaggregated architectures. For details, see the [Disaggregated Benchmarks Proposal](completed/disagg-benchmarks-proposal.md).
 
 ## Prism Community Store Roadmap
 
-- **Backend Ingestion API (Phase 2.5):** Implement the GCS-backed ingestion API, validation checks, and IAM allowlist enforcement on the server side (as defined in [results-api Specs](results-api/README.md)).
+- **Backend Ingestion API (Phase 2.5):** Implement the GCS-backed ingestion API, validation checks, and IAM allowlist enforcement on the server side (as defined in [results-api Specs](completed/results-api/README.md)).
 - **Community Catalog Ingestion (Phase 3):** Enhance the Workload Catalog and comparative views to dynamically list and query verified community-submitted benchmarks.
 - **Robust Categorization & Open Beta (Phase 4):** Integrate advanced validation classifiers to isolate malicious inputs, automatically tag workload patterns, and release to the public.
 
@@ -184,7 +186,7 @@ The application is located at the repository root.
 
 ## Quality Analysis
 
-Prism integrates intelligence and reasoning metrics (MMLU, GSM8K, Arena Elo) to enable multi-dimensional comparisons beyond raw performance. For a detailed breakdown of quality metrics, data sources (Hugging Face, LMSYS), and planned UI components like the "Tale of the Tape" cards, refer to the [Quality Metrics PRD](../archive/quality-metrics-prd.md).
+Prism integrates intelligence and reasoning metrics (MMLU, GSM8K, Arena Elo) to enable multi-dimensional comparisons beyond raw performance. For a detailed breakdown of quality metrics, data sources (Hugging Face, LMSYS), and planned UI components like the "Tale of the Tape" cards, refer to the [Quality Metrics PRD](completed/quality-metrics-prd.md).
 
 ### Vision & Open Questions
 

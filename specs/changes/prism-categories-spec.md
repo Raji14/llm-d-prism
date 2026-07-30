@@ -24,7 +24,7 @@ The Results Store backend currently utilizes GCS to store run results as individ
 
 However, GCS does not support combining multiple query conditions with logical operators (`AND` or `OR`). This complicates server-side querying when combining status filters (like `submission_state="public"`) with specific model or hardware filters. To resolve this, this design outlines a selective search-routing strategy.
 
-For related details, see the canonical [Prism Results Store Specification](file:///usr/local/google/home/diamondburned/Projects/llm-d/llm-d-prism/specs/main/results-api/README.md) and the [Identity & Access Management Specification](file:///usr/local/google/home/diamondburned/Projects/llm-d/llm-d-prism/specs/main/results-api/iam.md).
+For related details, see the canonical [Prism Results Store Specification](../main/completed/results-api/README.md) and the [Identity & Access Management Specification](../main/completed/results-api/iam.md).
 
 ## Requirements and Scale
 

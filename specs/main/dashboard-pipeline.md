@@ -30,7 +30,7 @@ Stage 2 — Implement               skills/style.md
 Gate B — Implementation approval  one of @jjk-g, @diamondburned, @seanhorgan
         │
         ▼
-merge; move the change dir to specs/archive/ per specs/README.md
+merge; move the change dir to specs/main/completed/ per specs/README.md
 ```
 
 ### Stage 1 — Analysis and design spec

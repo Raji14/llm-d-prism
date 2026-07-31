@@ -73,25 +73,9 @@ Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine
     *   **Next Steps**: Review backend schema changes.
     *   **Spec/Ref**: [kv_cache_optimizations_prd.md](completed/kv_cache_optimizations_prd.md)
 
-6.  **Predicted Latency-Based Scheduling**
-    *   **Description**: Scheduling based on predicted latency.
-    *   **Status**: Product Spec
-    *   **Spec/Ref**: [predicted_latency_scheduling_prd.md](../changes/predicted_latency_scheduling_prd.md)
-
-7.  **llm-d Results Store: Community Catalog Ingestion (Phase 3)**
+6.  **llm-d Results Store: Community Catalog Ingestion (Phase 3)**
     *   **Description**: Dynamically list and query verified community-submitted benchmarks.
     *   **Status**: Product Spec
-
-8.  **Wide EP (Aspirational Stretch Goal)**
-    *   **Description**: Wide EP benchmarking.
-    *   **Status**: Aspirational / Planning
-    *   **Next Steps**: Target completion before llm-d 1.0 in October.
-
-9.  **On-Demand Dynamic Dashboards (Aspirational Stretch Goal)**
-    *   **Description**: Enable power users to build, configure, and share customized benchmark dashboards via Namespaced URLs without code redeployments.
-    *   **Status**: Product Spec
-    *   **Next Steps**: Review proposal, define final GCS folder schema, design UI builder blocks.
-    *   **Spec/Ref**: [on-demand-dashboards.md](../changes/on-demand-dashboards.md)
 
 ---
 
@@ -109,16 +93,27 @@ Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine
     *   **Next Steps**: Implement FAQAccordion component and integrate into Milestone1Dashboard.
     *   **Spec/Ref**: [intelligent-routing-faq-spec.md](../changes/intelligent-routing-faq-spec.md)
 
-3.  **llm-d Results Store: Robust Categorization & Open Beta (Phase 4)**
+3.  **Wide EP (Aspirational Stretch Goal)**
+    *   **Description**: Wide EP benchmarking.
+    *   **Status**: Aspirational / Planning
+    *   **Next Steps**: Target completion before llm-d 1.0 in October.
+
+4.  **On-Demand Dynamic Dashboards (Aspirational Stretch Goal)**
+    *   **Description**: Enable power users to build, configure, and share customized benchmark dashboards via Namespaced URLs without code redeployments.
+    *   **Status**: Product Spec
+    *   **Next Steps**: Review proposal, define final GCS folder schema, design UI builder blocks.
+    *   **Spec/Ref**: [on-demand-dashboards.md](../changes/on-demand-dashboards.md)
+
+5.  **llm-d Results Store: Robust Categorization & Open Beta (Phase 4)**
     *   **Description**: Integrating advanced validation classifiers and auto-tagging.
     *   **Status**: Discovery & Exploration
 
-4.  **Reinforcement Learning Benchmarks Exploration**
+6.  **Reinforcement Learning Benchmarks Exploration**
     *   **Description**: Mapping RL serving workloads.
     *   **Status**: Discovery & Exploration
     *   **Spec/Ref**: [rl-benchmarks-exploration.md](../changes/rl-benchmarks-exploration.md)
 
-5.  **Multi-Token Prediction (MTP) Benchmarks Exploration**
+7.  **Multi-Token Prediction (MTP) Benchmarks Exploration**
     *   **Description**: Exploring MTP impact on orchestration and parallelism.
     *   **Status**: Discovery & Exploration
     *   **Spec/Ref**: [mtp-spec-decode-benchmarks-exploration.md](../changes/mtp-spec-decode-benchmarks-exploration.md)

@@ -14,13 +14,40 @@ This document tracks upcoming features, their product specifications, and their 
 ## 🗺️ Timeline Roadmap
 
 ### 🟡 Q3 2026 (Active Work - Target: End of September)
-Focus is on stabilizing core features, publishing the Results Store UI, ensuring scalability, and preparing guides for the llm-d 1.0 release in October. Work in this quarter should be substantially complete to support the launch.
+Focus is on stabilizing core features, publishing the Results Store UI, ensuring scalability, executing the benchmark backlog, and preparing guides for the llm-d 1.0 release in October. Work in this quarter should be substantially complete to support the launch.
 
 1.  **llm-d Results Store: Ingestion & UI**
     *   **Description**: Combining the backend ingestion API with a new submission UI.
     *   **Status**: Active Development / Engineering Design
     *   **Next Steps**: Publish UI to prod with an AllowList of approvers. Implement GCS-backed ingestion API, validation checks, and IAM allowlist.
     *   **Spec/Ref**: [Backend Ingestion API README](completed/results-api/README.md)
+
+2.  **llm-d Results Store Scalability**
+    *   **Description**: Scaling the database and adding advanced features to support the launch.
+    *   **Status**: Engineering Design / Implementation
+    *   **Goals**:
+        *   Scale to O(100) active users and O(10000) benchmarks.
+        *   Migrate to BigQuery or Spanner for scalable database.
+        *   Implement ability to retract benchmarks.
+        *   Implement Asynchronous Validation Queue.
+
+3.  **llm-d Benchmark Backlog Execution**
+    *   **Description**: Execute and ingest prioritized benchmarks to populate the Results Store for the 1.0 launch.
+    *   **Summary**: Execution of the prioritized benchmarks covering key models (Gemma 4 31B, Qwen 3 32B) across diverse hardware (RTX Pro 6000, TPU v6e, H100) and optimization paths (Prefix Caching, P/D Disagg, Intelligent Routing).
+    *   **Status**: Active / Execution
+    *   **Ref/Link**: [go/llm-d-benchmark-backlog](https://goto.google.com/llm-d-benchmark-backlog)
+
+---
+
+### 🔵 Q4 2026 (Milestone: llm-d 1.0 Release & Fine-Tuning)
+Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine-tuning delivered features, and landing key UI and usability updates.
+
+1.  **llm-d 1.0 Well-Lit Paths Benchmarks**
+    *   **Goal**: Deliver baseline benchmarks for key optimization paths:
+        *   KV Cache Offloading (with IBM extensions).
+        *   P/D Disagg (with MVP UX).
+        *   Wide EP (if completed).
+    *   **Status**: Planning
 
 2.  **Regressions Analysis**
     *   **Description**: Automated regression detection for model serving.
@@ -46,20 +73,14 @@ Focus is on stabilizing core features, publishing the Results Store UI, ensuring
     *   **Next Steps**: Review backend schema changes.
     *   **Spec/Ref**: [kv_cache_optimizations_prd.md](completed/kv_cache_optimizations_prd.md)
 
-6.  **llm-d Results Store Scalability**
-    *   **Description**: Scaling the database and adding advanced features to support the launch.
-    *   **Status**: Engineering Design / Implementation
-    *   **Goals**:
-        *   Scale to O(100) active users and O(10000) benchmarks.
-        *   Migrate to BigQuery or Spanner for scalable database.
-        *   Implement ability to retract benchmarks.
-        *   Implement Asynchronous Validation Queue.
+6.  **Predicted Latency-Based Scheduling**
+    *   **Description**: Scheduling based on predicted latency.
+    *   **Status**: Product Spec
+    *   **Spec/Ref**: [predicted_latency_scheduling_prd.md](../changes/predicted_latency_scheduling_prd.md)
 
-7.  **llm-d Benchmark Backlog Execution**
-    *   **Description**: Execute and ingest prioritized benchmarks to populate the Results Store for the 1.0 launch.
-    *   **Summary**: Execution of the prioritized benchmarks covering key models (Gemma 4 31B, Qwen 3 32B) across diverse hardware (RTX Pro 6000, TPU v6e, H100) and optimization paths (Prefix Caching, P/D Disagg, Intelligent Routing).
-    *   **Status**: Active / Execution
-    *   **Ref/Link**: [go/llm-d-benchmark-backlog](https://goto.google.com/llm-d-benchmark-backlog)
+7.  **llm-d Results Store: Community Catalog Ingestion (Phase 3)**
+    *   **Description**: Dynamically list and query verified community-submitted benchmarks.
+    *   **Status**: Product Spec
 
 8.  **Wide EP (Aspirational Stretch Goal)**
     *   **Description**: Wide EP benchmarking.
@@ -74,51 +95,30 @@ Focus is on stabilizing core features, publishing the Results Store UI, ensuring
 
 ---
 
-### 🔵 Q4 2026 (Milestone: llm-d 1.0 Release & Fine-Tuning)
-Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine-tuning delivered features, and landing key UI and usability updates.
+### 🟣 2027-H1 (Future Ideas & Explorations)
 
-1.  **llm-d 1.0 Well-Lit Paths Benchmarks**
-    *   **Goal**: Deliver baseline benchmarks for key optimization paths:
-        *   KV Cache Offloading (with IBM extensions).
-        *   P/D Disagg (with MVP UX).
-        *   Wide EP (if completed).
-    *   **Status**: Planning
-
-2.  **Benchmark Browser Redesign**
+1.  **Benchmark Browser Redesign**
     *   **Description**: Redesign or replace the current Benchmark Browser as the new Results Store UI goes live, implementing the 3-tab structure (Performance Explorer, Value Analysis, Leaderboard).
     *   **Status**: UI/UX / Planning -> Implementation
     *   **Next Steps**: Design and implement the new tabbed layout and views.
     *   **Spec/Ref**: [well-lit-path-app-structure-proposal.md](../changes/well-lit-path-app-structure-proposal.md)
 
-3.  **Well-Lit Path Guides FAQ (Intelligent Routing)**
+2.  **Well-Lit Path Guides FAQ (Intelligent Routing)**
     *   **Description**: Embedded FAQ in Intelligent Routing guide to help users extrapolate benchmarks.
     *   **Status**: Draft Spec / UI Integration
     *   **Next Steps**: Implement FAQAccordion component and integrate into Milestone1Dashboard.
     *   **Spec/Ref**: [intelligent-routing-faq-spec.md](../changes/intelligent-routing-faq-spec.md)
 
-4.  **Predicted Latency-Based Scheduling**
-    *   **Description**: Scheduling based on predicted latency.
-    *   **Status**: Product Spec
-    *   **Spec/Ref**: [predicted_latency_scheduling_prd.md](../changes/predicted_latency_scheduling_prd.md)
-
-5.  **llm-d Results Store: Community Catalog Ingestion (Phase 3)**
-    *   **Description**: Dynamically list and query verified community-submitted benchmarks.
-    *   **Status**: Product Spec
-
----
-
-### 🟣 2027-H1 (Future Ideas & Explorations)
-
-1.  **llm-d Results Store: Robust Categorization & Open Beta (Phase 4)**
+3.  **llm-d Results Store: Robust Categorization & Open Beta (Phase 4)**
     *   **Description**: Integrating advanced validation classifiers and auto-tagging.
     *   **Status**: Discovery & Exploration
 
-2.  **Reinforcement Learning Benchmarks Exploration**
+4.  **Reinforcement Learning Benchmarks Exploration**
     *   **Description**: Mapping RL serving workloads.
     *   **Status**: Discovery & Exploration
     *   **Spec/Ref**: [rl-benchmarks-exploration.md](../changes/rl-benchmarks-exploration.md)
 
-3.  **Multi-Token Prediction (MTP) Benchmarks Exploration**
+5.  **Multi-Token Prediction (MTP) Benchmarks Exploration**
     *   **Description**: Exploring MTP impact on orchestration and parallelism.
     *   **Status**: Discovery & Exploration
     *   **Spec/Ref**: [mtp-spec-decode-benchmarks-exploration.md](../changes/mtp-spec-decode-benchmarks-exploration.md)

@@ -26,6 +26,7 @@ import AgenticWorkloadsDashboard from './components/AgenticWorkloadsDashboard';
 import PrefixCacheOffloadingDashboard from './components/PrefixCacheOffloadingDashboard';
 import PdDisaggregationDashboard from './components/PdDisaggregationDashboard';
 import SubmitValidationPage from './components/DataConnections/SubmitValidationPage';
+import LeaderboardDashboard from './components/Leaderboard/LeaderboardDashboard';
 
 import LeftNavigation from './components/LeftNavigation';
 import { useDashboardState } from './hooks/useDashboardState';
@@ -207,6 +208,15 @@ function App() {
           <>
             {/* Global staged benchmarks banner removed in favor of localized Results Store dashboard alert banner */}
             {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
+            {currentView === 'model-leaderboard' && (
+              <LeaderboardDashboard 
+                onNavigateBack={() => handleNavigate('home')} 
+                onNavigate={handleNavigate} 
+                onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
+                dashboardState={dashboardState} 
+                dashboardData={dashboardData} 
+              />
+            )}
             {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
             {currentView === 'agentic-serving' && <AgenticWorkloadsDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
             {currentView === 'benchmark-browser' && <Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}

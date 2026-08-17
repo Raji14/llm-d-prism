@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb, ChevronLeft, ChevronRight, Trophy, Sparkles, Crown } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 const roadmapItems = [
@@ -77,6 +77,49 @@ const PrismHome = ({ onNavigate }) => {
                         </div>
                         
                         <div className="flex flex-row overflow-x-auto gap-4 pt-4 pb-5 px-2 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
+                        {/* Path 0: Model Leaderboard (Gamified) */}
+                        <div 
+                            onClick={() => onNavigate('model-leaderboard')}
+                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-amber-500/40 hover:border-amber-400 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
+                        >
+                            <div>
+                                <div className="h-[40px] flex flex-col justify-start mb-2">
+                                    <div className="flex items-center gap-1.5">
+                                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                                        <h3 className="text-sm font-bold text-amber-300 tracking-wide transition-colors group-hover:text-amber-200 truncate">
+                                            Model Leaderboard
+                                        </h3>
+                                    </div>
+                                    <span className="text-[9px] font-mono text-amber-400/80">★ Gamified SOTA</span>
+                                </div>
+                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
+                                    Community benchmark rankings, Pareto optimization curves, GCP accelerator pricing, and verifiable achievement certificates.
+                                </p>
+                                
+                                {/* Visual Preview / Metrics */}
+                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
+                                    <div className="space-y-0.5">
+                                        <div className="flex justify-between text-[10px]">
+                                            <span className="text-slate-400">SOTA Throughput</span>
+                                            <span className="text-amber-400 font-mono font-bold">4.8k tok/s</span>
+                                        </div>
+                                        <div className="flex justify-between text-[10px]">
+                                             <span className="text-slate-400">Prize Pool</span>
+                                             <span className="text-emerald-400 font-mono font-bold">$2.5k USD</span>
+                                        </div>
+                                    </div>
+                                    <div className="h-6 flex items-center justify-between px-1 bg-amber-500/10 rounded border border-amber-500/20 text-[9px] font-mono text-amber-300">
+                                        <span>👑 Grandmaster</span>
+                                        <span>8x H100</span>
+                                    </div>
+                                </div>
+                            </div>
+ 
+                            <button className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 rounded-lg font-bold text-[10px] flex items-center justify-center hover:from-amber-400 hover:to-yellow-500 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
+                                View Leaderboard <ArrowRight className="ml-1 h-3 w-3" />
+                            </button>
+                        </div>
+
                         {/* Path 1: Intelligent routing */}
                         <div 
                             onClick={() => onNavigate('inference-scheduling')}

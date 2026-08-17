@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spec-Driven Development in llm-d-prism — UX Team Presentation</title>
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(16, 24, 40, 0.75);
+      --bg-card-hover: rgba(26, 38, 62, 0.85);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(16, 185, 129, 0.35);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --brand-primary: #10b981;
+      --brand-primary-glow: rgba(16, 185, 129, 0.25);
+      --brand-indigo: #6366f1;
+      --brand-indigo-glow: rgba(99, 102, 241, 0.25);
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #10b981;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(99, 102, 241, 0.08) 0%, transparent 45%);
+    }
+
+    /* Top Progress Bar */
+    .progress-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.05);
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 50;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand-primary), var(--brand-indigo));
+      width: 12.5%;
+      transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 12px var(--brand-primary);
+    }
+
+    /* Main Slide Viewport */
+    .viewport {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2.5rem 4rem;
+    }
+
+    .slide {
+      position: absolute;
+      width: 100%;
+      max-width: 1280px;
+      height: 82vh;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(20px) scale(0.98);
+      transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+      z-index: 10;
+    }
+
+    /* Slide Header & Titles */
+    .slide-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--brand-primary);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      width: fit-content;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 3.2rem;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: 2.3rem;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 0.75rem;
+      color: #ffffff;
+    }
+
+    .subtitle {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 800px;
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    /* Glassmorphic Panels */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 1rem;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+      transition: all 0.25s ease;
+    }
+
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 14px 40px -12px rgba(0, 0, 0, 0.7);
+    }
+
+    .card-accent {
+      border-color: var(--border-accent);
+      background: linear-gradient(145deg, rgba(16, 185, 129, 0.07), rgba(16, 24, 40, 0.85));
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      width: 100%;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      width: 100%;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      width: 100%;
+    }
+
+    /* Interactive Comparison Toggle (Slide 2) */
+    .toggle-group {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 0.75rem;
+      padding: 0.25rem;
+      width: fit-content;
+      margin-bottom: 1.5rem;
+    }
+
+    .toggle-btn {
+      padding: 0.6rem 1.25rem;
+      border-radius: 0.5rem;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn.active {
+      background: var(--brand-primary);
+      color: #000000;
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+
+    /* Stats Grid */
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+      padding: 1.25rem;
+      border-radius: 0.85rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .stat-number {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 0.35rem;
+    }
+
+    .stat-number.bad { color: var(--danger); }
+    .stat-number.good { color: var(--success); }
+
+    .stat-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Interactive Tree / Tabs */
+    .tab-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.75rem;
+    }
+
+    .tab-btn {
+      padding: 0.5rem 1rem;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 0.5rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    .tab-btn.active {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: rgba(99, 102, 241, 0.4);
+      color: #818cf8;
+    }
+
+    /* Interactive Workflow Steps */
+    .workflow-steps {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .step-card {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .step-card:hover {
+      border-color: var(--brand-primary);
+      transform: translateY(-3px);
+    }
+
+    .step-card.active {
+      border-color: var(--brand-primary);
+      background: rgba(16, 185, 129, 0.1);
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+    }
+
+    .step-number {
+      display: inline-block;
+      width: 1.8rem;
+      height: 1.8rem;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.8rem;
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .step-card.active .step-number {
+      background: var(--brand-primary);
+      color: #000000;
+    }
+
+    /* Bottom Control Bar */
+    .control-bar {
+      height: 70px;
+      padding: 0 3rem;
+      background: rgba(9, 13, 22, 0.9);
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 40;
+      backdrop-filter: blur(10px);
+    }
+
+    .slide-counter {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .nav-buttons {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      padding: 0.55rem 1.15rem;
+      border-radius: 0.5rem;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+      border: 1px solid var(--border-color);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-primary {
+      background: var(--brand-primary);
+      color: #000000;
+      border-color: var(--brand-primary);
+    }
+
+    .btn-primary:hover {
+      background: #34d399;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);
+    }
+
+    /* Modals (Slide Grid & Notes Drawer) */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+
+    .modal-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-panel {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 1.25rem;
+      width: 90%;
+      max-width: 1050px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 2rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+    }
+
+    .grid-thumbnails {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .thumb-card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border-color);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+
+    .thumb-card:hover {
+      border-color: var(--brand-primary);
+      transform: translateY(-2px);
+    }
+
+    .thumb-card.active {
+      border-color: var(--brand-primary);
+      background: rgba(16, 185, 129, 0.12);
+    }
+
+    .thumb-num {
+      font-size: 0.75rem;
+      color: var(--brand-primary);
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .thumb-title {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: #ffffff;
+    }
+
+    /* Speaker Notes Drawer */
+    .notes-drawer {
+      position: fixed;
+      bottom: 70px;
+      left: 0;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.95);
+      border-top: 1px solid var(--brand-indigo);
+      padding: 1.5rem 3rem;
+      z-index: 35;
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.5);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .notes-drawer.open {
+      transform: translateY(0);
+    }
+
+    .notes-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #818cf8;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.5rem;
+    }
+
+    .notes-content {
+      font-size: 0.95rem;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+
+    /* Code Tags & Highlights */
+    .code-tag {
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.35rem;
+      font-size: 0.82rem;
+      color: #34d399;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Checklist Item */
+    .checklist-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      border-radius: 0.6rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .check-icon {
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--brand-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Progress Bar -->
+  <div class="progress-bar-container">
+    <div class="progress-bar" id="progress-bar"></div>
+  </div>
+
+  <!-- Slide Viewport -->
+  <div class="viewport">
+
+    <!-- SLIDE 1: Title & Vision -->
+    <div class="slide active" id="slide-1">
+      <div class="slide-badge">✨ Paradigm Shift in llm-d-prism</div>
+      <h1>Spec-Driven Development:<br>Bridging UX, Engineering & AI Agents</h1>
+      <p class="subtitle">
+        How we use living specification protocols (<span class="code-tag">specs/</span>), executable skills, and strict UI contracts to eliminate design drift and empower autonomous AI workflows.
+      </p>
+
+      <div class="grid-3" style="margin-top: 1rem;">
+        <div class="card card-accent">
+          <div style="font-size: 1.8rem; margin-bottom: 0.75rem;">🎨</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">UX & Design Team</h3>
+          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
+            Defines the design system, user flows, and <span class="code-tag">ui_spec.md</span>. Owns human approval gates before implementation begins.
+          </p>
+        </div>
+        <div class="card">
+          <div style="font-size: 1.8rem; margin-bottom: 0.75rem;">💻</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">Engineering Team</h3>
+          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
+            Builds robust backend pipelines and shared primitives in <span class="code-tag">src/components/ui/</span> according to <span class="code-tag">design.md</span>.
+          </p>
+        </div>
+        <div class="card">
+          <div style="font-size: 1.8rem; margin-bottom: 0.75rem;">🤖</div>
+          <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; color: #fff;">AI Agents & Skills</h3>
+          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
+            Reads and executes skills (<span class="code-tag">skills/style.md</span> & <span class="code-tag">enforce-development-loop</span>) to scaffold zero-drift UI code.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 2: Before vs. After Audit -->
+    <div class="slide" id="slide-2">
+      <div class="slide-badge">📊 Case Study: Why Specs & Skills Were Created</div>
+      <h2>The UI Drift Crisis vs. The Blueprint Reality</h2>
+      <p class="subtitle" style="margin-bottom: 1.5rem;">
+        During the Results Store closed-beta (PR #88), an audit revealed how ad-hoc UI development caused visual fragmentation—and how our <span class="code-tag">ui-style-blueprint</span> spec solved it.
+      </p>
+
+      <div class="toggle-group">
+        <button class="toggle-btn active" onclick="setAuditView('before', this)">⚠️ Before: Ad-Hoc UI (PR #88 Audit)</button>
+        <button class="toggle-btn" onclick="setAuditView('after', this)">✨ After: UI/Style Blueprint Primitives</button>
+      </div>
+
+      <!-- Before Grid -->
+      <div id="audit-before" class="grid-3">
+        <div class="stat-box">
+          <div class="stat-number bad">12</div>
+          <div class="stat-label">Bespoke Modal Dialogs</div>
+          <div class="stat-desc">Hand-rolled with inline <span class="code-tag">fixed inset-0</span> overlays across files.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number bad">~42</div>
+          <div class="stat-label">Ad-Hoc Status Colors</div>
+          <div class="stat-desc">Hardcoded status hex strings in badges and tables with no shared semantics.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number bad">209</div>
+          <div class="stat-label">Hardcoded Hex Literals</div>
+          <div class="stat-desc">3 coexisting theming systems with scattered hex values in JSX components.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number bad">~22</div>
+          <div class="stat-label">Button Variants</div>
+          <div class="stat-desc">Inconsistent padding, font weights, and hover effects across screens.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number bad">19</div>
+          <div class="stat-label">Inline Spinners</div>
+          <div class="stat-desc">Different SVG loading spinners duplicated inside individual action buttons.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number bad">0%</div>
+          <div class="stat-label">Shared Common Imports</div>
+          <div class="stat-desc">PR #88 imported 0 primitives from <span class="code-tag">src/components/common/</span>.</div>
+        </div>
+      </div>
+
+      <!-- After Grid -->
+      <div id="audit-after" class="grid-3" style="display: none;">
+        <div class="stat-box">
+          <div class="stat-number good">1</div>
+          <div class="stat-label">Unified Modal Primitive</div>
+          <div class="stat-desc"><span class="code-tag">&lt;Modal&gt;</span> in <span class="code-tag">src/components/ui/</span> with header, footer & backdrop dismiss.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number good">1</div>
+          <div class="stat-label">Canonical Status Map</div>
+          <div class="stat-desc"><span class="code-tag">&lt;Badge&gt; / &lt;StatusChip&gt;</span> with semantic mapping for staged, processing, approved, etc.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number good">0</div>
+          <div class="stat-label">Hex Literals Allowed</div>
+          <div class="stat-desc">1 <span class="code-tag">@theme</span> token layer in <span class="code-tag">src/index.css</span>; CI lint enforces token usage.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number good">4</div>
+          <div class="stat-label">Standard Button Variants</div>
+          <div class="stat-desc"><span class="code-tag">&lt;Button&gt;</span> with primary, secondary, ghost, and danger variants.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number good">1</div>
+          <div class="stat-label">Shared Spinner & Loading</div>
+          <div class="stat-desc">Single <span class="code-tag">&lt;Spinner&gt;</span> and built-in button <span class="code-tag">loading={true}</span> state.</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number good">100%</div>
+          <div class="stat-label">Primitive Library Adoption</div>
+          <div class="stat-desc">All UI screens built exclusively from <span class="code-tag">src/components/ui/</span> primitives.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 3: The OPSX Protocol -->
+    <div class="slide" id="slide-3">
+      <div class="slide-badge">🏗 Directory Architecture</div>
+      <h2>The OPSX Specification Protocol (<span class="code-tag">specs/</span>)</h2>
+      <p class="subtitle">
+        How we organize specifications so human designers, engineers, and AI agents share an unambiguous "Living Source of Truth."
+      </p>
+
+      <div class="grid-3">
+        <div class="card card-accent" onclick="selectOpsxTab('main', this)" style="cursor: pointer;">
+          <div style="color: var(--brand-primary); font-weight: 700; margin-bottom: 0.5rem; font-size: 1.1rem;">
+            🏰 specs/main/
+          </div>
+          <div style="font-size: 0.9rem; color: #fff; font-weight: 600; margin-bottom: 0.5rem;">
+            The Living Source of Truth
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Contains the production system architecture (<span class="code-tag">main.md</span>), the roadmap (<span class="code-tag">roadmap.md</span>), and <span class="code-tag">completed/</span> specs.
+          </p>
+        </div>
+
+        <div class="card" onclick="selectOpsxTab('changes', this)" style="cursor: pointer;">
+          <div style="color: #60a5fa; font-weight: 700; margin-bottom: 0.5rem; font-size: 1.1rem;">
+            🚧 specs/changes/
+          </div>
+          <div style="font-size: 0.9rem; color: #fff; font-weight: 600; margin-bottom: 0.5rem;">
+            Active Work-in-Progress
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Every feature proposal gets a dedicated file (<span class="code-tag">[feature].md</span>). All PR design reviews happen here before coding.
+          </p>
+        </div>
+
+        <div class="card" onclick="selectOpsxTab('archive', this)" style="cursor: pointer;">
+          <div style="color: #f43f5e; font-weight: 700; margin-bottom: 0.5rem; font-size: 1.1rem;">
+            🗄️ specs/archive/
+          </div>
+          <div style="font-size: 0.9rem; color: #fff; font-weight: 600; margin-bottom: 0.5rem;">
+            Organizational Memory
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            Stores abandoned or rejected proposals with <span class="code-tag"># Status: Rejected</span> rationale to prevent re-litigating past decisions.
+          </p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem; background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.25);">
+        <h4 style="font-size: 1rem; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span>📋</span> Core Rule for AI Agents & Humans
+        </h4>
+        <p style="font-size: 0.9rem; color: #e2e8f0; line-height: 1.6;">
+          Always check <span class="code-tag">completed/</span> & <span class="code-tag">archive/</span> first. Create <span class="code-tag">specs/changes/[feature-name].md</span> and open a PR. <strong>Do not write application code until the spec is approved by a human reviewer.</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- SLIDE 4: enforce-development-loop -->
+    <div class="slide" id="slide-4">
+      <div class="slide-badge">🛡️ Executable Agent Skill</div>
+      <h2>The <span class="code-tag">enforce-development-loop</span> Skill: Our UX Safeguard</h2>
+      <p class="subtitle">
+        How our automated agent skill enforces the <span style="color: var(--brand-primary); font-weight: 600;">Product → UI/UX → Engineering</span> development loop before any implementation code is allowed to merge.
+      </p>
+
+      <div class="workflow-steps">
+        <div class="step-card active" onclick="selectLoopStep(1, this)">
+          <div class="step-number">1</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.35rem;">Product Spec Check</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">
+            Verifies <span class="code-tag">product_spec.md</span> or <span class="code-tag">proposal.md</span> exists and is tracked in <span class="code-tag">roadmap.md</span>.
+          </p>
+        </div>
+        <div class="step-card" onclick="selectLoopStep(2, this)">
+          <div class="step-number">2</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.35rem;">UI/UX Implementation Spec</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">
+            Verifies <span class="code-tag">ui_spec.md</span> exists and prototype code is isolated on branch <span class="code-tag">next</span> (not <span class="code-tag">main</span>).
+          </p>
+        </div>
+        <div class="step-card" onclick="selectLoopStep(3, this)">
+          <div class="step-number">3</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.35rem;">Engineering Spec Check</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">
+            Verifies <span class="code-tag">design.md</span> exists for backend changes and results store database schema updates.
+          </p>
+        </div>
+        <div class="step-card" onclick="selectLoopStep(4, this)">
+          <div class="step-number">4</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.35rem;">Final Merge Audit Table</h4>
+          <p style="font-size: 0.8rem; color: var(--text-muted);">
+            Generates compliance checklist table. Blocks merge if any UX or product check fails.
+          </p>
+        </div>
+      </div>
+
+      <div id="loop-detail-box" class="card" style="margin-top: 1.5rem; border-left: 4px solid var(--brand-primary);">
+        <h4 id="loop-detail-title" style="color: #fff; font-size: 1.05rem; margin-bottom: 0.5rem;">Step 1: Product Phase Validation</h4>
+        <p id="loop-detail-desc" style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.6;">
+          When an agent runs <span class="code-tag">enforce-development-loop</span>, it checks if <span class="code-tag">specs/changes/[feature-name]/product_spec.md</span> exists. If missing, it halts and instructs the user to draft the Product Spec first. It also checks <span class="code-tag">specs/main/roadmap.md</span> to ensure the feature is actively prioritized.
+        </p>
+      </div>
+    </div>
+
+    <!-- SLIDE 5: The UI/Style Contract -->
+    <div class="slide" id="slide-5">
+      <div class="slide-badge">📜 UI Constitutional Contract</div>
+      <h2>The UI/Style Contract (<span class="code-tag">skills/style.md</span>)</h2>
+      <p class="subtitle">
+        The enforceable style contract that governs all JSX markup, Tailwind classes, colors, and charts in <span class="code-tag">llm-d-prism</span>.
+      </p>
+
+      <div class="grid-2">
+        <div class="card card-accent">
+          <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 0.75rem;">
+            1. Use Primitives from <span class="code-tag">src/components/ui/</span> Only
+          </h4>
+          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+            Buttons, Badges, Modals, Form inputs, Panels, StatCards, EmptyStates, and Spinners must come from <span class="code-tag">src/components/ui/</span>. Never re-implement inline. If a variant is missing, extend the primitive in the same PR—do not fork.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 0.75rem;">
+            2. Colors Come From Tokens Only
+          </h4>
+          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+            No new hex literals in JSX outside <span class="code-tag">ui/</span>. Use <span class="code-tag">@theme</span> token classes (<span class="code-tag">theme-bg</span>, <span class="code-tag">theme-card</span>, <span class="code-tag">--brand-accent</span>). Chart series use <span class="code-tag">CHART_SERIES</span> / <span class="code-tag">seriesColor()</span>.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 0.75rem;">
+            3. Extract on Second Use
+          </h4>
+          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+            Any markup repeated in two places becomes a primitive (or a variant of one) in <span class="code-tag">src/components/ui/</span> in the same PR. Never copy-paste styled JSX.
+          </p>
+        </div>
+
+        <div class="card">
+          <h4 style="font-size: 1.05rem; color: #fff; margin-bottom: 0.75rem;">
+            4. Strict Governance & Approvals
+          </h4>
+          <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5;">
+            Changes to <span class="code-tag">skills/style.md</span> or <span class="code-tag">src/components/ui/</span> require approval from <strong>@seanhorgan</strong> or <strong>@raji14</strong>. Enforced mechanically via <span class="code-tag">.github/CODEOWNERS</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 6: Dashboard Pipeline -->
+    <div class="slide" id="slide-6">
+      <div class="slide-badge">🔁 Repeatable Production Pipeline</div>
+      <h2>The Dashboard Production Pipeline</h2>
+      <p class="subtitle">
+        How we transform llm-d-benchmark reports into stunning Prism dashboards using two skills and two human review gates (<span class="code-tag">specs/main/dashboard-pipeline.md</span>).
+      </p>
+
+      <div class="grid-4" style="margin-top: 1rem;">
+        <div class="card" style="position: relative;">
+          <div style="font-size: 0.75rem; color: var(--brand-primary); font-weight: 700; margin-bottom: 0.5rem;">STAGE 1</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.5rem;">Analyze & Design</h4>
+          <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+            Run skill <span class="code-tag">analyze_benchmark_results.md</span> on report YAMLs. Generates <span class="code-tag">proposal.md</span> with chart/KPI spec & endpoint shape.
+          </p>
+        </div>
+
+        <div class="card" style="border-color: #f59e0b; background: rgba(245, 158, 11, 0.08);">
+          <div style="font-size: 0.75rem; color: #f59e0b; font-weight: 700; margin-bottom: 0.5rem;">🛑 GATE A (HUMAN)</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.5rem;">Spec Approval Gate</h4>
+          <p style="font-size: 0.82rem; color: #fef3c7; line-height: 1.5;">
+            Must be approved by <strong>@seanhorgan</strong>, <strong>@diamondburned</strong>, or <strong>@jjk-g</strong>. No application code is written until Gate A is unlocked.
+          </p>
+        </div>
+
+        <div class="card">
+          <div style="font-size: 0.75rem; color: var(--brand-indigo); font-weight: 700; margin-bottom: 0.5rem;">STAGE 2</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.5rem;">UI Implementation</h4>
+          <p style="font-size: 0.82rem; color: var(--text-muted); line-height: 1.5;">
+            Run <span class="code-tag">skills/style.md</span> to implement via <span class="code-tag">ui/</span> primitives, canonical page shell, and zero new lint errors.
+          </p>
+        </div>
+
+        <div class="card" style="border-color: #10b981; background: rgba(16, 185, 129, 0.08);">
+          <div style="font-size: 0.75rem; color: #10b981; font-weight: 700; margin-bottom: 0.5rem;">🛑 GATE B (HUMAN)</div>
+          <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.5rem;">Implementation Gate</h4>
+          <p style="font-size: 0.82rem; color: #d1fae5; line-height: 1.5;">
+            Must be approved by <strong>@jjk-g</strong>, <strong>@diamondburned</strong>, or <strong>@seanhorgan</strong> before merging to <span class="code-tag">main/completed/</span>.
+          </p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 1.5rem; padding: 1rem 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <div style="font-size: 0.9rem; color: #fff;">
+            <strong>Hard-Stop Governance:</strong> Proposed defaults in <span class="code-tag">proposal.md</span> are never self-approving. AI agents stop at Gate A automatically.
+          </div>
+          <span class="code-tag" style="background: rgba(16, 185, 129, 0.15);">100% Audit Tracked</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 7: User Roles & Skills -->
+    <div class="slide" id="slide-7">
+      <div class="slide-badge">👥 Persona-Oriented Skills</div>
+      <h2>Specialized User Roles & Skills (<span class="code-tag">users/</span>)</h2>
+      <p class="subtitle">
+        How we tailor agent skills for specific user roles so each persona operates within our UI and architecture rules automatically.
+      </p>
+
+      <div class="tab-nav">
+        <button class="tab-btn active" onclick="setUserRole('fd', this)">🚀 Feature Developer</button>
+        <button class="tab-btn" onclick="setUserRole('ct', this)">⚙️ Config Tuner (SA)</button>
+        <button class="tab-btn" onclick="setUserRole('so', this)">🛡️ Stack Operator</button>
+        <button class="tab-btn" onclick="setUserRole('bd', this)">📈 Benchmark Developer (Analyst / PR)</button>
+      </div>
+
+      <div id="role-panel" class="card card-accent">
+        <h3 id="role-title" style="font-size: 1.4rem; color: #fff; margin-bottom: 0.5rem;">
+          🚀 Feature Developer (<span class="code-tag">llm-d-feature-developer/SKILL.md</span>)
+        </h3>
+        <p id="role-desc" style="font-size: 1rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 1rem;">
+          <strong>Focus:</strong> Ensures new features hit price/performance goals and can be shared easily.<br>
+          • Automates baseline A/B test validations.<br>
+          • Separates unit vs. system benchmarks.<br>
+          • Produces reproducible and shareable artifacts built with standard <span class="code-tag">&lt;StatCard&gt;</span> and <span class="code-tag">&lt;ChartContainer&gt;</span> primitives.
+        </p>
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--brand-primary);">
+          <span>✓ UX Alignment:</span> Respects existing dashboard filter panels and avoids bespoke visual elements.
+        </div>
+      </div>
+    </div>
+
+    <!-- SLIDE 8: UX Action Plan -->
+    <div class="slide" id="slide-8">
+      <div class="slide-badge">🎯 Actionable Takeaways</div>
+      <h2>What This Means for Our UX Team</h2>
+      <p class="subtitle">
+        How UX designers lead, govern, and leverage Spec-Driven Development in daily feature iteration.
+      </p>
+
+      <div class="grid-2">
+        <div>
+          <div class="checklist-item">
+            <div class="check-icon">1</div>
+            <div>
+              <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.25rem;">Lead the <span class="code-tag">ui_spec.md</span> Creation</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+                For any feature with UI, author <span class="code-tag">ui_spec.md</span> in the change folder. Outline exactly which <span class="code-tag">src/components/ui/</span> primitives will be used.
+              </p>
+            </div>
+          </div>
+
+          <div class="checklist-item">
+            <div class="check-icon">2</div>
+            <div>
+              <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.25rem;">Review Proposals at Gate A</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+                Prioritize checking the user flow and data clarity in <span class="code-tag">proposal.md</span>. If "Why" is wrong, do not let engineering proceed to "How."
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="checklist-item">
+            <div class="check-icon">3</div>
+            <div>
+              <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.25rem;">Govern via Codeowners (<span class="code-tag">@seanhorgan</span>, <span class="code-tag">@raji14</span>)</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+                You own <span class="code-tag">skills/style.md</span> and <span class="code-tag">src/components/ui/</span>. Never allow one-off button or card overrides in PR reviews.
+              </p>
+            </div>
+          </div>
+
+          <div class="checklist-item">
+            <div class="check-icon">4</div>
+            <div>
+              <h4 style="color: #fff; font-size: 1rem; margin-bottom: 0.25rem;">Use AI Agents as UX Allies</h4>
+              <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4;">
+                Instruct AI: <em>"Use <span class="code-tag">skills/style.md</span> to scaffold a prototype on branch <span class="code-tag">next</span>."</em> The AI will respect your tokens automatically.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Control Bar -->
+  <div class="control-bar">
+    <div style="display: flex; align-items: center; gap: 1.5rem;">
+      <span class="slide-counter" id="slide-counter">Slide 1 of 8</span>
+      <button class="btn" onclick="toggleNotesDrawer()">
+        <span>📝 Speaker Notes</span>
+        <span class="code-tag" style="font-size: 0.7rem;">N</span>
+      </button>
+      <button class="btn" onclick="toggleGridModal()">
+        <span>🔲 Slide Grid</span>
+        <span class="code-tag" style="font-size: 0.7rem;">G</span>
+      </button>
+    </div>
+
+    <div class="nav-buttons">
+      <button class="btn" onclick="prevSlide()">
+        <span>← Previous</span>
+      </button>
+      <button class="btn btn-primary" onclick="nextSlide()">
+        <span>Next Slide →</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Slide Grid Modal -->
+  <div class="modal-overlay" id="grid-modal" onclick="closeGridModal(event)">
+    <div class="modal-panel" onclick="event.stopPropagation()">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 style="font-size: 1.3rem; color: #fff;">🔲 Presentation Overview & Slide Navigation</h3>
+        <button class="btn" onclick="toggleGridModal()">Close [ESC]</button>
+      </div>
+      <div class="grid-thumbnails" id="thumbnails-container"></div>
+    </div>
+  </div>
+
+  <!-- Speaker Notes Drawer -->
+  <div class="notes-drawer" id="notes-drawer">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <div class="notes-title" id="notes-slide-title">SPEAKER NOTES — SLIDE 1</div>
+      <button onclick="toggleNotesDrawer()" style="background: none; border: none; color: #94a3b8; cursor: pointer;">✕ Close</button>
+    </div>
+    <div class="notes-content" id="notes-content">
+      Welcome team! Today we are looking at how llm-d-prism has transformed the way we build user interfaces...
+    </div>
+  </div>
+
+  <script>
+    const totalSlides = 8;
+    let currentSlide = 1;
+
+    const notesData = {
+      1: "Welcome team! Today we are looking at how llm-d-prism has transformed the way we build user interfaces. In traditional workflows, UX creates designs, engineers interpret them, and now AI agents generate code at 10x speed. Without strict guardrails, AI agents will invent their own buttons, modals, and color hex codes on every prompt. Spec-Driven Development means we do not write a single line of application code until a specification is written, reviewed, and approved. More importantly, we have created executable AI skills that teach our AI assistants how to respect our UX design system, use our shared components, and enforce our approval gates automatically.",
+      2: "During the Results Store closed-beta in PR #88, an audit found 12 bespoke modals, 42 status color strings, and 3 coexisting theming systems. Why? Because without an enforceable contract, developers and AI agents hand-roll components. Our UI/Style blueprint in specs/main/completed/ui-style-blueprint fixed this by creating src/components/ui/ and enforcing skills/style.md.",
+      3: "Our specifications live in specs/ following the OPSX protocol. Notice the three folders: specs/main/ is our Living Source of Truth, specs/changes/ is where proposals live before a single line of code is written, and specs/archive/ stores rejected ideas so we never waste time relitigating past decisions.",
+      4: "This is our safeguard skill: enforce-development-loop. Notice how it explicitly separates Product, UI/UX, and Engineering phases. Step 2 requires ui_spec.md and verifies that all UX mock/prototype code is isolated on branch 'next' or a feature branch—never main. If any check fails, the skill blocks merge to main.",
+      5: "skills/style.md is our UX Constitution. It governs 5 unbreakable rules: 1) Primitives from src/components/ui/ only, 2) Token-driven colors only—zero hex literals, 3) Extract repeated UI on second use, 4) Light and Dark mode parity, and 5) Strict codeowner governance under @seanhorgan and @raji14.",
+      6: "When we build dashboards from llm-d benchmark reports, we use a repeatable pipeline defined in specs/main/dashboard-pipeline.md. Stage 1 analyzes reports and outputs proposal.md. Then we hit GATE A—a human spec review gate. No code is written until Gate A is approved! Then Stage 2 implements using primitives before GATE B.",
+      7: "In users/, we created persona-specific skills: Feature Developer, Config Tuner, Stack Operator, and Benchmark Developer. For UX, we collaborate closest with Benchmark Developer to ensure community-facing graphs look stunning, and Feature Developer to ensure standard KPI stat cards are used.",
+      8: "Here is our action plan as a UX team: 1) Lead the creation of ui_spec.md for any visual feature. 2) Review proposal.md at Gate A before implementation starts. 3) Enforce our primitive library in PR reviews via Codeowners (@seanhorgan, @raji14). 4) Use AI agents as our design allies by instructing them to use our skills!"
+    };
+
+    const slideTitles = [
+      "1. The Spec-Driven Vision",
+      "2. Case Study: PR #88 Audit vs. Blueprint",
+      "3. The OPSX Specification Protocol (specs/)",
+      "4. The enforce-development-loop Skill",
+      "5. The UI/Style Contract (skills/style.md)",
+      "6. The Dashboard Production Pipeline",
+      "7. Specialized User Roles & Skills",
+      "8. UX Team Action Plan & Governance"
+    ];
+
+    function renderThumbnails() {
+      const container = document.getElementById('thumbnails-container');
+      container.innerHTML = '';
+      for (let i = 1; i <= totalSlides; i++) {
+        const div = document.createElement('div');
+        div.className = `thumb-card ${i === currentSlide ? 'active' : ''}`;
+        div.onclick = () => {
+          goToSlide(i);
+          toggleGridModal();
+        };
+        div.innerHTML = `
+          <div class="thumb-num">SLIDE 0${i}</div>
+          <div class="thumb-title">${slideTitles[i-1]}</div>
+        `;
+        container.appendChild(div);
+      }
+    }
+
+    function updateSlide() {
+      document.querySelectorAll('.slide').forEach((el, index) => {
+        el.classList.toggle('active', index + 1 === currentSlide);
+      });
+
+      const prog = (currentSlide / totalSlides) * 100;
+      document.getElementById('progress-bar').style.width = prog + '%';
+      document.getElementById('slide-counter').innerText = `Slide ${currentSlide} of ${totalSlides}`;
+      document.getElementById('notes-slide-title').innerText = `SPEAKER NOTES — SLIDE ${currentSlide}`;
+      document.getElementById('notes-content').innerText = notesData[currentSlide];
+
+      renderThumbnails();
+    }
+
+    function goToSlide(num) {
+      if (num >= 1 && num <= totalSlides) {
+        currentSlide = num;
+        updateSlide();
+      }
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) goToSlide(currentSlide + 1);
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) goToSlide(currentSlide - 1);
+    }
+
+    function toggleGridModal() {
+      const modal = document.getElementById('grid-modal');
+      modal.classList.toggle('open');
+    }
+
+    function closeGridModal(e) {
+      if (e.target.id === 'grid-modal') toggleGridModal();
+    }
+
+    function toggleNotesDrawer() {
+      const drawer = document.getElementById('notes-drawer');
+      drawer.classList.toggle('open');
+    }
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft') {
+        prevSlide();
+      } else if (e.key === 'g' || e.key === 'G') {
+        toggleGridModal();
+      } else if (e.key === 'n' || e.key === 'N') {
+        toggleNotesDrawer();
+      } else if (e.key === 'Escape') {
+        document.getElementById('grid-modal').classList.remove('open');
+        document.getElementById('notes-drawer').classList.remove('open');
+      }
+    });
+
+    // Interactive Slide 2 Audit Toggle
+    function setAuditView(view, btn) {
+      document.querySelectorAll('#slide-2 .toggle-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      if (view === 'before') {
+        document.getElementById('audit-before').style.display = 'grid';
+        document.getElementById('audit-after').style.display = 'none';
+      } else {
+        document.getElementById('audit-before').style.display = 'none';
+        document.getElementById('audit-after').style.display = 'grid';
+      }
+    }
+
+    // Interactive Slide 4 Workflow Steps
+    const stepDetails = {
+      1: {
+        title: "Step 1: Product Phase Validation",
+        desc: "When an agent runs enforce-development-loop, it checks if specs/changes/[feature-name]/product_spec.md exists. If missing, it halts and instructs the user to draft the Product Spec first. It also checks specs/main/roadmap.md to ensure the feature is actively prioritized."
+      },
+      2: {
+        title: "Step 2: UI/UX Phase & Branch Isolation",
+        desc: "The skill checks if specs/changes/[feature-name]/ui_spec.md exists and outlines all new UI elements. CRITICALLY: it runs git branch checks to verify that mockup/prototype code is isolated on branch 'next' or a feature branch—never on 'main'."
+      },
+      3: {
+        title: "Step 3: Engineering Design Spec Validation",
+        desc: "Checks if specs/changes/[feature-name]/design.md exists. Outlines required backend modifications, schema updates in the Results Store, and API contracts before any core code is written."
+      },
+      4: {
+        title: "Step 4: Final Merge Compliance Checklist",
+        desc: "Generates a complete compliance table across Product, UI/UX, and Engineering. If any UI/UX or product checks fail, the skill automatically blocks PR merging to main."
+      }
+    };
+
+    function selectLoopStep(num, el) {
+      document.querySelectorAll('#slide-4 .step-card').forEach(c => c.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('loop-detail-title').innerText = stepDetails[num].title;
+      document.getElementById('loop-detail-desc').innerText = stepDetails[num].desc;
+    }
+
+    // Interactive Slide 7 Roles
+    const rolesData = {
+      fd: {
+        title: "🚀 Feature Developer (llm-d-feature-developer/SKILL.md)",
+        desc: "<strong>Focus:</strong> Ensures new features hit price/performance goals and can be shared easily.<br>• Automates baseline A/B test validations.<br>• Separates unit vs. system benchmarks.<br>• Produces reproducible and shareable artifacts built with standard <span class='code-tag'>&lt;StatCard&gt;</span> and <span class='code-tag'>&lt;ChartContainer&gt;</span> primitives.",
+        ux: "✓ UX Alignment: Respects existing dashboard filter panels and avoids bespoke visual elements."
+      },
+      ct: {
+        title: "⚙️ Config Tuner (Solutions Architect) — config-tuner/SKILL.md",
+        desc: "<strong>Focus:</strong> Tailored for defining and sweeping optimal end-to-end component stacks.<br>• Orchestrates complex configuration sweeps (Parallelism, vLLM config, etc.).<br>• Isolates test environments.<br>• Generates verifiable reference architecture matrices displayed in <span class='code-tag'>&lt;Panel&gt;</span> cards.",
+        ux: "✓ UX Alignment: Uses canonical table layouts and standard status chips for hardware configurations."
+      },
+      so: {
+        title: "🛡️ Stack Operator (llm-d-stack-operator/SKILL.md)",
+        desc: "<strong>Focus:</strong> Prioritizes production stability and regression tracking.<br>• Runs standard 'well-lit paths'.<br>• Sets up deep stress testing telemetry.<br>• Compares footprints vs. historical production data using canonical chart series colors.",
+        ux: "✓ UX Alignment: Relies on clear, high-contrast KPI alert cards and consistent status color mapping."
+      },
+      bd: {
+        title: "📈 Benchmark Developer (Analyst / PR) — benchmark-developer/SKILL.md",
+        desc: "<strong>Focus:</strong> Tailored towards community-facing output and publication.<br>• Generates clear, presentation-ready graphs and visualizations.<br>• Compares llm-d against competitors.<br>• Focuses on user-facing metrics without requiring deep codebase knowledge.",
+        ux: "✓ UX Alignment: Direct partner to the UX team for community-facing visualizations and public reports."
+      }
+    };
+
+    function setUserRole(roleKey, btn) {
+      document.querySelectorAll('#slide-7 .tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const data = rolesData[roleKey];
+      document.getElementById('role-title').innerHTML = data.title;
+      document.getElementById('role-desc').innerHTML = data.desc + `<div style="margin-top: 1rem; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--brand-primary);">${data.ux}</div>`;
+    }
+
+    // Initialize
+    updateSlide();
+  </script>
+</body>
+</html>

@@ -17,7 +17,8 @@ import {
     Settings,
     Library,
     Blocks,
-    Server
+    Server,
+    Trophy
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -30,6 +31,7 @@ const MENU_GROUPS = [
     {
         title: "Well-lit paths",
         items: [
+            { id: 'model-leaderboard', label: 'Model leaderboard', icon: Trophy, view: 'model-leaderboard' },
             { id: 'inference-scheduling', label: 'Intelligent routing', icon: Route, view: 'inference-scheduling' },
             { id: 'prefix-cache-offloading', label: 'Prefix cache offloading', icon: Database, view: 'prefix-cache-offloading' },
             { id: 'pd-disaggregation', label: 'Prefill/decode disagg', icon: Split, view: 'pd-disaggregation', disabled: true },
@@ -55,6 +57,11 @@ const ITEM_THEMES = {
         activeBg: 'bg-gradient-to-r from-slate-900/10 via-slate-800/10 to-slate-950/20 border-slate-700/30 text-slate-200',
         activeIcon: 'bg-gradient-to-br from-slate-500 to-slate-600 text-white shadow-[0_0_15px_rgba(148,163,184,0.35)]',
         indicator: 'bg-gradient-to-b from-slate-400 to-slate-500 shadow-[0_0_8px_rgba(148,163,184,0.6)]'
+    },
+    'model-leaderboard': {
+        activeBg: 'bg-gradient-to-r from-amber-950/20 via-yellow-950/10 to-slate-950/20 border-amber-500/20 text-amber-300',
+        activeIcon: 'bg-gradient-to-br from-amber-500 to-yellow-500 text-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.4)]',
+        indicator: 'bg-gradient-to-b from-amber-400 to-yellow-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]'
     },
     'inference-scheduling': {
         activeBg: 'bg-gradient-to-r from-cyan-950/20 via-blue-950/10 to-slate-950/20 border-cyan-500/20 text-cyan-300',

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useMemo } from 'react';
-import { Database, Eye, EyeOff, ArrowLeft, ArrowRight, MessageCircle, X, HelpCircle, Upload, UploadCloud, CheckCircle, Send, AlertCircle, Github, Shield, LogOut, ChevronDown, Trash2, Plus } from 'lucide-react';
+import { Database, Eye, EyeOff, ArrowLeft, ArrowRight, MessageCircle, X, HelpCircle, Upload, UploadCloud, CheckCircle, Send, AlertCircle, Github, Shield, LogOut, ChevronDown, Trash2, Plus, Trophy } from 'lucide-react';
 import { FilterPanel } from './ManageBenchmarks/FilterPanel';
 import { UnifiedDataTable } from './ManageBenchmarks/UnifiedDataTable';
 import { INTEGRATIONS, getSourceTag, getBenchmarkKey, getBucket, getRatioType, getAcceleratorCount, getEffectiveTp, sortBuckets } from '../utils/dashboardHelpers';
@@ -1341,6 +1341,14 @@ export default function ResultsStore({ onNavigate, onNavigateBack, dashboardStat
                             </div>
                         )}
                     </div>
+
+                    <button 
+                        onClick={() => onNavigate && onNavigate('model-leaderboard')}
+                        className="px-3.5 py-2 text-xs font-semibold rounded-xl text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 transition-all flex items-center gap-1.5 border border-amber-500/30 cursor-pointer shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                    >
+                        <Trophy size={14} className="text-amber-400" />
+                        <span>Leaderboard</span>
+                    </button>
 
                     <a 
                         href="https://llm-d.ai/community" 

@@ -241,6 +241,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
     const [activeDashboardTab, setActiveDashboardTab] = useState('charts');
     const [searchTerm, setSearchTerm] = useState('');
     const [kpiFilter, setKpiFilter] = useState(null); // null | 'pareto' | 'verified' | 'staged'
+    const [comparisonViewMode, setComparisonViewMode] = useState('compare'); // 'compare' | 'scatter' | 'both'
 
     const data = useMemo(() => {
         if (!liveData || liveData.length === 0) return MOCK_FALLBACK_DATA_LEGACY.map((d, i) => ({ ...d, id: i }));
@@ -1700,14 +1701,12 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                 </div>
             </header>
 
-            <main className="w-full px-8 py-6 pl-28 flex flex-col transition-colors duration-200">
+            <main className="w-full px-6 pt-2.5 pb-6 pl-24 md:pl-24 flex flex-col transition-colors duration-200">
 
                 {mode === 'browser' ? (
                     <>
-
-
                         {/* Integrated Benchmark Explorer & Staging List */}
-                        <div className="space-y-4 mb-6">
+                        <div className="mb-2.5">
                             <FilterPanel
                                 {...{
                                     showFilterPanel, filterOptions, activeFilters, facetCounts, toggleFilter,
@@ -1725,7 +1724,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
 
                         {selectedBenchmarks.size === 0 ? (
                             <EmptyState
-                                className="bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-sm mb-6"
+                                className="bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-sm mb-4"
                                 icon={
                                     <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full">
                                         <BarChart2 className="w-8 h-8" />
@@ -1735,29 +1734,61 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                                 message="Select benchmark runs in the explorer table above to begin plotting and comparing throughput, latency, and cost efficiency metrics."
                             />
                         ) : (
-                            <div className="space-y-4 mb-6">
-                                <ThroughputCostChart
-                                    {...{
-                                        tputType, setTputType, yQualityMode, setYQualityMode, chartMode, setChartMode,
-                                        xQualityMode, setXQualityMode, costMode, setCostMode, showPerChip, setShowPerChip,
-                                        showLabels, setShowLabels, showDataLabels, setShowDataLabels, showPareto, setShowPareto,
-                                        qualityMetrics, allModels, selectedModels, filteredData, getBenchmarkKey, theme,
-                                        isZoomEnabled, setIsZoomEnabled, zoomDomain, setZoomDomain, chartContainerRef,
-                                        isDragging, setIsDragging, lastMouseRef, chartColorMode, setChartColorMode,
-                                        metricAvailability, filteredBySource, xAxisMax, setXAxisMax, setDebugInfo,
-                                        isLogScaleX, setIsLogScaleX, setLatType, selectedBenchmarks,
-                                        baselineBenchmarkKey
-                                    }}
-                                />
+                            <div className="space-y-3 mb-4">
+                                {/* Top View Switcher Toolbar (Flush and Compact) */}
+                                <div className="flex items-center justify-between gap-3 bg-slate-900/50 border border-slate-800/80 rounded-xl px-3.5 py-1.5 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">View Mode:</span>
+                                        <ToggleGroup
+                                            options={[
+                                                { value: 'compare', label: '📊 Run Comparison & System Specs' },
+                                                { value: 'scatter', label: '📈 Scatter & Pareto Trade-offs' },
+                                                { value: 'both', label: '📑 View Both' },
+                                            ]}
+                                            value={comparisonViewMode}
+                                            onChange={setComparisonViewMode}
+                                            className="flex-wrap text-xs"
+                                        />
+                                    </div>
+                                    <div className="text-xs text-slate-400 font-sans">
+                                        Comparing <span className="text-cyan-400 font-bold font-mono">{selectedBenchmarks.size}</span> selected runs
+                                        {baselineBenchmarkKey && <span className="ml-2 text-cyan-400 font-semibold">(📌 Baseline active)</span>}
+                                    </div>
+                                </div>
 
-                                <RunComparisonChart
-                                    filteredBySource={filteredBySource}
-                                    selectedBenchmarks={selectedBenchmarks}
-                                    getBenchmarkKey={getBenchmarkKey}
-                                    baselineBenchmarkKey={baselineBenchmarkKey}
-                                    brv02CustomLabels={brv02CustomLabels}
-                                    theme={theme}
-                                />
+                                {(comparisonViewMode === 'compare' || comparisonViewMode === 'both') && (
+                                    <RunComparisonChart
+                                        filteredBySource={filteredBySource}
+                                        selectedBenchmarks={selectedBenchmarks}
+                                        getBenchmarkKey={getBenchmarkKey}
+                                        baselineBenchmarkKey={baselineBenchmarkKey}
+                                        brv02CustomLabels={brv02CustomLabels}
+                                        theme={theme}
+                                        bucketConfigs={bucketConfigs}
+                                        apiConfigs={apiConfigs}
+                                        selectedSources={selectedSources}
+                                        generateShareUrl={generateShareUrl}
+                                        setBaselineBenchmarkKey={setBaselineBenchmarkKey}
+                                        toggleBenchmark={toggleBenchmark}
+                                        setSelectedBenchmarks={setSelectedBenchmarks}
+                                    />
+                                )}
+
+                                {(comparisonViewMode === 'scatter' || comparisonViewMode === 'both') && (
+                                    <ThroughputCostChart
+                                        {...{
+                                            tputType, setTputType, yQualityMode, setYQualityMode, chartMode, setChartMode,
+                                            xQualityMode, setXQualityMode, costMode, setCostMode, showPerChip, setShowPerChip,
+                                            showLabels, setShowLabels, showDataLabels, setShowDataLabels, showPareto, setShowPareto,
+                                            qualityMetrics, allModels, selectedModels, filteredData, getBenchmarkKey, theme,
+                                            isZoomEnabled, setIsZoomEnabled, zoomDomain, setZoomDomain, chartContainerRef,
+                                            isDragging, setIsDragging, lastMouseRef, chartColorMode, setChartColorMode,
+                                            metricAvailability, filteredBySource, xAxisMax, setXAxisMax, setDebugInfo,
+                                            isLogScaleX, setIsLogScaleX, setLatType, selectedBenchmarks,
+                                            baselineBenchmarkKey
+                                        }}
+                                    />
+                                )}
                             </div>
                         )}
                     </>

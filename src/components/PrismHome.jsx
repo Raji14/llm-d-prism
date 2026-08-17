@@ -60,6 +60,124 @@ const PrismHome = ({ onNavigate }) => {
                     </p>
                 </header>
 
+                {/* Pillar 1: SOTA Performance & Community Leaderboard Showcase */}
+                <section className="mb-10 w-full max-w-6xl relative">
+                    {/* Ambient Glows */}
+                    <div className="absolute -top-6 -left-6 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute -bottom-6 -right-6 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                    <div className="relative bg-gradient-to-br from-slate-900/90 via-slate-950/95 to-slate-950 border border-amber-500/30 hover:border-amber-400/50 rounded-2xl p-6 shadow-2xl backdrop-blur-xl transition-all group overflow-hidden">
+                        {/* Top Accent Line */}
+                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-400 to-cyan-500" />
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                            {/* Left Col (5 cols): Live #1 SOTA Record Details */}
+                            <div className="lg:col-span-5 flex flex-col justify-between">
+                                <div className="flex items-center gap-2 mb-2.5">
+                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-bold border border-amber-400/40">
+                                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                                        Community Benchmark Leaderboard
+                                    </span>
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+                                        Live SOTA
+                                    </span>
+                                </div>
+
+                                <h2 className="text-xl md:text-2xl font-black text-white tracking-tight mb-1">
+                                    Model Benchmark Rankings & SOTA Recipes
+                                </h2>
+                                <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                                    Explore verified serving configurations, Pareto optimization frontiers, GCP accelerator pricing, and reproducible recipes.
+                                </p>
+
+                                {/* SOTA Spotlight Box */}
+                                <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl p-3.5 flex flex-col justify-between">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                                            <span className="text-xs font-bold text-white truncate">Llama-3.1-70B-Instruct</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                            👑 Grandmaster
+                                        </span>
+                                    </div>
+
+                                    <div className="text-[11px] text-slate-400 font-mono mb-2 flex items-center gap-2">
+                                        <span>8x NVIDIA H100 (80GB)</span>
+                                        <span>•</span>
+                                        <span className="text-cyan-400 font-semibold">vLLM + FlashInfer</span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 font-mono text-xs">
+                                        <div>
+                                            <span className="text-[10px] text-slate-500 block">Throughput</span>
+                                            <span className="text-amber-300 font-bold text-sm">4,850 tok/s</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-[10px] text-slate-500 block">TTFT Latency</span>
+                                            <span className="text-cyan-300 font-bold text-sm">24.2 ms</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Middle Col (4 cols): Performance & Efficiency Highlights */}
+                            <div className="lg:col-span-4 grid grid-cols-2 gap-3">
+                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Lowest Cost / 1M</span>
+                                    <div className="my-auto">
+                                        <div className="text-2xl font-black text-emerald-400 font-mono">$0.482</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Gemma 2 9B (L4 TP=4)</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Pareto SOTA</span>
+                                    <div className="my-auto">
+                                        <div className="text-2xl font-black text-amber-300 font-mono">8 Recipes</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Optimal frontier</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Best Value</span>
+                                    <div className="my-auto">
+                                        <div className="text-2xl font-black text-cyan-300 font-mono">2,074</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Tokens per Dollar ($)</div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
+                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Validation</span>
+                                    <div className="my-auto">
+                                        <div className="text-2xl font-black text-purple-300 font-mono">100%</div>
+                                        <div className="text-[10px] text-slate-500 font-mono">Reproducible manifests</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Col (3 cols): Direct Launch Actions */}
+                            <div className="lg:col-span-3 flex flex-col justify-center gap-3 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60">
+                                <button
+                                    onClick={() => onNavigate('model-leaderboard')}
+                                    className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.35)] transform hover:scale-[1.02] transition-all cursor-pointer"
+                                >
+                                    <span>Launch Leaderboard</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </button>
+
+                                <button
+                                    onClick={() => onNavigate('submit-benchmarks')}
+                                    className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white rounded-xl font-semibold text-xs border border-slate-700/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                                    <span>Publish Benchmark Recipe</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 {/* Well-lit paths */}
                 <section className="mb-10 w-full max-w-6xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
                     {/* Grid mesh backdrop decorative lines */}
@@ -77,49 +195,6 @@ const PrismHome = ({ onNavigate }) => {
                         </div>
                         
                         <div className="flex flex-row overflow-x-auto gap-4 pt-4 pb-5 px-2 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
-                        {/* Path 0: Model Leaderboard (Gamified) */}
-                        <div 
-                            onClick={() => onNavigate('model-leaderboard')}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-amber-500/40 hover:border-amber-400 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
-                        >
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <div className="flex items-center gap-1.5">
-                                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                                        <h3 className="text-sm font-bold text-amber-300 tracking-wide transition-colors group-hover:text-amber-200 truncate">
-                                            Model Leaderboard
-                                        </h3>
-                                    </div>
-                                    <span className="text-[9px] font-mono text-amber-400/80">★ Gamified SOTA</span>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Community benchmark rankings, Pareto optimization curves, GCP accelerator pricing, and verifiable achievement certificates.
-                                </p>
-                                
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">SOTA Throughput</span>
-                                            <span className="text-amber-400 font-mono font-bold">4.8k tok/s</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Prize Pool</span>
-                                             <span className="text-emerald-400 font-mono font-bold">$2.5k USD</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-6 flex items-center justify-between px-1 bg-amber-500/10 rounded border border-amber-500/20 text-[9px] font-mono text-amber-300">
-                                        <span>👑 Grandmaster</span>
-                                        <span>8x H100</span>
-                                    </div>
-                                </div>
-                            </div>
- 
-                            <button className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 rounded-lg font-bold text-[10px] flex items-center justify-center hover:from-amber-400 hover:to-yellow-500 shadow-[0_0_15px_rgba(245,158,11,0.3)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                View Leaderboard <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
                         {/* Path 1: Intelligent routing */}
                         <div 
                             onClick={() => onNavigate('inference-scheduling')}

@@ -25,18 +25,18 @@ import { cn } from '../utils/cn';
 const MENU_GROUPS = [
     {
         items: [
-            { id: 'home', label: 'Home', icon: Home, view: 'home' }
+            { id: 'home', label: 'Home', icon: Home, view: 'home' },
+            { id: 'model-leaderboard', label: 'Model leaderboard', icon: Trophy, view: 'model-leaderboard' }
         ]
     },
     {
         title: "Well-lit paths",
         items: [
-            { id: 'model-leaderboard', label: 'Model leaderboard', icon: Trophy, view: 'model-leaderboard' },
             { id: 'inference-scheduling', label: 'Intelligent routing', icon: Route, view: 'inference-scheduling' },
             { id: 'prefix-cache-offloading', label: 'Prefix cache offloading', icon: Database, view: 'prefix-cache-offloading' },
+            { id: 'agentic-serving', label: 'Agentic serving', icon: Compass, view: 'agentic-serving' },
             { id: 'pd-disaggregation', label: 'Prefill/decode disagg', icon: Split, view: 'pd-disaggregation', disabled: true },
-            { id: 'wide-ep', label: 'Wide expert parallelism', icon: Brain, view: 'wide-ep', disabled: true },
-            { id: 'agentic-serving', label: 'Agentic serving', icon: Compass, view: 'agentic-serving', separator: true }
+            { id: 'wide-ep', label: 'Wide expert parallelism', icon: Brain, view: 'wide-ep', disabled: true }
         ]
     },
     {

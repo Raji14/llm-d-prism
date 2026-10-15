@@ -18,10 +18,13 @@
 // render time, with dark-theme fallbacks for non-DOM contexts.
 
 const FALLBACKS = {
-    '--chart-grid': '#1e293b',
-    '--chart-axis': '#64748b',
-    '--text-secondary': '#94a3b8',
-    '--text-primary': '#f8fafc',
+    '--chart-grid': '#e4e4e7',
+    '--chart-axis': '#3f3f46',
+    '--chart-surface': '#ffffff',
+    '--text-secondary': '#3f3f46',
+    '--text-muted': '#52525b',
+    '--text-primary': '#18181b',
+    '--color-accent-600': '#7f317f',
 };
 
 function cssVar(name) {
@@ -30,18 +33,35 @@ function cssVar(name) {
     return value || FALLBACKS[name];
 }
 
+// Theme-resolved chart chrome. Use these instead of hex literals:
+//   grid     — CartesianGrid stroke (see gridProps())
+//   axis     — axis lines
+//   tick     — tick labels, crosshair cursors, neutral reference lines
+//   muted    — de-emphasised marks ("other" series, disabled dots)
+//   label    — axis titles / annotation ink
+//   surface  — card background (mark outlines, halo rings behind dots)
+//   accent   — brand accent (selected / highlighted mark)
 export function getChartTheme() {
     return {
         grid: cssVar('--chart-grid'),
         axis: cssVar('--chart-axis'),
         tick: cssVar('--text-secondary'),
+        muted: cssVar('--text-muted'),
         label: cssVar('--text-primary'),
+        surface: cssVar('--chart-surface'),
+        accent: cssVar('--color-accent-600'),
     };
 }
 
 // Spread into <CartesianGrid {...gridProps()} />.
 export function gridProps() {
     return { stroke: getChartTheme().grid, strokeDasharray: '3 3' };
+}
+
+// Dashed crosshair cursor for line/scatter tooltips:
+//   <Tooltip cursor={cursorProps()} ... />
+export function cursorProps() {
+    return { stroke: getChartTheme().tick, strokeWidth: 1, strokeDasharray: '4 4' };
 }
 
 // Spread into recharts <Tooltip {...tooltipProps()} content={<... />} />:
@@ -51,6 +71,6 @@ export function tooltipProps() {
     return {
         isAnimationActive: false,
         wrapperStyle: { outline: 'none', zIndex: 100 },
-        cursor: { fill: 'rgba(148, 163, 184, 0.08)' },
+        cursor: { fill: 'rgba(113, 113, 122, 0.08)' },
     };
 }

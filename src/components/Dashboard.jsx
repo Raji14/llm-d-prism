@@ -28,7 +28,7 @@ import { defaultState } from '../config/defaultState';
 import { CacheManager } from '../utils/cacheManager';
 import { QualityParser, normalizeQualityModelName } from '../utils/qualityParser';
 
-import { Button, Badge, EmptyState, Modal } from './ui';
+import { Button, Badge, EmptyState, Modal, PageHeader } from './ui';
 import { cn } from '../utils/cn';
 import { FilterPanel } from './Dashboard/FilterPanel';
 import { UnifiedDataTable } from './Dashboard/UnifiedDataTable';
@@ -493,7 +493,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
             setSelectedBenchmarks(prev => {
                 const next = new Set(prev);
                 if (prev.size === 0 && newModels.length > 0) {
-                    const candidate = newModels.find(m => m.toLowerCase().includes('llama')) || newModels[0];
+                    const candidate = newModels.find(m => m?.toLowerCase().includes('llama')) || newModels[0];
                     next.add(candidate);
                 }
                 return next;
@@ -642,22 +642,6 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
 
 
     // ...
-
-    // In ChartCard render:
-    // <LineChart onMouseMove={handleChartHover} onMouseLeave={() => setHoveredDataPoint(null)} ...>
-    //   ...
-    //   {hoveredDataPoint && (
-    //      <ReferenceDot x={hoveredDataPoint.latency.mean} y={hoveredDataPoint.throughput} r={6} fill="#ef4444" stroke="#fff" strokeWidth={2} />
-    //   )}
-    // </LineChart>
-
-    // In Table render:
-    // <tr 
-    //    key={idx} 
-    //    className={`transition-colors cursor-pointer ${hoveredDataPoint && hoveredDataPoint.id === row.id ? 'bg-blue-900/50' : 'hover:bg-slate-700/30'}`}
-    //    onMouseEnter={() => setHoveredDataPoint(row)}
-    //    onMouseLeave={() => setHoveredDataPoint(null)}
-    // >
 
 
 
@@ -1297,7 +1281,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
             groups.get(key).push(d);
 
             // Debugging Key Generation (Temporary)
-            if (d.model_name.toLowerCase().includes('llama-3.1-70b')) {
+            if (d.model_name?.toLowerCase().includes('llama-3.1-70b')) {
                 console.log(`Key: ${key} | Folder: ${d.source_info?.file_identifier || d.filename}`);
             }
         });
@@ -1593,7 +1577,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
     const hasLocalBenchmarks = Array.from(selectedSources || []).some(source => source === 'local' || source.startsWith('brv02:'));
 
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0">
+        <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0">
             {/* Toast Stack */}
             <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
                 {toasts.map(t => (
@@ -1609,99 +1593,86 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                     </div>
                 ))}
             </div>
-            <header className="w-full h-16 border-b border-slate-900/65 flex justify-between items-center px-6 bg-slate-950/20 backdrop-blur-md sticky top-0 z-[49]">
-                <div className="flex items-center gap-4">
-                    {onNavigateBack && (
-                        <button onClick={onNavigateBack} className="p-1.5 rounded-xl hover:bg-slate-900/60 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800/60">
-                            <ArrowLeft className="h-5 w-5" />
-                        </button>
-                    )}
-                    
-                    {/* Compact Prism Logo & Name */}
-                    <div className="flex items-center gap-2.5 border-r border-slate-800 pr-4">
-                        <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none">
-                            Prism{siteName ? ` - ${siteName}` : ''}
-                        </span>
-                    </div>
-
-                    <div className="flex items-center">
-                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">
-                            {mode === 'manager' ? 'Results store' : 'Benchmark browser'}
-                        </h1>
-                        <Badge tone="info" size="sm" className="ml-3 font-mono">
-                            {mode === 'manager' ? 'Results store' : 'Expert mode'}
-                        </Badge>
-                    </div>
-                </div>
-
-                <div className="flex items-center space-x-3">
-                    {mode === 'browser' ? (
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onNavigate && onNavigate('results-store')}
-                        >
-                            <Database className="w-4 h-4 text-cyan-400" /> Results store
-                        </Button>
-                    ) : (
+            <PageHeader
+                kicker="Prism toolkit"
+                title={mode === 'manager' ? 'Results store' : 'Benchmark browser'}
+                subtitle="Filter, inspect, and compare raw benchmark runs across models, accelerators, and serving engines."
+                onNavigateBack={onNavigateBack}
+                badge={
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 font-mono text-tiny font-medium text-zinc-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent-600" />
+                        {mode === 'manager' ? 'Results store' : 'Expert mode'}
+                    </span>
+                }
+                actions={
+                    <div className="flex flex-wrap items-center gap-2">
+                        {mode === 'browser' ? (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => onNavigate && onNavigate('results-store')}
+                            >
+                                <Database className="w-3.5 h-3.5 text-accent-600" /> Results store
+                            </Button>
+                        ) : (
                             <Button
                                 variant="primary"
                                 size="sm"
                                 onClick={() => onNavigate && onNavigate('submit-benchmarks', { intent: 'submit-review' })}
                             >
-                                <Upload className="w-4 h-4" /> Submit Benchmarks
+                                <Upload className="w-3.5 h-3.5" /> Submit benchmarks
                             </Button>
-                    )}
+                        )}
 
-                    <a 
-                        href={formatContactUrl(contactUrl)} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="px-3.5 py-2 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 no-underline cursor-pointer"
-                    >
-                        <MessageCircle className="w-4 h-4 mr-1.5" /> Contact us
-                    </a>
-
-                    <div className="relative group flex">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                                if (hasLocalBenchmarks) return;
-                                const shareUrl = generateShareUrl(bucketConfigs, apiConfigs, selectedSources);
-                                navigator.clipboard.writeText(shareUrl).then(() => {
-                                    setShareToast(true);
-                                    setToastMessage('Link copied to clipboard!');
-                                    setTimeout(() => setShareToast(false), 2000);
-                                }).catch(err => {
-                                    setShareToast(true);
-                                    setToastMessage('Failed to copy link');
-                                    setTimeout(() => setShareToast(false), 2000);
-                                });
-                            }}
-                            className={cn(
-                                'relative',
-                                hasLocalBenchmarks && 'text-slate-500 dark:text-slate-500 cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-800'
-                            )}
+                        <a 
+                            href={formatContactUrl(contactUrl)} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 text-xs font-medium text-zinc-700 transition-colors no-underline cursor-pointer"
                         >
-                            <Share2 className="w-4 h-4" /> Share view
-                            {shareToast && !hasLocalBenchmarks && (
-                                <div className="absolute -bottom-10 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg z-50 flex items-center whitespace-nowrap">
-                                    {toastMessage}
+                            <MessageCircle className="w-3.5 h-3.5 text-zinc-500" /> Contact us
+                        </a>
+
+                        <div className="relative group flex">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                    if (hasLocalBenchmarks) return;
+                                    const shareUrl = generateShareUrl(bucketConfigs, apiConfigs, selectedSources);
+                                    navigator.clipboard.writeText(shareUrl).then(() => {
+                                        setShareToast(true);
+                                        setToastMessage('Link copied to clipboard!');
+                                        setTimeout(() => setShareToast(false), 2000);
+                                    }).catch(err => {
+                                        setShareToast(true);
+                                        setToastMessage('Failed to copy link');
+                                        setTimeout(() => setShareToast(false), 2000);
+                                    });
+                                }}
+                                className={cn(
+                                    'relative',
+                                    hasLocalBenchmarks && 'text-zinc-400 cursor-not-allowed'
+                                )}
+                            >
+                                <Share2 className="w-3.5 h-3.5 text-zinc-500" /> Share link
+                                {shareToast && !hasLocalBenchmarks && (
+                                    <div className="absolute -bottom-10 right-0 bg-zinc-900 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg z-50 flex items-center whitespace-nowrap">
+                                        {toastMessage}
+                                    </div>
+                                )}
+                            </Button>
+                            {hasLocalBenchmarks && (
+                                <div className="absolute -bottom-10 right-0 bg-zinc-900 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg z-50 flex items-center whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                                    Local benchmark results cannot be shared yet.
                                 </div>
                             )}
-                        </Button>
-                        {hasLocalBenchmarks && (
-                            <div className="absolute -bottom-10 right-0 bg-slate-800 border border-slate-700 text-slate-300 text-xs font-medium px-3 py-1.5 rounded shadow-lg z-50 flex items-center whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                Local benchmark results cannot be shared yet.
-                            </div>
-                        )}
+                        </div>
                     </div>
-                </div>
-            </header>
+                }
+            />
 
-            <main className="w-full px-6 pt-2.5 pb-6 pl-24 md:pl-24 flex flex-col transition-colors duration-200">
+            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 flex flex-col space-y-6 transition-colors duration-200">
 
                 {mode === 'browser' ? (
                     <>
@@ -1726,7 +1697,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                             <EmptyState
                                 className="bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-sm mb-4"
                                 icon={
-                                    <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 rounded-full">
+                                    <div className="p-3 bg-accent-600/10 border border-accent-600/20 text-accent-700 rounded-full">
                                         <BarChart2 className="w-8 h-8" />
                                     </div>
                                 }
@@ -1738,7 +1709,7 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                                 {/* Top View Switcher Toolbar (Flush and Compact) */}
                                 <div className="flex items-center justify-between gap-3 bg-slate-900/50 border border-slate-800/80 rounded-xl px-3.5 py-1.5 flex-wrap">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">View Mode:</span>
+                                        <span className="label-caps text-slate-400">View Mode:</span>
                                         <ToggleGroup
                                             options={[
                                                 { value: 'compare', label: '📊 Run Comparison & System Specs' },
@@ -1751,8 +1722,8 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                                         />
                                     </div>
                                     <div className="text-xs text-slate-400 font-sans">
-                                        Comparing <span className="text-cyan-400 font-bold font-mono">{selectedBenchmarks.size}</span> selected runs
-                                        {baselineBenchmarkKey && <span className="ml-2 text-cyan-400 font-semibold">(📌 Baseline active)</span>}
+                                        Comparing <span className="text-accent-700 font-bold font-mono">{selectedBenchmarks.size}</span> selected runs
+                                        {baselineBenchmarkKey && <span className="ml-2 text-accent-700 font-semibold">(📌 Baseline active)</span>}
                                     </div>
                                 </div>
 
@@ -1796,10 +1767,10 @@ const Dashboard = ({ mode = 'browser', onNavigateBack, onNavigate, dashboardStat
                     <>
                         {/* Section Header: Results Store */}
                         <div className="mb-4">
-                            <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                            <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
                                 Results Store & Data Connections
                             </h3>
-                            <p className="text-[11px] text-slate-400 mt-1">
+                            <p className="text-micro text-slate-400 mt-1">
                                 Sync remote storage buckets, upload raw benchmark directories, and choose which runs to plot in the active comparison dashboards.
                             </p>
                         </div>

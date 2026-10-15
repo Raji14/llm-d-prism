@@ -309,7 +309,7 @@ export const scanLocalBenchmarks = async () => {
     try {
         const response = await fetch('/api/local/list');
         if (!response.ok) {
-            throw new Error(`Failed to list local benchmarks: ${response.status}`);
+            return [];
         }
 
         const data = await response.json();
@@ -335,8 +335,7 @@ export const scanLocalBenchmarks = async () => {
 
         return entries;
 
-    } catch (e) {
-        console.error('Local benchmarks scan error:', e);
+    } catch {
         return [];
     }
 };

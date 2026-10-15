@@ -1,0 +1,55 @@
+name: Leaderboard Configuration Request
+description: Request a model, workload, accelerator, or serving stack on the Prism Leaderboard.
+title: "[Leaderboard Request]: "
+labels: ["enhancement", "leaderboard", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Leaderboard Configuration Request
+
+        Request a model, workload shape, accelerator topology, or serving stack to be benchmarked and added to the Prism Leaderboard.
+
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: HuggingFace model ID or model family.
+      placeholder: "e.g., meta-llama/Llama-3.1-70B-Instruct"
+    validations:
+      required: true
+
+  - type: input
+    id: workload
+    attributes:
+      label: Workload shape & dataset
+      description: Target use case, dataset, and input/output token lengths.
+      placeholder: "e.g., RAG / summarization (4096 in / 512 out, ShareGPT)"
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Accelerator & machine type
+      description: GPU or TPU count and machine type.
+      placeholder: "e.g., 8x NVIDIA H100 (a3-highgpu-8g) or 8x TPU v6e"
+    validations:
+      required: false
+
+  - type: input
+    id: stack
+    attributes:
+      label: Serving stack & optimizations
+      description: Engine version, quantization, routing, P/D disaggregation, or speculative decoding.
+      placeholder: "e.g., llm-d v0.4.2 with prefix-cache-aware routing + FP8"
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Use case & latency SLO constraints
+      description: Describe your target TTFT / TPOT SLOs, concurrency, or why this configuration matters.
+    validations:
+      required: false

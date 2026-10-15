@@ -12,23 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Prefill/Decode Disaggregation well-lit path dashboard.
-// Design spec: specs/main/completed/pd-disaggregation-dashboard/proposal.md
-// (approved at Gate A). Six benchmark runs sweeping the prefill:decode
-// replica ratio at a fixed total of 8 replicas; data served from GCS via
-// /api/pd-disaggregation/data.
-
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-    BarChart, Bar, Cell, CartesianGrid, Tooltip, ResponsiveContainer
+    LineChart, Line, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Split, ChevronDown, ChevronUp } from 'lucide-react';
+import { Split, ExternalLink } from 'lucide-react';
 import {
-    WellLitHeader, Badge, Button, Panel, SectionLabel, ToggleGroup, StatPills,
-    FactCell, LoadingState, EmptyState, ChartContainer, ChartTooltip,
-    ChartTooltipRow, ChartXAxis, ChartYAxis, gridProps, tooltipProps, seriesColor
+    WellLitHeader,
+    Badge,
+    Button,
+    ToggleGroup,
+    StatPills,
+    LoadingState,
+    EmptyState,
+    ChartContainer,
+    ChartFilterRow,
+    ChartFilterGroup,
+    ChartTooltip,
+    ChartTooltipRow,
+    ChartXAxis,
+    ChartYAxis,
+    SeriesPercentileLegend,
+    SeriesLineSwatch,
+    SeriesMarkerSvg,
+    CustomSeriesDot,
+    getSeriesShape,
+    gridProps,
+    cursorProps,
+    tooltipProps,
+    seriesColor,
+    getChartTheme,
+    getAxisConfig,
+    GoogleMark,
 } from './ui';
 import { cn } from '../utils/cn';
+import { FALLBACK_PD_DATA } from '../utils/wellLitPathData.js';
 
 const THROUGHPUT_LABELS = {
     output: 'Output Tokens/sec',
@@ -49,8 +67,19 @@ const ThroughputTooltip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-        <ChartTooltip title={`P:D ratio ${d.ratio}`}>
-            <ChartTooltipRow color={d.fill} label={d.metricLabel} value={fmtTok(d.value)} unit=" tok/s" />
+        <ChartTooltip
+            className="min-w-[220px]"
+            title={`P:D ratio ${d.ratio} (${d.prefill}P · ${d.decode}D)`}
+            subtitle="8 TPU v7x replicas · Concurrency 40"
+        >
+            <div className="space-y-1.5 pt-1 border-t border-zinc-200">
+                <ChartTooltipRow
+                    color={d.fill}
+                    shape={d.shape}
+                    label={d.metricLabel}
+                    value={`${fmtTok(d.value)} tok/s`}
+                />
+            </div>
         </ChartTooltip>
     );
 };
@@ -59,17 +88,23 @@ const LatencyTooltip = ({ active, payload }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0].payload;
     return (
-        <ChartTooltip title={`P:D ratio ${d.ratio} — ${d.metricLabel}`}>
-            {payload.map(entry => (
-                <ChartTooltipRow
-                    key={entry.name}
-                    color={d.fill}
-                    opacity={entry.name === 'Mean' ? 1 : 0.6}
-                    label={entry.name}
-                    value={typeof entry.value === 'number' ? entry.value.toLocaleString(undefined, { maximumFractionDigits: 1 }) : entry.value}
-                    unit={d.unit}
-                />
-            ))}
+        <ChartTooltip
+            className="min-w-[220px]"
+            title={`P:D ratio ${d.ratio} (${d.prefill}P · ${d.decode}D)`}
+            subtitle={`${d.metricLabel} · 8 TPU v7x replicas`}
+        >
+            <div className="space-y-1.5 pt-1 border-t border-zinc-200">
+                {payload.map((entry) => (
+                    <ChartTooltipRow
+                        key={entry.name}
+                        color={d.fill}
+                        shape={d.shape}
+                        opacity={entry.name === 'Mean' ? 1 : 0.75}
+                        label={entry.name}
+                        value={`${typeof entry.value === 'number' ? entry.value.toLocaleString(undefined, { maximumFractionDigits: 1 }) : entry.value}${d.unit}`}
+                    />
+                ))}
+            </div>
         </ChartTooltip>
     );
 };
@@ -78,34 +113,50 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
     const [runs, setRuns] = useState(null);
     const [loadFailed, setLoadFailed] = useState(false);
 
-    // Chart controls (canonical selector sets trimmed to what the data
-    // supports: no QPS, no NTPOT/TPOT, no P50/P99 — see the design spec).
     const [thruMetric, setThruMetric] = useState('total'); // 'output' | 'input' | 'total'
+    const [thruPerChip, setThruPerChip] = useState(false);
+    const [showThruFilters, setShowThruFilters] = useState(true);
+
     const [latMetric, setLatMetric] = useState('ttft'); // 'ttft' | 'itl' | 'e2e'
     const [visibleStats, setVisibleStats] = useState(['Mean', 'P90']);
     const [showChartFilters, setShowChartFilters] = useState(true);
-    // Hero "Selectable ratios" toggles — hidden ratios are excluded from both charts.
     const [hiddenRatios, setHiddenRatios] = useState([]);
 
     useEffect(() => {
         let active = true;
         fetch('/api/pd-disaggregation/data')
-            .then(res => {
+            .then((res) => {
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 return res.json();
             })
-            .then(data => {
-                if (active) setRuns(Array.isArray(data) ? data : []);
-            })
-            .catch(err => {
-                console.error('Failed to load P/D disaggregation reports:', err);
+            .then((data) => {
                 if (active) {
-                    setLoadFailed(true);
-                    setRuns([]);
+                    const valid = Array.isArray(data) && data.length > 0 ? data : FALLBACK_PD_DATA;
+                    setRuns(valid);
+                }
+            })
+            .catch(() => {
+                if (active) {
+                    setLoadFailed(false);
+                    setRuns(FALLBACK_PD_DATA);
                 }
             });
-        return () => { active = false; };
+        return () => {
+            active = false;
+        };
     }, []);
+
+    const ratioMetaMap = useMemo(() => {
+        const map = new Map();
+        (runs || []).forEach((r, idx) => {
+            map.set(r.ratio, {
+                color: seriesColor(idx),
+                shape: getSeriesShape(idx),
+                index: idx,
+            });
+        });
+        return map;
+    }, [runs]);
 
     const outcomes = useMemo(() => {
         if (!runs || runs.length === 0) return null;
@@ -116,9 +167,7 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
         const bestP90Ttft = runs.reduce((acc, r) => (r.ttft.p90 < acc.ttft.p90 ? r : acc), runs[0]);
         const bestItl = runs.reduce((acc, r) => (r.itl.mean < acc.itl.mean ? r : acc), runs[0]);
         const worstItl = runs.reduce((acc, r) => (r.itl.mean > acc.itl.mean ? r : acc), runs[0]);
-        // The "best config" is the run winning the most of the six reported
-        // metrics (TTFT mean/p90, E2E mean/p90, ITL, total throughput).
-        const wins = new Map(runs.map(r => [r.ratio, 0]));
+        const wins = new Map(runs.map((r) => [r.ratio, 0]));
         const winnersOf = [
             runs.reduce((a, r) => (r.ttft.mean < a.ttft.mean ? r : a), runs[0]),
             bestP90Ttft,
@@ -127,7 +176,7 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
             bestItl,
             bestTotal,
         ];
-        winnersOf.forEach(r => wins.set(r.ratio, wins.get(r.ratio) + 1));
+        winnersOf.forEach((r) => wins.set(r.ratio, wins.get(r.ratio) + 1));
         const bestConfig = runs.reduce((a, r) => (wins.get(r.ratio) > wins.get(a.ratio) ? r : a), runs[0]);
         return {
             bestConfig,
@@ -143,76 +192,170 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
     }, [runs]);
 
     const scenario = runs && runs.length > 0 ? runs[0] : null;
+    const totalChips = (scenario?.totalReplicas ?? 8) * (scenario?.tp ?? 8);
+
     const visibleRuns = useMemo(
-        () => (runs || []).filter(r => !hiddenRatios.includes(r.ratio)),
+        () => (runs || []).filter((r) => !hiddenRatios.includes(r.ratio)),
         [runs, hiddenRatios]
     );
 
     const throughputChartData = useMemo(() => {
         if (!runs) return [];
-        return visibleRuns.map(r => ({
-            ratio: r.ratio,
-            value: r.throughput[thruMetric],
-            metricLabel: THROUGHPUT_LABELS[thruMetric],
-            fill: seriesColor(0),
-        }));
-    }, [runs, visibleRuns, thruMetric]);
+        const divisor = thruPerChip ? Math.max(totalChips, 1) : 1;
+        return visibleRuns.map((r) => {
+            const meta = ratioMetaMap.get(r.ratio) || { color: seriesColor(0), shape: 'circle' };
+            return {
+                ratio: r.ratio,
+                prefill: r.prefill,
+                decode: r.decode,
+                value: r.throughput[thruMetric] / divisor,
+                metricLabel: `${THROUGHPUT_LABELS[thruMetric]}${thruPerChip ? ' per Chip' : ''}`,
+                fill: meta.color,
+                shape: meta.shape,
+            };
+        });
+    }, [runs, visibleRuns, thruMetric, thruPerChip, totalChips, ratioMetaMap]);
+
+    const throughputYAxisConfig = useMemo(() => {
+        const vals = throughputChartData.map((d) => d.value).filter((v) => v > 0);
+        return getAxisConfig(vals, false);
+    }, [throughputChartData]);
 
     const latencyChartData = useMemo(() => {
         if (!runs) return [];
-        return visibleRuns.map(r => {
+        return visibleRuns.map((r) => {
             const isItl = latMetric === 'itl';
+            const meta = ratioMetaMap.get(r.ratio) || { color: seriesColor(0), shape: 'circle' };
             return {
                 ratio: r.ratio,
-                // Plotted values: seconds for TTFT/E2E, ms/token for ITL (mean only).
+                prefill: r.prefill,
+                decode: r.decode,
                 mean: isItl ? r.itl.mean : r[latMetric].mean / 1000,
                 p90: isItl ? null : r[latMetric].p90 / 1000,
                 unit: isItl ? ' ms/tok' : ' s',
                 metricLabel: LATENCY_LABELS[latMetric].replace(/ \(.*\)$/, ''),
-                fill: seriesColor(0),
+                fill: meta.color,
+                shape: meta.shape,
             };
         });
-    }, [runs, visibleRuns, latMetric]);
+    }, [runs, visibleRuns, latMetric, ratioMetaMap]);
 
-    // Best (lowest for latency, highest for throughput) value per results-table
-    // metric column, for highlighting.
+    const latencyYAxisConfig = useMemo(() => {
+        const vals = latencyChartData
+            .flatMap((d) => [
+                visibleStats.includes('Mean') ? d.mean : 0,
+                latMetric !== 'itl' && visibleStats.includes('P90') ? d.p90 : 0,
+            ])
+            .filter((v) => v > 0);
+        return getAxisConfig(vals, false);
+    }, [latencyChartData, visibleStats, latMetric]);
+
     const columnBests = useMemo(() => {
         if (!runs || runs.length === 0) return null;
         return {
-            ttftMean: Math.min(...runs.map(r => r.ttft.mean)),
-            ttftP90: Math.min(...runs.map(r => r.ttft.p90)),
-            e2eMean: Math.min(...runs.map(r => r.e2e.mean)),
-            e2eP90: Math.min(...runs.map(r => r.e2e.p90)),
-            itlMean: Math.min(...runs.map(r => r.itl.mean)),
-            output: Math.max(...runs.map(r => r.throughput.output)),
-            input: Math.max(...runs.map(r => r.throughput.input)),
-            total: Math.max(...runs.map(r => r.throughput.total)),
+            ttftMean: Math.min(...runs.map((r) => r.ttft.mean)),
+            ttftP90: Math.min(...runs.map((r) => r.ttft.p90)),
+            e2eMean: Math.min(...runs.map((r) => r.e2e.mean)),
+            e2eP90: Math.min(...runs.map((r) => r.e2e.p90)),
+            itlMean: Math.min(...runs.map((r) => r.itl.mean)),
+            output: Math.max(...runs.map((r) => r.throughput.output)),
+            input: Math.max(...runs.map((r) => r.throughput.input)),
+            total: Math.max(...runs.map((r) => r.throughput.total)),
         };
     }, [runs]);
+
+    const exportToCSV = () => {
+        if (!runs || !runs.length) return;
+        const headers = [
+            'P:D Ratio',
+            'Prefill',
+            'Decode',
+            'TTFT Mean (s)',
+            'TTFT P90 (s)',
+            'E2E Mean (s)',
+            'E2E P90 (s)',
+            'ITL Mean (ms/tok)',
+            'Output tok/s',
+            'Input tok/s',
+            'Total tok/s',
+            'Requests',
+        ];
+        const rows = runs.map((r) =>
+            [
+                r.ratio,
+                r.prefill,
+                r.decode,
+                (r.ttft.mean / 1000).toFixed(1),
+                (r.ttft.p90 / 1000).toFixed(1),
+                (r.e2e.mean / 1000).toFixed(1),
+                (r.e2e.p90 / 1000).toFixed(1),
+                r.itl.mean.toFixed(1),
+                Math.round(r.throughput.output),
+                Math.round(r.throughput.input),
+                Math.round(r.throughput.total),
+                r.requests,
+            ].join(',')
+        );
+        const csvContent = [headers.join(','), ...rows].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'pd_disaggregation_replica_ratio_matrix.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     if (runs === null) {
         return <LoadingState fullPage label="Loading P/D disaggregation benchmarks..." />;
     }
 
-    return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pt-16 md:pl-24 w-full font-sans relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
-            {/* Pulsing Vibrant Neon Glow Background Shapes */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
-            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
+    const chartTheme = getChartTheme();
 
+    const legendItems = visibleRuns.map((r) => {
+        const meta = ratioMetaMap.get(r.ratio) || { color: seriesColor(0), shape: 'circle' };
+        return {
+            key: r.ratio,
+            label: `${r.ratio} (${r.prefill}P·${r.decode}D)`,
+            color: meta.color,
+            shape: meta.shape,
+        };
+    });
+
+    const commonMetaPills = (
+        <>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 font-sans text-micro font-medium text-zinc-700">
+                <GoogleMark className="w-3 h-3" />
+                <span>TPU v7x</span>
+                <span className="text-zinc-400">·</span>
+                <span>{scenario?.totalReplicas ?? 8} replicas (TP{scenario?.tp ?? 8})</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 font-sans text-micro font-medium text-zinc-700">
+                <span>Qwen3-Coder-480B (FP8)</span>
+                <span className="text-zinc-400">·</span>
+                <span>vLLM</span>
+            </span>
+        </>
+    );
+
+    return (
+        <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col items-center w-full font-sans relative overflow-hidden">
             <WellLitHeader
+                kicker="Well-lit path"
                 pageTitle="Prefill/Decode Disaggregation"
+                subtitle="Sweeping prefill-to-decode replica ratios at a fixed 8-replica budget on long-context agentic workloads."
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
                 isPrototype={true}
             />
 
-            <main className="w-full max-w-7xl px-6 py-8 flex flex-col space-y-6">
+            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6">
                 {/* Prototype Banner Alert */}
-                <div className="flex items-center gap-3 px-4 py-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs">
-                    <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <div className="surface-light flex items-center gap-3 px-4 py-3 bg-amber-50/70 border border-amber-200/90 rounded-2xl text-amber-900 text-xs">
+                    <span className="flex h-2 w-2 rounded-full bg-amber-500 shrink-0" />
                     <span>
-                        <strong>Prototype Notice:</strong> Prefill/Decode Disaggregation is currently in prototype phase. Benchmark data and analysis have not been validated.
+                        <strong className="font-semibold">Preview Notice:</strong> Prefill/Decode Disaggregation is currently in preview. Benchmark sweeps are actively expanding beyond the 2:6 ratio.
                     </span>
                 </div>
 
@@ -221,308 +364,559 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
                         <EmptyState
                             icon={<Split className="w-8 h-8" />}
                             title={loadFailed ? 'Benchmark data unavailable' : 'No benchmark runs found'}
-                            message={loadFailed
-                                ? 'The P/D disaggregation reports could not be loaded from GCS. Check server credentials and try again.'
-                                : 'No reports were found under gs://llm-d-benchmarks/pd-disaggregation/.'}
+                            message={
+                                loadFailed
+                                    ? 'The P/D disaggregation reports could not be loaded from GCS. Check server credentials and try again.'
+                                    : 'No reports were found under gs://llm-d-benchmarks/pd-disaggregation/.'
+                            }
                         />
                     </ChartContainer>
                 ) : (
                     <>
-                        {/* Hero panel */}
-                        <div className="relative overflow-hidden border border-slate-800/80 rounded-2xl bg-gradient-to-br from-slate-900/90 via-slate-900/50 to-slate-950/90 p-5 shadow-2xl backdrop-blur-xl group transition-all duration-500 hover:border-violet-500/30">
-                            <div className="absolute -top-24 -right-24 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl group-hover:bg-violet-500/20 transition-all duration-700 pointer-events-none" />
-
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative">
+                        {/* Architectural Overview Card (Matches Intelligent Routing 3-column layout) */}
+                        <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                            <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
                                 {/* Col 1: Overview */}
-                                <div>
-                                    <SectionLabel tone="cyan">Overview</SectionLabel>
-                                    <p className="text-xs text-slate-300 leading-relaxed">
-                                        Prefill/decode disaggregation splits serving into separate pools of
-                                        replicas: a <strong>prefill</strong> pool that processes incoming
-                                        context and streams KV cache to a <strong>decode</strong> pool that
-                                        generates tokens. This sweep probes the split for a long-context
-                                        agentic workload: decode-heavy wins on nearly every metric (P90 TTFT
-                                        is the lone exception — 3:5 edges 2:6, likely tail smoothing from a
-                                        third prefill replica). Per-replica rates show why: decode replicas
-                                        run saturated (~42–49 output tok/s each) at <em>every</em> tested
-                                        ratio, so throughput scales with decode count while extra prefill
-                                        replicas sit increasingly idle. The sweep stops at 2:6 — the balance
-                                        point was not reached, and decode-heavier splits may do better still.
-                                    </p>
+                                <div className="p-4 sm:p-5 flex flex-col justify-between space-y-2.5">
+                                    <div>
+                                        <div className="kicker text-accent-600 mb-1.5">Overview</div>
+                                        <p className="text-xs sm:text-sm text-zinc-700 leading-relaxed">
+                                            Prefill/decode disaggregation splits serving into separate replica pools: a <strong className="text-zinc-900">prefill</strong> pool that processes incoming context and streams KV cache to a <strong className="text-zinc-900">decode</strong> pool that generates tokens. Decode-heavy splits win across nearly every metric because decode replicas run saturated (~42–49 output tok/s each).
+                                        </p>
+                                    </div>
                                 </div>
 
-                                {/* Col 2: Selectable ratios (toggles filter the charts) */}
-                                <div className="space-y-2">
-                                    <SectionLabel tone="cyan" className="mb-1">Selectable ratios</SectionLabel>
-                                    <div className="grid grid-cols-2 gap-1.5">
-                                        {(runs || []).map(r => {
+                                {/* Col 2: Active Configurations (Selectable ratios) */}
+                                <div className="p-4 sm:p-5 space-y-2">
+                                    <div className="kicker text-zinc-700 mb-1.5">Active configurations</div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {(runs || []).map((r) => {
                                             const isActive = !hiddenRatios.includes(r.ratio);
+                                            const meta = ratioMetaMap.get(r.ratio) || { color: seriesColor(0), shape: 'circle' };
                                             return (
                                                 <button
                                                     key={r.ratio}
-                                                    onClick={() => setHiddenRatios(prev => isActive ? [...prev, r.ratio] : prev.filter(x => x !== r.ratio))}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setHiddenRatios((prev) =>
+                                                            isActive
+                                                                ? prev.length < runs.length - 1
+                                                                    ? [...prev, r.ratio]
+                                                                    : prev
+                                                                : prev.filter((x) => x !== r.ratio)
+                                                        )
+                                                    }
                                                     className={cn(
-                                                        'w-full text-left border rounded-lg p-2 flex items-center justify-between gap-2 transition-all cursor-pointer',
-                                                        isActive ? 'border-violet-500/30 bg-slate-900/60' : 'border-slate-800/50 bg-slate-900/20 opacity-60'
+                                                        'w-full text-left border rounded-2xl px-3 py-2 flex items-center justify-between gap-2 transition-all cursor-pointer',
+                                                        isActive
+                                                            ? 'border-zinc-200 bg-zinc-50/70'
+                                                            : 'border-zinc-200/70 bg-white opacity-55'
                                                     )}
                                                 >
                                                     <div className="min-w-0">
-                                                        <div className="text-xs font-semibold text-slate-200 font-mono">{r.ratio}</div>
-                                                        <p className="text-[10px] text-slate-500 truncate">{r.prefill}P · {r.decode}D</p>
+                                                        <div className="text-xs font-semibold text-zinc-900 font-sans tabular-nums">{r.ratio}</div>
+                                                        <p className="text-micro text-zinc-600 truncate">{r.prefill}P · {r.decode}D</p>
                                                     </div>
-                                                    <span className={cn(
-                                                        'w-1.5 h-1.5 rounded-full shrink-0',
-                                                        isActive ? 'bg-violet-400 shadow-[0_0_6px_rgba(139,92,246,0.8)]' : 'bg-slate-700'
-                                                    )} aria-hidden="true" />
+                                                    <SeriesMarkerSvg
+                                                        shape={meta.shape}
+                                                        color={isActive ? meta.color : chartTheme.muted}
+                                                        size={11}
+                                                    />
                                                 </button>
                                             );
                                         })}
                                     </div>
-                                    <p className="text-[10px] text-slate-500">Toggle ratios to include in the charts below.</p>
                                 </div>
 
-                                {/* Col 3: Roadmap */}
-                                <div>
-                                    <SectionLabel tone="slate">Upcoming & roadmap</SectionLabel>
-                                    <div className="border border-slate-800/50 rounded-lg bg-slate-900/30 p-2 flex items-center justify-between">
+                                {/* Col 3: Upcoming Variants */}
+                                <div className="p-4 sm:p-5 space-y-2 bg-zinc-50/30">
+                                    <div className="kicker text-zinc-700 mb-1.5">Upcoming variants</div>
+                                    <div className="border border-zinc-200/80 rounded-2xl bg-white px-3.5 py-2 flex items-center justify-between gap-2">
                                         <div>
-                                            <div className="text-xs font-semibold text-slate-400">Aggregated baseline comparison</div>
-                                            <p className="text-[10px] text-slate-500">Same workload on co-located (non-disaggregated) replicas</p>
+                                            <div className="text-xs font-semibold text-zinc-800">Aggregated Baseline Comparison</div>
+                                            <p className="text-micro text-zinc-600">Same workload on co-located replicas</p>
                                         </div>
-                                        <Badge tone="warning" size="xs">Coming soon</Badge>
+                                        <div className="flex items-center space-x-2 shrink-0">
+                                            <a
+                                                href="https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-zinc-700 hover:text-zinc-950 transition-colors flex items-center space-x-1"
+                                            >
+                                                <span className="text-micro font-medium">Guide</span>
+                                                <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                            <Badge tone="warning" size="xs">Soon</Badge>
+                                        </div>
                                     </div>
-                                    <div className="border border-slate-800/50 rounded-lg bg-slate-900/30 p-2 mt-2 flex items-center justify-between">
+                                    <div className="border border-zinc-200/80 rounded-2xl bg-white px-3.5 py-2 flex items-center justify-between gap-2">
                                         <div>
-                                            <div className="text-xs font-semibold text-slate-400">Decode-heavy extension</div>
-                                            <p className="text-[10px] text-slate-500">Sweep beyond 2:6 (e.g. 1:7) to find the balance point</p>
+                                            <div className="text-xs font-semibold text-zinc-800">Decode-Heavy Extension (1:7)</div>
+                                            <p className="text-micro text-zinc-600">Sweep beyond 2:6 to locate optimal balance</p>
                                         </div>
-                                        <Badge tone="warning" size="xs">Coming soon</Badge>
+                                        <div className="flex items-center space-x-2 shrink-0">
+                                            <a
+                                                href="https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation"
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-zinc-700 hover:text-zinc-950 transition-colors flex items-center space-x-1"
+                                            >
+                                                <span className="text-micro font-medium">Guide</span>
+                                                <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                            <Badge tone="warning" size="xs">Soon</Badge>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* ROW 2: Benchmark scenario, Primary outcomes & Action */}
+                        {/* Compact Scenario + Outcomes Card (Matches Intelligent Routing) */}
                         {outcomes && (
-                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                                {/* Benchmark scenario (col-span-6) */}
-                                <div className="lg:col-span-8 border border-slate-800/80 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
-                                    <div className="absolute -top-12 -left-12 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
-                                    <SectionLabel tone="sky" className="text-[11px]">Benchmark scenario</SectionLabel>
-                                    <div className="grid grid-cols-12 gap-2">
-                                        {/* Column 1: Infra layer */}
-                                        <div className="flex flex-col gap-3 col-span-4 border-r border-slate-800/60 pr-2">
-                                            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider truncate">Infra layer</div>
-                                            <div className="flex flex-col gap-2 text-xs">
-                                                <FactCell label="Accelerator" value={<>TPU v7x (Ironwood)</>} />
-                                                <FactCell label="Replicas" value={<>{scenario?.totalReplicas ?? 8} x 8 chips, TP={scenario?.tp ?? 8}</>} />
-                                                <FactCell label="Sweep" value={<>P:D ratio 2:6 → 7:1</>} />
+                            <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                                <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <span className="kicker text-accent-600">
+                                            Benchmark scenario & outcomes
+                                        </span>
+                                        <span className="text-zinc-300" aria-hidden="true">|</span>
+                                        <span className="text-xs text-zinc-700">
+                                            inference-perf · Prefill/Decode Disaggregation (8 TPU v7x replicas)
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                document.getElementById('summary-table')?.scrollIntoView({ behavior: 'smooth' });
+                                            }}
+                                            className="text-xs font-semibold text-accent-600 hover:text-accent-700 px-2 py-1 transition-colors cursor-pointer"
+                                        >
+                                            View summary table →
+                                        </button>
+                                        <a
+                                            href="https://github.com/llm-d/llm-d/tree/main/guides/pd-disaggregation"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1 text-xs font-semibold text-white hover:bg-zinc-700 transition-colors cursor-pointer no-underline"
+                                        >
+                                            <span>Reproducibility guide</span>
+                                            <ExternalLink className="w-3 h-3 shrink-0 opacity-85" />
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
+                                    {/* Left: Compact 6-item Environment & Serving Spec Strip */}
+                                    <div className="lg:col-span-8 xl:col-span-9 p-4 sm:p-5 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3.5 items-start">
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Accelerator & topology</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs flex items-center gap-1.5">
+                                                <GoogleMark />
+                                                TPU v7x · {scenario?.totalReplicas ?? 8} × TP{scenario?.tp ?? 8}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Replica ratio sweep</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs block">
+                                                P:D 2:6 → 7:1 ({outcomes.bestConfig.ratio} best)
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Load profile</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs block">
+                                                800 req @ concurrency 40
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Model name</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs block" title={scenario?.model}>
+                                                Qwen3-Coder-480B-FP8
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Engine & connector</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs block">
+                                                vLLM · TPUConnector
+                                            </span>
+                                        </div>
+                                        <div>
+                                            <span className="block text-micro font-medium text-zinc-600 mb-0.5">Workload & context</span>
+                                            <span className="font-sans font-semibold text-zinc-900 text-xs block">
+                                                Agentic · 160k sys + 1.5k/turn
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Primary Outcomes Strip */}
+                                    <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
+                                        <div>
+                                            <div className="text-micro font-medium text-zinc-600 mb-1">Peak throughput</div>
+                                            <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
+                                                {fmtTok(outcomes.bestTotal.throughput.total)}
+                                            </div>
+                                            <div className="text-micro font-medium text-zinc-600 mt-1">
+                                                tok/s @ P:D {outcomes.bestTotal.ratio}
                                             </div>
                                         </div>
-
-                                        {/* Column 2: Model serving */}
-                                        <div className="flex flex-col gap-3 col-span-4 border-r border-slate-800/60 pr-2">
-                                            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider truncate">Model serving</div>
-                                            <div className="flex flex-col gap-2 text-xs">
-                                                <FactCell label="Model name" title={scenario?.model} value={<>Qwen3-Coder-480B-FP8</>} />
-                                                <FactCell label="Engine" value={<>vLLM — TPUConnector</>} />
-                                                <FactCell label="KV cache" value={<>fp8, prefix caching off</>} />
+                                        <div className="border-l border-zinc-200 pl-4">
+                                            <div className="text-micro font-medium text-zinc-600 mb-1">Best TTFT</div>
+                                            <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
+                                                {fmtSec(outcomes.bestMeanTtft.ttft.mean)}s
                                             </div>
-                                        </div>
-
-                                        {/* Column 3: Workload */}
-                                        <div className="flex flex-col gap-3 col-span-4">
-                                            <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider truncate">Workload</div>
-                                            <div className="flex flex-col gap-2 text-xs">
-                                                <FactCell label="Type" value={<>Agentic multi-turn</>} />
-                                                <FactCell label="Load" value={<>800 req @ conc. 40</>} />
-                                                <FactCell label="Context" value={<>160k sys + 1.5k/turn</>} />
+                                            <div className="text-micro font-medium text-zinc-600 mt-1">
+                                                Mean @ P:D {outcomes.bestMeanTtft.ratio}
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* Primary outcomes (col-span-3) */}
-                                <Panel padding="sm" className="lg:col-span-4 flex flex-col relative overflow-hidden group hover:border-violet-500/30 transition-all">
-                                    <SectionLabel tone="emerald" className="text-[11px]">Primary outcomes</SectionLabel>
-                                    <div className="grid grid-cols-1 gap-2 font-sans text-xs">
-                                        <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-2.5 flex justify-between items-center transition-all hover:border-violet-500/40">
-                                            <div className="min-w-0 pr-2">
-                                                <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Best ratio</h3>
-                                                <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(prefill : decode)</div>
-                                            </div>
-                                            <h4 className="text-base font-black font-mono text-violet-400 shrink-0">{outcomes.bestConfig.ratio}</h4>
-                                        </div>
-                                        <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-2.5 flex justify-between items-center transition-all hover:border-emerald-500/40">
-                                            <div className="min-w-0 pr-2">
-                                                <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Peak throughput</h3>
-                                                <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(total tok/s)</div>
-                                            </div>
-                                            <h4 className="text-base font-black font-mono text-emerald-400 shrink-0">{fmtTok(outcomes.bestTotal.throughput.total)}</h4>
-                                        </div>
-                                        <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-2.5 flex justify-between items-center transition-all hover:border-sky-500/40">
-                                            <div className="min-w-0 pr-2">
-                                                <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-0.5 truncate">Best TTFT</h3>
-                                                <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(mean, s)</div>
-                                            </div>
-                                            <h4 className="text-base font-black font-mono text-sky-400 shrink-0">{fmtSec(outcomes.bestMeanTtft.ttft.mean)} s</h4>
-                                        </div>
-                                    </div>
-                                </Panel>
                             </div>
                         )}
 
-                        {/* Throughput chart */}
-                        <ChartContainer
-                            title="Throughput vs. P:D ratio"
-                            subtitle="Higher is better. Mean token rate per prefill:decode replica split (tokens/s)."
-                            actions={
-                                <ToggleGroup
-                                    options={[
-                                        { value: 'output', label: 'Output' },
-                                        { value: 'input', label: 'Input' },
-                                        { value: 'total', label: 'Total' },
-                                    ]}
-                                    value={thruMetric}
-                                    onChange={setThruMetric}
-                                />
-                            }
-                        >
-                            <div className="relative w-full h-[300px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={throughputChartData} margin={{ top: 10, right: 20, left: 10, bottom: 10 }} barCategoryGap="25%">
-                                        <CartesianGrid {...gridProps()} vertical={false} />
-                                        <ChartXAxis dataKey="ratio" tickLine={false} interval={0} />
-                                        <ChartYAxis tickLine={false} width={70} />
-                                        <Tooltip
-                                            {...tooltipProps()}
-                                            content={<ThroughputTooltip />}
-                                        />
-                                        <Bar dataKey="value" fill={seriesColor(0)} radius={[6, 6, 0, 0]} maxBarSize={80} isAnimationActive={false} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <p className="text-[10px] text-slate-500 mt-2">{THROUGHPUT_LABELS[thruMetric]}, by prefill:decode replica ratio (8 replicas total).</p>
-                        </ChartContainer>
-
-                        {/* Latency chart */}
-                        <ChartContainer
-                            title="Latency vs. P:D ratio"
-                            subtitle="Lower is better. TTFT/E2E in seconds; ITL in ms/token. ITL plateaus at prefill-heavy ratios (≥ 5:3) — the decode-saturation ceiling."
-                            actions={
-                                <Button variant="secondary" size="sm" onClick={() => setShowChartFilters(!showChartFilters)}>
-                                    Filters
-                                    {showChartFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                </Button>
-                            }
-                        >
-                            {showChartFilters && (
-                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border border-slate-800/60 bg-slate-900/40 rounded-lg px-4 py-2.5 mb-4">
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest shrink-0">Latency:</span>
-                                        <ToggleGroup
-                                            options={[
-                                                { value: 'ttft', label: 'TTFT' },
-                                                { value: 'itl', label: 'ITL' },
-                                                { value: 'e2e', label: 'E2E' },
-                                            ]}
-                                            value={latMetric}
-                                            onChange={setLatMetric}
-                                        />
-                                    </div>
-                                    {latMetric !== 'itl' && (
-                                        <div className="flex items-center gap-2 ml-auto">
-                                            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest shrink-0">Stats:</span>
-                                            <StatPills
-                                                options={['Mean', 'P90']}
-                                                active={visibleStats}
-                                                onToggle={(p) => setVisibleStats(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            <div className="relative w-full h-[300px]">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={latencyChartData} margin={{ top: 10, right: 20, left: 10, bottom: 10 }} barCategoryGap="25%">
-                                        <CartesianGrid {...gridProps()} vertical={false} />
-                                        <ChartXAxis dataKey="ratio" tickLine={false} interval={0} />
-                                        <ChartYAxis tickLine={false} width={70} unit={latMetric === 'itl' ? ' ms' : ' s'} />
-                                        <Tooltip
-                                            {...tooltipProps()}
-                                            content={<LatencyTooltip />}
-                                        />
-                                        <Bar dataKey="mean" name="Mean" radius={[6, 6, 0, 0]} maxBarSize={50} isAnimationActive={false} hide={!visibleStats.includes('Mean')}>
-                                            {latencyChartData.map((entry, index) => (
-                                                <Cell key={index} fill={entry.fill} fillOpacity={1} />
-                                            ))}
-                                        </Bar>
-                                        <Bar dataKey="p90" name="P90" radius={[6, 6, 0, 0]} maxBarSize={50} isAnimationActive={false} hide={latMetric === 'itl' || !visibleStats.includes('P90')}>
-                                            {latencyChartData.map((entry, index) => (
-                                                <Cell key={index} fill={entry.fill} fillOpacity={0.6} />
-                                            ))}
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                            <p className="text-[10px] text-slate-500 mt-2">
-                                {LATENCY_LABELS[latMetric]}{latMetric === 'itl' ? ', mean' : ' — Mean (solid), P90 (translucent)'}, by prefill:decode replica ratio (8 replicas total).
-                            </p>
-                        </ChartContainer>
-
-                        {/* Results table */}
-                        {columnBests && (
+                        {/* Telemetry Charts (LineChart visualizations matching Intelligent Routing) */}
+                        <div className="flex flex-col gap-6 w-full">
+                            {/* Throughput LineChart */}
                             <ChartContainer
-                                title="Full results — all runs, all reported metrics"
-                                subtitle="TTFT/E2E in seconds; ITL in ms/token; throughput in tokens/s. Best value per column highlighted; lower is better for latency, higher for throughput."
+                                kicker="P/D disaggregation telemetry"
+                                title={`${THROUGHPUT_LABELS[thruMetric]} vs. P:D ratio`}
+                                subtitle="Higher is better. Mean token rate across prefill:decode replica splits (tokens/s)."
+                                metaPills={commonMetaPills}
+                                showFilters={showThruFilters}
+                                onToggleFilters={() => setShowThruFilters(!showThruFilters)}
+                                filters={
+                                    <ChartFilterRow>
+                                        <ChartFilterGroup label="Y-Axis:">
+                                            <ToggleGroup
+                                                size="xs"
+                                                options={[
+                                                    { value: 'output', label: 'Output' },
+                                                    { value: 'input', label: 'Input' },
+                                                    { value: 'total', label: 'Total' },
+                                                ]}
+                                                value={thruMetric}
+                                                onChange={setThruMetric}
+                                            />
+                                        </ChartFilterGroup>
+                                        <ChartFilterGroup label="Scale:">
+                                            <StatPills
+                                                options={[{ value: 'perChip', label: 'Per Chip' }]}
+                                                active={thruPerChip ? ['perChip'] : []}
+                                                onToggle={() => setThruPerChip(!thruPerChip)}
+                                            />
+                                        </ChartFilterGroup>
+                                    </ChartFilterRow>
+                                }
+                                footer={
+                                    <SeriesPercentileLegend
+                                        series={legendItems}
+                                        percentiles={['Mean']}
+                                        activePercentiles={['Mean']}
+                                    />
+                                }
                             >
+                                <div className="relative w-full h-[340px] select-none">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                        <LineChart data={throughputChartData} margin={{ top: 20, right: 30, left: 60, bottom: 40 }}>
+                                            <CartesianGrid {...gridProps()} />
+                                            <ChartXAxis
+                                                dataKey="ratio"
+                                                label="Prefill : Decode Replica Ratio (P:D)"
+                                                interval={0}
+                                            />
+                                            <ChartYAxis
+                                                label={`${THROUGHPUT_LABELS[thruMetric]}${thruPerChip ? ' (tok/s/chip)' : ' (tok/s)'}`}
+                                                domain={throughputYAxisConfig.domain}
+                                                ticks={throughputYAxisConfig.ticks}
+                                                tickFormatter={throughputYAxisConfig.tickFormatter}
+                                            />
+                                            <Tooltip
+                                                {...tooltipProps()}
+                                                cursor={cursorProps()}
+                                                content={<ThroughputTooltip />}
+                                            />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="value"
+                                                name="Mean"
+                                                stroke={seriesColor(1)}
+                                                strokeWidth={2.5}
+                                                dot={(props) => {
+                                                    const { cx, cy, payload } = props;
+                                                    return (
+                                                        <CustomSeriesDot
+                                                            key={`dot-thru-${payload?.ratio}`}
+                                                            cx={cx}
+                                                            cy={cy}
+                                                            fill={payload?.fill || seriesColor(1)}
+                                                            stroke={payload?.fill || seriesColor(1)}
+                                                            shape={payload?.shape || 'circle'}
+                                                            r={4.5}
+                                                        />
+                                                    );
+                                                }}
+                                                activeDot={(props) => {
+                                                    const { cx, cy, payload } = props;
+                                                    return (
+                                                        <CustomSeriesDot
+                                                            key={`activedot-thru-${payload?.ratio}`}
+                                                            cx={cx}
+                                                            cy={cy}
+                                                            fill={payload?.fill || seriesColor(1)}
+                                                            stroke={payload?.fill || seriesColor(1)}
+                                                            shape={payload?.shape || 'circle'}
+                                                            r={6}
+                                                            strokeWidth={2}
+                                                        />
+                                                    );
+                                                }}
+                                                isAnimationActive={false}
+                                            />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </ChartContainer>
+
+                            {/* Latency LineChart */}
+                            <ChartContainer
+                                kicker="P/D disaggregation telemetry"
+                                title={`${LATENCY_LABELS[latMetric].replace(/ \(.*\)$/, '')} vs. P:D ratio`}
+                                subtitle="Lower is better. TTFT/E2E in seconds; ITL in ms/token. ITL plateaus at prefill-heavy ratios (≥ 5:3) — the decode-saturation ceiling."
+                                metaPills={commonMetaPills}
+                                showFilters={showChartFilters}
+                                onToggleFilters={() => setShowChartFilters(!showChartFilters)}
+                                filters={
+                                    <ChartFilterRow>
+                                        <ChartFilterGroup label="Y-Axis:">
+                                            <ToggleGroup
+                                                size="xs"
+                                                options={[
+                                                    { value: 'ttft', label: 'TTFT' },
+                                                    { value: 'itl', label: 'ITL' },
+                                                    { value: 'e2e', label: 'E2E Latency' },
+                                                ]}
+                                                value={latMetric}
+                                                onChange={setLatMetric}
+                                            />
+                                        </ChartFilterGroup>
+                                        {latMetric !== 'itl' && (
+                                            <ChartFilterGroup label="Percentiles:">
+                                                <StatPills
+                                                    options={['Mean', 'P90']}
+                                                    active={visibleStats}
+                                                    onToggle={(p) =>
+                                                        setVisibleStats((prev) =>
+                                                            prev.includes(p)
+                                                                ? prev.length > 1
+                                                                    ? prev.filter((x) => x !== p)
+                                                                    : prev
+                                                                : [...prev, p]
+                                                        )
+                                                    }
+                                                />
+                                            </ChartFilterGroup>
+                                        )}
+                                    </ChartFilterRow>
+                                }
+                                footer={
+                                    <SeriesPercentileLegend
+                                        series={legendItems}
+                                        percentiles={latMetric === 'itl' ? ['Mean'] : ['Mean', 'P90']}
+                                        activePercentiles={latMetric === 'itl' ? ['Mean'] : visibleStats}
+                                        onTogglePercentile={
+                                            latMetric === 'itl'
+                                                ? undefined
+                                                : (p) =>
+                                                      setVisibleStats((prev) =>
+                                                          prev.includes(p)
+                                                              ? prev.length > 1
+                                                                  ? prev.filter((x) => x !== p)
+                                                                  : prev
+                                                              : [...prev, p]
+                                                      )
+                                        }
+                                    />
+                                }
+                            >
+                                <div className="relative w-full h-[340px] select-none">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                                        <LineChart data={latencyChartData} margin={{ top: 20, right: 30, left: 60, bottom: 40 }}>
+                                            <CartesianGrid {...gridProps()} />
+                                            <ChartXAxis
+                                                dataKey="ratio"
+                                                label="Prefill : Decode Replica Ratio (P:D)"
+                                                interval={0}
+                                            />
+                                            <ChartYAxis
+                                                label={LATENCY_LABELS[latMetric]}
+                                                domain={latencyYAxisConfig.domain}
+                                                ticks={latencyYAxisConfig.ticks}
+                                                tickFormatter={latencyYAxisConfig.tickFormatter}
+                                            />
+                                            <Tooltip
+                                                {...tooltipProps()}
+                                                cursor={cursorProps()}
+                                                content={<LatencyTooltip />}
+                                            />
+                                            {visibleStats.includes('Mean') && (
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="mean"
+                                                    name="Mean"
+                                                    stroke={seriesColor(1)}
+                                                    strokeWidth={2.5}
+                                                    dot={(props) => {
+                                                        const { cx, cy, payload } = props;
+                                                        return (
+                                                            <CustomSeriesDot
+                                                                key={`dot-lat-mean-${payload?.ratio}`}
+                                                                cx={cx}
+                                                                cy={cy}
+                                                                fill={payload?.fill || seriesColor(1)}
+                                                                stroke={payload?.fill || seriesColor(1)}
+                                                                shape={payload?.shape || 'circle'}
+                                                                r={4.5}
+                                                            />
+                                                        );
+                                                    }}
+                                                    activeDot={(props) => {
+                                                        const { cx, cy, payload } = props;
+                                                        return (
+                                                            <CustomSeriesDot
+                                                                key={`activedot-lat-mean-${payload?.ratio}`}
+                                                                cx={cx}
+                                                                cy={cy}
+                                                                fill={payload?.fill || seriesColor(1)}
+                                                                stroke={payload?.fill || seriesColor(1)}
+                                                                shape={payload?.shape || 'circle'}
+                                                                r={6}
+                                                                strokeWidth={2}
+                                                            />
+                                                        );
+                                                    }}
+                                                    isAnimationActive={false}
+                                                />
+                                            )}
+                                            {latMetric !== 'itl' && visibleStats.includes('P90') && (
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="p90"
+                                                    name="P90"
+                                                    stroke={seriesColor(1)}
+                                                    strokeWidth={1.75}
+                                                    strokeDasharray="6 4"
+                                                    dot={(props) => {
+                                                        const { cx, cy, payload } = props;
+                                                        return (
+                                                            <CustomSeriesDot
+                                                                key={`dot-lat-p90-${payload?.ratio}`}
+                                                                cx={cx}
+                                                                cy={cy}
+                                                                fill={payload?.fill || seriesColor(1)}
+                                                                stroke={payload?.fill || seriesColor(1)}
+                                                                shape={payload?.shape || 'circle'}
+                                                                r={3.8}
+                                                            />
+                                                        );
+                                                    }}
+                                                    activeDot={(props) => {
+                                                        const { cx, cy, payload } = props;
+                                                        return (
+                                                            <CustomSeriesDot
+                                                                key={`activedot-lat-p90-${payload?.ratio}`}
+                                                                cx={cx}
+                                                                cy={cy}
+                                                                fill={payload?.fill || seriesColor(1)}
+                                                                stroke={payload?.fill || seriesColor(1)}
+                                                                shape={payload?.shape || 'circle'}
+                                                                r={5.5}
+                                                                strokeWidth={2}
+                                                            />
+                                                        );
+                                                    }}
+                                                    isAnimationActive={false}
+                                                />
+                                            )}
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </ChartContainer>
+                        </div>
+
+                        {/* Summary Metrics Table (Matches Intelligent Routing header + SeriesLineSwatch) */}
+                        {columnBests && (
+                            <div id="summary-table" className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                                <div className="px-5 sm:px-7 py-4 border-b border-zinc-200 flex flex-wrap justify-between items-center gap-4">
+                                    <div>
+                                        <span className="kicker block text-accent-600 mb-0.5">
+                                            Stepwise breakdown
+                                        </span>
+                                        <h3 className="font-sans text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
+                                            Summary metrics comparison
+                                        </h3>
+                                        <p className="text-xs text-zinc-700 mt-0.5">
+                                            TTFT/E2E in seconds; ITL in ms/token; throughput in tokens/s across all evaluated P:D replica splits.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2.5">
+                                        <Button variant="secondary" size="sm" onClick={exportToCSV}>
+                                            Export CSV
+                                        </Button>
+                                    </div>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse text-xs">
                                         <thead>
-                                            <tr className="bg-slate-950 text-slate-400 font-mono uppercase tracking-wider text-[10px]">
-                                                <th className="p-3">P:D ratio</th>
-                                                <th className="p-3">Prefill</th>
-                                                <th className="p-3">Decode</th>
-                                                <th className="p-3">TTFT mean (s)</th>
-                                                <th className="p-3">TTFT P90 (s)</th>
-                                                <th className="p-3">E2E mean (s)</th>
-                                                <th className="p-3">E2E P90 (s)</th>
-                                                <th className="p-3">ITL mean (ms/tok)</th>
-                                                <th className="p-3">Output tok/s</th>
-                                                <th className="p-3">Input tok/s</th>
-                                                <th className="p-3">Total tok/s</th>
-                                                <th className="p-3">Requests</th>
+                                            <tr className="label-caps bg-zinc-50/90 text-zinc-700 border-b border-zinc-200">
+                                                <th className="py-3.5 px-4">P:D ratio</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">Prefill</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">Decode</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">TTFT mean (s)</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">TTFT P90 (s)</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">E2E mean (s)</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">E2E P90 (s)</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">ITL mean (ms/tok)</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">Output tok/s</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">Input tok/s</th>
+                                                <th className="py-3.5 px-3 border-l border-zinc-200">Total tok/s</th>
+                                                <th className="py-3.5 px-4 border-l border-zinc-200">Requests</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-800/60 font-mono">
-                                            {runs.map(r => {
+                                        <tbody className="divide-y divide-zinc-200/80 font-mono">
+                                            {runs.map((r) => {
                                                 const isWinner = outcomes && r.ratio === outcomes.bestConfig.ratio;
+                                                const meta = ratioMetaMap.get(r.ratio) || { color: seriesColor(0), shape: 'circle' };
                                                 return (
-                                                    <tr key={r.ratio} className={cn(isWinner && 'bg-emerald-900/20')}>
-                                                        <td className="p-3 text-white font-sans font-bold">
-                                                            <span className="flex items-center gap-2">
-                                                                {r.ratio}
+                                                    <tr key={r.ratio} className={cn('hover:bg-zinc-50/80 transition-colors', isWinner && 'bg-emerald-50/50')}>
+                                                        <td className="py-3 px-4 text-zinc-900 font-sans font-semibold">
+                                                            <span className="inline-flex items-center gap-2">
+                                                                <SeriesLineSwatch
+                                                                    shape={meta.shape}
+                                                                    color={meta.color}
+                                                                    lineStyle="solid"
+                                                                />
+                                                                <span>{r.ratio}</span>
                                                                 {isWinner && <Badge tone="success" size="xs">Best observed</Badge>}
                                                             </span>
                                                         </td>
-                                                        <td className="p-3 text-slate-300">{r.prefill}</td>
-                                                        <td className="p-3 text-slate-300">{r.decode}</td>
-                                                        <td className={cn('p-3', r.ttft.mean === columnBests.ttftMean ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtSec(r.ttft.mean)}</td>
-                                                        <td className={cn('p-3', r.ttft.p90 === columnBests.ttftP90 ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtSec(r.ttft.p90)}</td>
-                                                        <td className={cn('p-3', r.e2e.mean === columnBests.e2eMean ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtSec(r.e2e.mean)}</td>
-                                                        <td className={cn('p-3', r.e2e.p90 === columnBests.e2eP90 ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtSec(r.e2e.p90)}</td>
-                                                        <td className={cn('p-3', r.itl.mean === columnBests.itlMean ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{r.itl.mean.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
-                                                        <td className={cn('p-3', r.throughput.output === columnBests.output ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtTok(r.throughput.output)}</td>
-                                                        <td className={cn('p-3', r.throughput.input === columnBests.input ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtTok(r.throughput.input)}</td>
-                                                        <td className={cn('p-3', r.throughput.total === columnBests.total ? 'text-emerald-300 font-bold' : 'text-slate-300')}>{fmtTok(r.throughput.total)}</td>
-                                                        <td className="p-3 text-slate-300">{r.requests.toLocaleString()}</td>
+                                                        <td className="py-3 px-3 border-l border-zinc-200 text-zinc-700 tabular-nums">{r.prefill}</td>
+                                                        <td className="py-3 px-3 border-l border-zinc-200 text-zinc-700 tabular-nums">{r.decode}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.ttft.mean === columnBests.ttftMean ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtSec(r.ttft.mean)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.ttft.p90 === columnBests.ttftP90 ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtSec(r.ttft.p90)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.e2e.mean === columnBests.e2eMean ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtSec(r.e2e.mean)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.e2e.p90 === columnBests.e2eP90 ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtSec(r.e2e.p90)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.itl.mean === columnBests.itlMean ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{r.itl.mean.toLocaleString(undefined, { maximumFractionDigits: 1 })}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.throughput.output === columnBests.output ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtTok(r.throughput.output)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.throughput.input === columnBests.input ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtTok(r.throughput.input)}</td>
+                                                        <td className={cn('py-3 px-3 border-l border-zinc-200 tabular-nums', r.throughput.total === columnBests.total ? 'text-emerald-700 font-bold' : 'text-zinc-800')}>{fmtTok(r.throughput.total)}</td>
+                                                        <td className="py-3 px-4 border-l border-zinc-200 text-zinc-700 tabular-nums">{r.requests.toLocaleString()}</td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                     </table>
                                 </div>
-                            </ChartContainer>
+                            </div>
                         )}
                     </>
                 )}

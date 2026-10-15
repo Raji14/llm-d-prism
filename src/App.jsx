@@ -12,25 +12,52 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { Loader, ArrowRight } from 'lucide-react';
-import Dashboard from './components/Dashboard';
-import ResultsStore from './components/ResultsStore';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrismHome from './components/PrismHome';
-import Milestone1Dashboard from './components/Milestone1Dashboard';
-import SchemaExplorer from './components/SchemaExplorer';
-import WorkloadCatalog from './components/WorkloadCatalog';
-import RegressionsAnalysisDashboard from './components/RegressionsAnalysisDashboard';
-import AgenticWorkloadsDashboard from './components/AgenticWorkloadsDashboard';
-import PrefixCacheOffloadingDashboard from './components/PrefixCacheOffloadingDashboard';
-import PdDisaggregationDashboard from './components/PdDisaggregationDashboard';
-import SubmitValidationPage from './components/DataConnections/SubmitValidationPage';
-import LeaderboardDashboard from './components/Leaderboard/LeaderboardDashboard';
+import { LoadingState } from './components/ui/Spinner';
 
-import LeftNavigation from './components/LeftNavigation';
+import SiteHeader from './components/layout/SiteHeader';
+import SiteFooter from './components/layout/SiteFooter';
+import { useTheme } from './theme/useTheme';
 import { useDashboardState } from './hooks/useDashboardState';
 import { useDashboardData } from './hooks/useDashboardData';
+
+// Home renders eagerly because it is the landing page. Every other view loads
+// on first visit, so the landing bundle doesn't carry the dashboards' code.
+const Dashboard = lazy(() => import('./components/Dashboard'));
+const ResultsStore = lazy(() => import('./components/ResultsStore'));
+const Milestone1Dashboard = lazy(() => import('./components/Milestone1Dashboard'));
+const SchemaExplorer = lazy(() => import('./components/SchemaExplorer'));
+const WorkloadCatalog = lazy(() => import('./components/WorkloadCatalog'));
+const RegressionsAnalysisDashboard = lazy(() => import('./components/RegressionsAnalysisDashboard'));
+const AgenticWorkloadsDashboard = lazy(() => import('./components/AgenticWorkloadsDashboard'));
+const PrefixCacheOffloadingDashboard = lazy(() => import('./components/PrefixCacheOffloadingDashboard'));
+const PdDisaggregationDashboard = lazy(() => import('./components/PdDisaggregationDashboard'));
+const SubmitValidationPage = lazy(() => import('./components/DataConnections/SubmitValidationPage'));
+const LeaderboardDashboard = lazy(() => import('./components/Leaderboard/LeaderboardDashboard'));
+const RecipeComparisonPage = lazy(() => import('./components/Leaderboard/RecipeComparisonPage'));
+const MethodologyPage = lazy(() => import('./components/MethodologyPage'));
+
+// Leaderboard filters live in the URL so a filtered ranking can be shared and
+// linked from Home. Only the leaderboard reads them; WorkloadCatalog reads its
+// own `workload` id, which shares the name, so they never carry across views.
+const LEADERBOARD_PARAMS = [
+  'workload',
+  'hardware',
+  'engine',
+  'sort',
+  'q',
+  'ttft_sla',
+  'tpot_sla',
+  'sla_pct',
+  'layout',
+  'curves',
+  'x',
+  'y',
+  'scale',
+];
 
 function App() {
   const mainRef = useRef(null);
@@ -74,7 +101,13 @@ function App() {
 
   const [navigationParams, setNavigationParams] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return { intent: params.get('intent') || null };
+    return {
+      intent: params.get('intent') || null,
+      recipes: params.get('recipes') || null,
+      baseline: params.get('baseline') || null,
+      recipe: params.get('recipe') || null,
+      model: params.get('model') || null
+    };
   });
 
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -97,11 +130,9 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enableLLMDResults]);
 
-  useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.add('dark');
-    localStorage.setItem('app-theme', 'dark');
-  }, []);
+  // Prism 2.0 theme (light default). Subscribing here re-renders every view on
+  // toggle so charts re-read their theme-resolved chrome colors.
+  useTheme();
 
   useEffect(() => {
     const onPopState = () => {
@@ -114,6 +145,13 @@ function App() {
       } else {
         setCurrentView(view);
       }
+      setNavigationParams({
+        intent: params.get('intent') || null,
+        recipes: params.get('recipes') || null,
+        baseline: params.get('baseline') || null,
+        recipe: params.get('recipe') || null,
+        model: params.get('model') || null
+      });
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -121,7 +159,7 @@ function App() {
 
 
   const handleNavigate = (view, extraParams = {}) => {
-    if (currentView !== 'submit-benchmarks') {
+    if (currentView !== 'submit-benchmarks' && currentView !== 'recipe-comparison') {
       localStorage.setItem('prism_previous_view', currentView);
     }
     setCurrentView(view);
@@ -130,8 +168,14 @@ function App() {
     // Update URL to reflect the current view
     const params = new URLSearchParams(window.location.search);
     params.set('view', view);
-    if (view !== 'workload-catalog') {
-      params.delete('workload');
+    if (view !== 'home') {
+      ['goal', 'm', 'hw', 'wl'].forEach((k) => params.delete(k));
+    }
+    // A different view starts clean: leaderboard filters never leak into it.
+    // Comparing recipes and coming back keeps them, as the two views are one flow.
+    const leaderboardFlow = ['model-leaderboard', 'recipe-comparison'];
+    if (view !== currentView && !(leaderboardFlow.includes(view) && leaderboardFlow.includes(currentView))) {
+      LEADERBOARD_PARAMS.forEach((k) => params.delete(k));
     }
     
     const resolvedParams = {};
@@ -146,13 +190,51 @@ function App() {
         params.delete('intent');
         resolvedParams.intent = null;
       }
+    } else if (view === 'recipe-comparison') {
+      if (extraParams && typeof extraParams === 'object') {
+        if (extraParams.recipes) {
+          const recStr = Array.isArray(extraParams.recipes) ? extraParams.recipes.join(',') : extraParams.recipes;
+          params.set('recipes', recStr);
+          resolvedParams.recipes = recStr;
+        }
+        if (extraParams.baseline) {
+          params.set('baseline', extraParams.baseline);
+          resolvedParams.baseline = extraParams.baseline;
+        }
+      }
+      params.delete('intent');
+      resolvedParams.intent = null;
+    } else if (view === 'model-leaderboard') {
+      if (extraParams && typeof extraParams === 'object') {
+        if (extraParams.recipe) {
+          params.set('recipe', extraParams.recipe);
+          resolvedParams.recipe = extraParams.recipe;
+        }
+        if (extraParams.model) {
+          params.set('model', extraParams.model);
+          resolvedParams.model = extraParams.model;
+        }
+        // Pre-filtered entry points (Home's workload and accelerator chips).
+        LEADERBOARD_PARAMS.forEach((k) => {
+          if (extraParams[k] != null && extraParams[k] !== '') params.set(k, String(extraParams[k]));
+        });
+      }
+      params.delete('intent');
+      params.delete('recipes');
+      params.delete('baseline');
     } else {
       params.delete('intent');
+      params.delete('recipes');
+      params.delete('baseline');
+      params.delete('recipe');
+      params.delete('model');
       resolvedParams.intent = null;
     }
     setNavigationParams(resolvedParams);
 
-    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`);
+    // Optional in-page anchor; the target view scrolls to it once mounted.
+    const hash = extraParams && typeof extraParams === 'object' && extraParams.hash ? `#${extraParams.hash}` : '';
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}${hash}`);
     
     // Reset scroll position on navigation
     window.scrollTo(0, 0);
@@ -192,22 +274,28 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-slate-950 w-full overflow-hidden font-sans relative flex flex-col">
-        <LeftNavigation currentView={currentView} onNavigate={handleNavigate} isMobileOpen={isMobileNavOpen} />
-        <main ref={mainRef} className="flex-1 overflow-y-auto flex flex-col relative w-full h-screen">
+      <div className="h-screen bg-slate-950 w-full overflow-hidden font-sans relative flex flex-col">
+        <SiteHeader
+          currentView={currentView}
+          onNavigate={handleNavigate}
+          mobileOpen={isMobileNavOpen}
+          onMobileOpenChange={setIsMobileNavOpen}
+        />
+        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col relative w-full">
           {/* Top Spark Progress Bar */}
           {showOverlays && (
             <div className="fixed top-0 left-0 right-0 h-1 bg-slate-900 z-[9999] pointer-events-none">
               <div 
-                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 transition-all duration-300 shadow-[0_0_10px_rgba(59,130,246,0.5)]" 
+                className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-accent-700 transition-all duration-300 shadow-[0_0_10px_rgba(59,130,246,0.5)]" 
                 style={{ width: `${overallProgress}%` }}
               />
             </div>
           )}
 
-          <>
+          <Suspense fallback={<LoadingState size="md" />}>
             {/* Global staged benchmarks banner removed in favor of localized Results Store dashboard alert banner */}
-            {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
+            {currentView === 'home' && <PrismHome onNavigate={handleNavigate} submittedRuns={dashboardData.brv02Runs} />}
+            {currentView === 'methodology' && <MethodologyPage onNavigate={handleNavigate} onNavigateBack={() => handleNavigate('home')} />}
             {currentView === 'model-leaderboard' && (
               <LeaderboardDashboard 
                 onNavigateBack={() => handleNavigate('home')} 
@@ -215,6 +303,17 @@ function App() {
                 onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
                 dashboardState={dashboardState} 
                 dashboardData={dashboardData} 
+                navigationParams={navigationParams}
+              />
+            )}
+            {currentView === 'recipe-comparison' && (
+              <RecipeComparisonPage
+                onNavigateBack={() => handleNavigate('model-leaderboard')}
+                onNavigate={handleNavigate}
+                onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
+                dashboardState={dashboardState}
+                dashboardData={dashboardData}
+                navigationParams={navigationParams}
               />
             )}
             {currentView === 'inference-scheduling' && <Milestone1Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} dashboardData={dashboardData} />}
@@ -249,7 +348,9 @@ function App() {
             {currentView === 'pd-disaggregation' && <PdDisaggregationDashboard onNavigateBack={() => handleNavigate('home')} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
             {currentView === 'regressions-analysis' && <RegressionsAnalysisDashboard onNavigateBack={() => handleNavigate('home')} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
             {currentView === 'guided-analysis' && <div className="p-8 text-center text-slate-400 mt-20">Guided Analysis Coming Soon... <button onClick={() => handleNavigate('home')} className="underline ml-2 text-indigo-400">Back</button></div>}
-          </>
+          </Suspense>
+
+          <SiteFooter onNavigate={handleNavigate} />
 
           {/* Bottom-Right Persistent Status Toast */}
           {showOverlays && (

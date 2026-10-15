@@ -15,8 +15,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Flame, Sparkles, CheckCircle2, Send, Trophy, Award, ShieldCheck } from 'lucide-react';
 import { SOTA_MILESTONE_TRACKS } from '../../utils/gamificationEngine.js';
+import { cn } from '../../utils/cn';
 
 export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
+    const [auditedMilestones, setAuditedMilestones] = useState({});
+    const [activeFormTrackId, setActiveFormTrackId] = useState(null);
+    const [authorHandle, setAuthorHandle] = useState('');
+    const [notes, setNotes] = useState('');
+    const [successMessage, setSuccessMessage] = useState(null);
+
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape' && isOpen) {
@@ -27,13 +34,16 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, onClose]);
 
-    if (!isOpen) return null;
+    useEffect(() => {
+        if (!isOpen) return;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [isOpen]);
 
-    const [auditedMilestones, setAuditedMilestones] = useState({});
-    const [activeFormTrackId, setActiveFormTrackId] = useState(null);
-    const [authorHandle, setAuthorHandle] = useState('');
-    const [notes, setNotes] = useState('');
-    const [successMessage, setSuccessMessage] = useState(null);
+    if (!isOpen) return null;
 
     const handleSubmitAudit = (trackId) => {
         setAuditedMilestones(prev => ({
@@ -53,8 +63,8 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex justify-end bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-slate-900 border-l border-slate-700/80 w-full max-w-lg h-full flex flex-col p-6 shadow-2xl relative text-slate-200 overflow-y-auto">
+        <div className="fixed inset-0 z-[110] flex justify-end bg-black/35 backdrop-blur-[1.5px] transition-opacity animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-slate-900/95 border-l border-slate-700/80 w-full max-w-lg h-full flex flex-col p-6 shadow-2xl relative text-slate-200 overflow-y-auto backdrop-blur-xl animate-in slide-in-from-right duration-300" onClick={(e) => e.stopPropagation()}>
                 {/* Close Button */}
                 <button
                     onClick={onClose}
@@ -70,9 +80,9 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                     </div>
                     <div>
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                            SOTA Milestone & Recognition Tracks
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                4 Active Tracks
+                            SOTA milestone & recognition tracks
+                            <span className="text-tiny font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                4 active tracks
                             </span>
                         </h2>
                         <p className="text-xs text-slate-400">
@@ -101,14 +111,12 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                         return (
                             <div
                                 key={track.id}
-                                className={`p-4 rounded-2xl border transition-all ${
-                                    isEligible
+                                className={cn('p-4 rounded-2xl border transition-all', isEligible
                                         ? 'bg-gradient-to-br from-purple-950/30 to-slate-900 border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.15)]'
-                                        : 'bg-slate-950/60 border-slate-800 opacity-90'
-                                }`}
+                                        : 'bg-slate-950/60 border-slate-800 opacity-90')}
                             >
                                 <div className="flex items-center justify-between mb-1.5">
-                                    <span className="text-[11px] font-semibold uppercase tracking-wider text-purple-400">
+                                    <span className="text-micro font-semibold uppercase tracking-wider text-purple-400">
                                         {track.category}
                                     </span>
                                     <div className="flex items-center gap-1.5 font-mono text-xs font-bold text-amber-300">
@@ -120,12 +128,12 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                                 <p className="text-xs text-slate-400 mb-3">{track.description}</p>
 
                                 <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
-                                    <div className="text-[11px] text-slate-500">
+                                    <div className="text-micro text-slate-500">
                                         Reward: <strong className="text-purple-300">{track.recognition}</strong>
                                     </div>
 
                                     {auditState ? (
-                                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                                        <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-tiny font-bold border border-amber-500/40">
                                             <Sparkles className="w-3 h-3 text-amber-400" />
                                             {auditState.status}
                                         </span>
@@ -135,10 +143,10 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                                             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-[0_0_12px_rgba(168,85,247,0.3)] transition-all cursor-pointer"
                                         >
                                             <ShieldCheck className="w-3 h-3 text-amber-300" />
-                                            <span>Request Verification &rarr;</span>
+                                            <span>Request verification &rarr;</span>
                                         </button>
                                     ) : (
-                                        <span className="text-[11px] text-slate-500 italic">
+                                        <span className="text-micro text-slate-500 italic">
                                             No qualifying recipe in current filter
                                         </span>
                                     )}
@@ -147,8 +155,8 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                                 {/* In-line Audit Submission Form */}
                                 {activeFormTrackId === track.id && (
                                     <div className="mt-3 pt-3 border-t border-purple-500/30 space-y-2 bg-slate-950/70 p-3 rounded-xl">
-                                        <label className="text-[11px] font-semibold text-slate-300 block">
-                                            Contributor GitHub Handle:
+                                        <label className="text-micro font-semibold text-slate-300 block">
+                                            Contributor GitHub handle:
                                         </label>
                                         <input
                                             type="text"
@@ -158,10 +166,10 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                                             className="w-full px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
                                         />
 
-                                        <label className="text-[11px] font-semibold text-slate-300 block pt-1">
-                                            Qualifying Recipe:
+                                        <label className="text-micro font-semibold text-slate-300 block pt-1">
+                                            Qualifying recipe:
                                         </label>
-                                        <div className="text-xs font-mono text-cyan-300 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                                        <div className="text-xs font-mono text-accent-800 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
                                             {qualifyingEntries[0]?.recipe_name} ({qualifyingEntries[0]?.hardware_summary})
                                         </div>
 
@@ -177,7 +185,7 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                                                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs"
                                             >
                                                 <Send className="w-3 h-3" />
-                                                <span>Submit for Verification</span>
+                                                <span>Submit for verification</span>
                                             </button>
                                         </div>
                                     </div>
@@ -188,7 +196,7 @@ export default function PrizeClaimDrawer({ isOpen, onClose, dataset = [] }) {
                 </div>
 
                 {/* Footer note */}
-                <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 text-center">
+                <div className="pt-4 border-t border-slate-800 text-micro text-slate-500 text-center">
                     Milestones are audited via automated log verification and peer reproduction before Hall of Fame induction.
                 </div>
             </div>

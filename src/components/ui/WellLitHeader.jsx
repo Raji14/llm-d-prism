@@ -15,55 +15,42 @@
 import React from 'react';
 import { MessageCircle } from 'lucide-react';
 import { PageHeader, ShareLinkButton } from './PageHeader';
-import { Badge } from './Badge';
 
-// The canonical header for well-lit path dashboards (see skills/style.md):
-// fixed at the top, llm-d logo + Prism wordmark, page title, "Guided path"
-// badge, Contact us link, Share link. Pair with pt-16 on the page root so
-// content clears the fixed bar. Do not hand-roll this per dashboard.
+// Canonical editorial hero header for well-lit path and leaderboard pages.
 export function WellLitHeader({
     pageTitle,
-    badgeLabel = 'Guided path',
+    subtitle,
+    kicker,
+    badgeLabel = null,
     contactHref = 'https://llm-d.ai/community',
     getShareUrl,
     onNavigateBack,
-    onToggleMobileNav,
     extraActions,
     isPrototype = false,
 }) {
+    const showBadge = Boolean(badgeLabel || isPrototype);
     return (
         <PageHeader
-            className="fixed top-0 left-0 right-0 z-[49] h-16 px-6 border-slate-900/65 bg-slate-950/20 backdrop-blur-md"
             onNavigateBack={onNavigateBack}
-            onToggleMobileNav={onToggleMobileNav}
-            title={
-                <span className="flex items-center gap-4 min-w-0">
-                    <span className="flex items-center gap-2.5 border-r border-slate-800 pr-4 shrink-0">
-                        <img
-                            src="https://llm-d.ai/img/llm-d-logotype-and-icon.png"
-                            alt="llm-d Logo"
-                            className="h-6 object-contain"
-                        />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none hidden sm:inline">
-                            Prism
-                        </span>
-                    </span>
-                    <span className="text-sm font-semibold text-slate-200 tracking-wide select-none truncate">
-                        {pageTitle}
-                    </span>
-                </span>
-            }
+            kicker={kicker}
+            title={pageTitle}
+            subtitle={subtitle}
             badge={
-                <div className="flex items-center gap-2">
-                    <Badge tone="brand" size="sm" className="hidden sm:inline-flex font-mono">
-                        {badgeLabel}
-                    </Badge>
-                    {isPrototype && (
-                        <Badge tone="warning" size="sm" className="hidden sm:inline-flex font-mono">
-                            Prototype
-                        </Badge>
-                    )}
-                </div>
+                showBadge ? (
+                    <div className="flex items-center gap-2">
+                        {badgeLabel && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-micro font-medium bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/20">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                {badgeLabel}
+                            </span>
+                        )}
+                        {isPrototype && (
+                            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-micro font-medium bg-amber-500/10 text-amber-700 ring-1 ring-inset ring-amber-500/25">
+                                Preview
+                            </span>
+                        )}
+                    </div>
+                ) : null
             }
             actions={
                 <>
@@ -72,10 +59,10 @@ export function WellLitHeader({
                         target="_blank"
                         rel="noreferrer"
                         title="Contact us"
-                        className="px-3.5 py-1.5 text-xs font-semibold rounded-xl text-slate-300 bg-slate-900/40 hover:bg-slate-900/80 transition-all flex items-center border border-slate-800 hover:border-slate-700 cursor-pointer"
+                        className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-zinc-300 bg-white hover:bg-zinc-50 hover:border-zinc-400 text-xs font-medium text-zinc-800 transition-colors"
                     >
-                        <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
-                        <span className="hidden sm:inline">Contact us</span>
+                        <MessageCircle className="w-3.5 h-3.5 text-zinc-600" />
+                        <span className="hidden sm:inline">Discuss</span>
                     </a>
                     <ShareLinkButton getUrl={getShareUrl} />
                     {extraActions}

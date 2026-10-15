@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import {
     ChartContainer, ChartTooltip, ChartTooltipRow, ChartXAxis, ChartYAxis,
-    CHART_SERIES, EmptyState, ToggleGroup, Button, Badge, Modal,
-    SectionLabel, FactCell, Panel, gridProps,
+    CHART_SERIES, CHART_STATUS, EmptyState, ToggleGroup, Button, Badge, Modal,
+    SectionLabel, FactCell, Panel, getChartTheme, gridProps,
 } from '../ui';
 import { cn } from '../../utils/cn';
 import { getEffectiveTp, getBucket, getRatioType, extractAcceleratorCount } from '../../utils/dashboardHelpers';
@@ -214,19 +214,19 @@ const BarTooltip = ({ active, payload, metric, activeStats, baselineSet }) => {
                     <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-slate-100 text-sm truncate">{meta.shortModel}</span>
                         {d.isBaseline ? (
-                            <span className="bg-cyan-500/20 border border-cyan-500/40 text-cyan-400 text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0">
+                            <span className="bg-accent-600/20 border border-accent-600/40 text-accent-700 text-tiny font-bold px-1.5 py-0.5 rounded shrink-0">
                                 📌 BASELINE
                             </span>
                         ) : (
-                            <span className="text-slate-400 text-[10px] font-mono shrink-0">
+                            <span className="text-slate-400 text-tiny font-mono shrink-0">
                                 {meta.precision}
                             </span>
                         )}
                     </div>
                     {/* System specs in tooltip */}
-                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-300 pt-1 font-sans">
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-micro text-slate-300 pt-1 font-sans">
                         <div className="flex items-center gap-1.5 truncate">
-                            <HardDrive size={11} className="text-cyan-400 shrink-0" />
+                            <HardDrive size={11} className="text-accent-700 shrink-0" />
                             <span className="truncate text-slate-300" title={meta.hardware}>
                                 {meta.hwShort}
                             </span>
@@ -237,12 +237,12 @@ const BarTooltip = ({ active, payload, metric, activeStats, baselineSet }) => {
                                 {meta.loadShort}
                             </span>
                         </div>
-                        <div className="flex items-center gap-1.5 truncate text-[10px] text-slate-400">
+                        <div className="flex items-center gap-1.5 truncate text-tiny text-slate-400">
                             <Cpu size={10} className="text-purple-400 shrink-0" />
                             <span className="truncate">{meta.modelServer}</span>
                         </div>
                         {meta.pdRatio && meta.pdRatio !== 'Aggregated' && (
-                            <div className="flex items-center gap-1.5 truncate text-[10px] text-slate-400">
+                            <div className="flex items-center gap-1.5 truncate text-tiny text-slate-400">
                                 <Layers size={10} className="text-amber-400 shrink-0" />
                                 <span className="truncate">P/D: {meta.pdRatio}</span>
                             </div>
@@ -252,7 +252,7 @@ const BarTooltip = ({ active, payload, metric, activeStats, baselineSet }) => {
             }
         >
             <div className="pt-2 flex flex-col gap-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <div className="label-caps text-slate-400">
                     Measured Performance ({metric.label})
                 </div>
                 {activeStats.map(s => {
@@ -270,7 +270,7 @@ const BarTooltip = ({ active, payload, metric, activeStats, baselineSet }) => {
                                     <span className="font-mono font-bold text-slate-100">
                                         {formatVal(raw, metric.dec)}
                                         {metric.unit && (
-                                            <span className="text-theme-muted text-[10px] ml-1 font-normal">{metric.unit}</span>
+                                            <span className="text-theme-muted text-tiny ml-1 font-normal">{metric.unit}</span>
                                         )}
                                     </span>
                                     {baselineSet && diff !== null && diff !== undefined && (
@@ -290,7 +290,7 @@ const BarTooltip = ({ active, payload, metric, activeStats, baselineSet }) => {
                 })}
             </div>
             {!baselineSet && (
-                <div className="text-[10px] text-slate-400 pt-2 border-t border-slate-700/50 mt-2 flex items-center gap-1">
+                <div className="text-tiny text-slate-400 pt-2 border-t border-slate-700/50 mt-2 flex items-center gap-1">
                     <span>💡 Select 📌 on a run to enable relative %diff comparison</span>
                 </div>
             )}
@@ -308,7 +308,7 @@ const CustomXAxisTick = (props) => {
     if (!entry) {
         return (
             <g transform={`translate(${x},${y})`}>
-                <text x={0} y={0} dy={16} textAnchor="end" transform="rotate(-25)" className="fill-slate-400 text-[10px] font-mono">
+                <text x={0} y={0} dy={16} textAnchor="end" transform="rotate(-25)" className="fill-slate-400 text-tiny font-mono">
                     {String(payload.value)}
                 </text>
             </g>
@@ -327,9 +327,9 @@ const CustomXAxisTick = (props) => {
                 dy={16}
                 textAnchor="end"
                 transform="rotate(-25)"
-                className="fill-slate-100 font-bold text-[11px]"
+                className="fill-slate-100 font-bold text-micro"
             >
-                {isBaseline && <tspan className="fill-cyan-400 font-bold">📌 </tspan>}
+                {isBaseline && <tspan className="fill-accent-700 font-bold">📌 </tspan>}
                 {meta.shortModel}
             </text>
 
@@ -340,7 +340,7 @@ const CustomXAxisTick = (props) => {
                 dy={30}
                 textAnchor="end"
                 transform="rotate(-25)"
-                className="fill-cyan-400 font-medium text-[10px]"
+                className="fill-accent-700 font-medium text-tiny"
             >
                 {meta.hwShort}
             </text>
@@ -352,7 +352,7 @@ const CustomXAxisTick = (props) => {
                 dy={44}
                 textAnchor="end"
                 transform="rotate(-25)"
-                className="fill-slate-400 text-[9px]"
+                className="fill-slate-400 text-tiny"
             >
                 {meta.loadShort}
             </text>
@@ -514,9 +514,11 @@ export const RunComparisonChart = ({
     const hasPlotData = plotData.length >= 2;
     const showRichLabels = activeStats.length === 1;
 
-    const POS_COLOR = '#34d399';
-    const NEG_COLOR = '#f87171';
-    const ABS_COLOR = '#f8fafc';
+    const chartTheme = getChartTheme();
+    const POS_COLOR = CHART_STATUS.good;
+    const NEG_COLOR = CHART_STATUS.critical;
+    const ABS_COLOR = chartTheme.label;
+    const NEUTRAL_COLOR = chartTheme.muted;
 
     // LabelList content factory
     const makeLabelRenderer = (statId) => (props) => {
@@ -537,7 +539,7 @@ export const RunComparisonChart = ({
             const cy = isAbove ? y - 8 : y + 16;
             if (entry.isBaseline || diff === null) return null;
             const sign = diff > 0 ? '+' : '';
-            const fill = imp === null ? '#cbd5e1' : imp ? POS_COLOR : NEG_COLOR;
+            const fill = imp === null ? NEUTRAL_COLOR : imp ? POS_COLOR : NEG_COLOR;
             return (
                 <text x={cx} y={cy} textAnchor="middle" fontSize={showRichLabels ? 13 : 10}
                       fontWeight={800} fill={fill}>
@@ -556,7 +558,7 @@ export const RunComparisonChart = ({
                 <g>
                     {canDiff && !entry.isBaseline && diff !== null && (
                         <text x={cx} y={TOP_Y} textAnchor="middle" fontSize={12} fontWeight={800}
-                              fill={imp === null ? '#cbd5e1' : imp ? POS_COLOR : NEG_COLOR}>
+                              fill={imp === null ? NEUTRAL_COLOR : imp ? POS_COLOR : NEG_COLOR}>
                             {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
                         </text>
                     )}
@@ -574,7 +576,7 @@ export const RunComparisonChart = ({
             <g>
                 {showDiffLabel && (
                     <text x={cx} y={y - 16} textAnchor="middle" fontSize={10} fontWeight={800}
-                          fill={imp === null ? '#cbd5e1' : imp ? POS_COLOR : NEG_COLOR}>
+                          fill={imp === null ? NEUTRAL_COLOR : imp ? POS_COLOR : NEG_COLOR}>
                         {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
                     </text>
                 )}
@@ -741,7 +743,7 @@ ${perfRows}
                         className="flex items-center gap-1 text-slate-200"
                         title="Copy formatted Markdown comparison report with Model, Hardware, Load, and Metrics"
                     >
-                        <Copy size={12} className="text-cyan-400" />
+                        <Copy size={12} className="text-accent-700" />
                         <span>Copy Markdown</span>
                     </Button>
 
@@ -783,25 +785,25 @@ ${perfRows}
                         <div className="absolute -top-12 -left-12 w-32 h-32 bg-sky-500/5 rounded-full blur-2xl pointer-events-none" />
                         
                         <div className="mb-2.5 flex justify-between items-center flex-wrap gap-2">
-                            <SectionLabel tone="sky" className="text-[11px]">
+                            <SectionLabel tone="sky" className="text-micro">
                                 Benchmark scenario {activeScenarioRow?.isBaseline ? '· 📌 Baseline Run' : ''}
                             </SectionLabel>
                             
                             {/* Interactive Run Selector Chips */}
                             <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mr-1">Inspect Specs:</span>
+                                <span className="label-caps text-slate-400 mr-1">Inspect Specs:</span>
                                 {plotData.map((row) => (
                                     <button
                                         key={row.key}
                                         onClick={() => setSelectedScenarioKey(row.key)}
                                         className={cn(
-                                            'text-[10px] font-mono px-2 py-0.5 rounded-md transition-all flex items-center gap-1 border',
+                                            'text-tiny font-mono px-2 py-0.5 rounded-md transition-all flex items-center gap-1 border',
                                             (activeScenarioRow?.key === row.key)
                                                 ? 'bg-sky-500/20 border-sky-500/50 text-sky-300 font-bold shadow-sm'
                                                 : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200'
                                         )}
                                     >
-                                        {row.isBaseline && <span className="text-cyan-400 font-bold">📌</span>}
+                                        {row.isBaseline && <span className="text-accent-700 font-bold">📌</span>}
                                         <span className="truncate max-w-[120px]">{row.meta.shortModel}</span>
                                     </button>
                                 ))}
@@ -811,8 +813,8 @@ ${perfRows}
                         <div className="grid grid-cols-12 gap-2">
                             {/* Column 1: Infra layer */}
                             <div className="flex flex-col gap-2 col-span-4 border-r border-slate-800/60 pr-2">
-                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate flex items-center gap-1">
-                                    <HardDrive size={11} className="text-cyan-400" /> Infra layer
+                                <div className="label-caps text-slate-400 truncate flex items-center gap-1">
+                                    <HardDrive size={11} className="text-accent-700" /> Infra layer
                                 </div>
                                 <div className="flex flex-col gap-1.5 text-xs">
                                     <FactCell label="Accelerator" value={activeScenarioMeta.hardware} />
@@ -823,7 +825,7 @@ ${perfRows}
 
                             {/* Column 2: Model serving */}
                             <div className="flex flex-col gap-2 col-span-4 border-r border-slate-800/60 pr-2">
-                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate flex items-center gap-1">
+                                <div className="label-caps text-slate-400 truncate flex items-center gap-1">
                                     <Cpu size={11} className="text-purple-400" /> Model serving
                                 </div>
                                 <div className="flex flex-col gap-1.5 text-xs">
@@ -835,7 +837,7 @@ ${perfRows}
 
                             {/* Column 3: Workload & Load */}
                             <div className="flex flex-col gap-2 col-span-4">
-                                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate flex items-center gap-1">
+                                <div className="label-caps text-slate-400 truncate flex items-center gap-1">
                                     <Activity size={11} className="text-emerald-400" /> Workload & Load
                                 </div>
                                 <div className="flex flex-col gap-1.5 text-xs">
@@ -849,19 +851,19 @@ ${perfRows}
 
                     {/* CARD 2: Primary comparison outcomes (col-span-4) */}
                     <Panel padding="sm" className="lg:col-span-4 flex flex-col justify-between relative overflow-hidden group hover:border-emerald-500/30 transition-all bg-slate-900/60 border border-slate-800/80">
-                        <SectionLabel tone="emerald" className="text-[11px]">Primary comparison outcomes</SectionLabel>
+                        <SectionLabel tone="emerald" className="text-micro">Primary comparison outcomes</SectionLabel>
                         <div className="grid grid-cols-1 gap-1.5 font-sans text-xs mt-1.5">
                             <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg px-2.5 py-2 flex justify-between items-center transition-all hover:border-emerald-500/40">
                                 <div className="min-w-0 pr-2">
-                                    <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider truncate">Output Throughput</h3>
-                                    <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(tokens/sec · higher is better)</div>
+                                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate">Output Throughput</h3>
+                                    <div className="text-tiny text-slate-500 font-normal uppercase truncate">(tokens/sec · higher is better)</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="text-sm font-black font-mono text-emerald-400">
-                                        {formatVal(activeScenarioRow?.['output_tput_mean'], 0)} <span className="text-[10px] font-normal text-slate-400">tok/s</span>
+                                        {formatVal(activeScenarioRow?.['output_tput_mean'], 0)} <span className="text-tiny font-normal text-slate-400">tok/s</span>
                                     </div>
                                     {canDiff && !activeScenarioRow?.isBaseline && activeScenarioRow?.['output_tput_diff_mean'] != null && (
-                                        <div className={cn('text-[10px] font-bold', activeScenarioRow?.['output_tput_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
+                                        <div className={cn('text-tiny font-bold', activeScenarioRow?.['output_tput_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
                                             {activeScenarioRow['output_tput_diff_mean'] > 0 ? '+' : ''}{activeScenarioRow['output_tput_diff_mean'].toFixed(1)}% vs bl
                                         </div>
                                     )}
@@ -870,15 +872,15 @@ ${perfRows}
 
                             <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg px-2.5 py-2 flex justify-between items-center transition-all hover:border-sky-500/40">
                                 <div className="min-w-0 pr-2">
-                                    <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider truncate">TTFT (Latency)</h3>
-                                    <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(time to first token · mean)</div>
+                                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate">TTFT (Latency)</h3>
+                                    <div className="text-tiny text-slate-500 font-normal uppercase truncate">(time to first token · mean)</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="text-sm font-black font-mono text-sky-400">
-                                        {formatVal(activeScenarioRow?.['ttft_mean'], 1)} <span className="text-[10px] font-normal text-slate-400">ms</span>
+                                        {formatVal(activeScenarioRow?.['ttft_mean'], 1)} <span className="text-tiny font-normal text-slate-400">ms</span>
                                     </div>
                                     {canDiff && !activeScenarioRow?.isBaseline && activeScenarioRow?.['ttft_diff_mean'] != null && (
-                                        <div className={cn('text-[10px] font-bold', activeScenarioRow?.['ttft_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
+                                        <div className={cn('text-tiny font-bold', activeScenarioRow?.['ttft_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
                                             {activeScenarioRow['ttft_diff_mean'] > 0 ? '+' : ''}{activeScenarioRow['ttft_diff_mean'].toFixed(1)}% vs bl
                                         </div>
                                     )}
@@ -887,15 +889,15 @@ ${perfRows}
 
                             <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg px-2.5 py-2 flex justify-between items-center transition-all hover:border-purple-500/40">
                                 <div className="min-w-0 pr-2">
-                                    <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider truncate">TPOT (Generation)</h3>
-                                    <div className="text-[10px] text-slate-500 font-normal uppercase truncate">(time per output token)</div>
+                                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate">TPOT (Generation)</h3>
+                                    <div className="text-tiny text-slate-500 font-normal uppercase truncate">(time per output token)</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="text-sm font-black font-mono text-purple-400">
-                                        {formatVal(activeScenarioRow?.['tpot_mean'], 2)} <span className="text-[10px] font-normal text-slate-400">ms</span>
+                                        {formatVal(activeScenarioRow?.['tpot_mean'], 2)} <span className="text-tiny font-normal text-slate-400">ms</span>
                                     </div>
                                     {canDiff && !activeScenarioRow?.isBaseline && activeScenarioRow?.['tpot_diff_mean'] != null && (
-                                        <div className={cn('text-[10px] font-bold', activeScenarioRow?.['tpot_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
+                                        <div className={cn('text-tiny font-bold', activeScenarioRow?.['tpot_imp_mean'] ? 'text-emerald-400' : 'text-rose-400')}>
                                             {activeScenarioRow['tpot_diff_mean'] > 0 ? '+' : ''}{activeScenarioRow['tpot_diff_mean'].toFixed(1)}% vs bl
                                         </div>
                                     )}
@@ -910,7 +912,7 @@ ${perfRows}
                 <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 text-xs flex items-start gap-2.5 leading-relaxed font-sans">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     <div>
-                        <span className="font-bold">Visual Density Warning:</span> Comparing {plotData.length} runs. Bar charts are optimized for comparing fewer than 20 runs. Use the table below or the <span className="font-semibold text-cyan-400">Scatter Trade-offs</span> view for large sweeps.
+                        <span className="font-bold">Visual Density Warning:</span> Comparing {plotData.length} runs. Bar charts are optimized for comparing fewer than 20 runs. Use the table below or the <span className="font-semibold text-accent-700">Scatter Trade-offs</span> view for large sweeps.
                     </div>
                 </div>
             )}
@@ -919,7 +921,7 @@ ${perfRows}
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4 bg-slate-900/40 p-2.5 rounded-xl border border-slate-800/80">
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Metric</span>
+                        <span className="label-caps text-slate-400">Metric</span>
                         <ToggleGroup
                             options={METRICS.map(opt => ({ value: opt.id, label: opt.label }))}
                             value={metricId}
@@ -930,7 +932,7 @@ ${perfRows}
 
                     {metric.stats.length > 1 && (
                         <div className="flex items-center gap-1 bg-slate-800/60 p-1.5 rounded-lg border border-slate-700/60">
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mr-1">Stat</span>
+                            <span className="label-caps text-slate-400 mr-1">Stat</span>
                             <div className="h-4 w-px bg-slate-700 mr-1" />
                             {metric.stats.map(opt => {
                                 const isOn = statIds.has(opt.id);
@@ -957,7 +959,7 @@ ${perfRows}
                     )}
 
                     <div className="flex items-center gap-1 bg-slate-800/60 p-1.5 rounded-lg border border-slate-700/60">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mr-1">View</span>
+                        <span className="label-caps text-slate-400 mr-1">View</span>
                         <div className="h-4 w-px bg-slate-700 mr-1" />
                         <button
                             onClick={() => setViewOverride('absolute')}
@@ -974,7 +976,7 @@ ${perfRows}
                                 !canDiff
                                     ? 'text-slate-600 cursor-not-allowed opacity-50'
                                     : view === 'diff'
-                                        ? 'bg-cyan-600 text-white shadow-sm'
+                                        ? 'bg-accent-400 text-white shadow-sm'
                                         : inactiveToggleClass
                             )}
                         >
@@ -986,7 +988,7 @@ ${perfRows}
                 <div className="flex items-center gap-2">
                     <button
                         onClick={() => setShowComparisonMatrix(!showComparisonMatrix)}
-                        className="text-xs text-slate-400 hover:text-cyan-400 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-800 transition-colors"
+                        className="text-xs text-slate-400 hover:text-accent-700 flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-800 transition-colors"
                     >
                         <span>{showComparisonMatrix ? 'Hide' : 'Show'} System Specs Table</span>
                         {showComparisonMatrix ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -1030,7 +1032,7 @@ ${perfRows}
                                 {view === 'diff' && (
                                     <ReferenceLine
                                         y={0}
-                                        stroke="#22d3ee"
+                                        stroke={CHART_SERIES[1]}
                                         strokeWidth={1.5}
                                         strokeDasharray="4 4"
                                     />
@@ -1047,7 +1049,7 @@ ${perfRows}
                                             <Cell
                                                 key={i}
                                                 fill={STAT_COLORS[s.id]}
-                                                stroke={entry.isBaseline ? '#67e8f9' : 'none'}
+                                                stroke={entry.isBaseline ? CHART_SERIES[1] : 'none'}
                                                 strokeWidth={entry.isBaseline ? 2 : 0}
                                             />
                                         ))}
@@ -1067,14 +1069,14 @@ ${perfRows}
             </div>
 
             {/* Legend & Summary Subtitle */}
-            <div className="flex items-center justify-between mt-2 px-2 text-[11px] text-slate-400">
+            <div className="flex items-center justify-between mt-2 px-2 text-micro text-slate-400">
                 <div className="flex items-center gap-4">
                     <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-cyan-400 inline-block" />
+                        <span className="w-2.5 h-2.5 rounded-sm bg-accent-700 inline-block" />
                         <span>Line 1: Model</span>
                     </span>
                     <span className="flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-sm bg-cyan-600 inline-block" />
+                        <span className="w-2.5 h-2.5 rounded-sm bg-accent-400 inline-block" />
                         <span>Line 2: Hardware & Parallelism</span>
                     </span>
                     <span className="flex items-center gap-1.5">
@@ -1094,19 +1096,19 @@ ${perfRows}
                 <div className="mt-6 border border-slate-800 rounded-xl overflow-hidden bg-slate-900/50">
                     <div className="px-4 py-3 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <Layers size={14} className="text-cyan-400" />
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                            <Layers size={14} className="text-accent-700" />
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-200">
                                 Detailed Run Specifications & Performance Matrix
                             </h4>
                         </div>
-                        <span className="text-[11px] text-slate-400">
+                        <span className="text-micro text-slate-400">
                             Showing complete Model, Hardware, Load, and Performance metrics
                         </span>
                     </div>
 
                     <div className="overflow-x-auto max-h-96 overflow-y-auto">
                         <table className="w-full text-left text-xs border-collapse font-sans">
-                            <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-[10px] tracking-wider sticky top-0 z-10 border-b border-slate-800">
+                            <thead className="bg-slate-950 text-slate-400 uppercase font-mono text-tiny tracking-wider sticky top-0 z-10 border-b border-slate-800">
                                 <tr>
                                     <th className="px-3 py-2.5 w-10 text-center">Baseline</th>
                                     <th className="px-3 py-2.5">Model & Precision</th>
@@ -1132,7 +1134,7 @@ ${perfRows}
                                             key={row.key}
                                             className={cn(
                                                 'transition-colors hover:bg-slate-800/40',
-                                                isBaseline && 'bg-cyan-950/20 border-l-2 border-cyan-400'
+                                                isBaseline && 'bg-accent-50/20 border-l-2 border-accent-700'
                                             )}
                                         >
                                             {/* Baseline Selector Pin */}
@@ -1147,11 +1149,11 @@ ${perfRows}
                                                     className={cn(
                                                         'p-1 rounded transition-all',
                                                         isBaseline
-                                                            ? 'bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30'
+                                                            ? 'bg-accent-600/20 text-accent-700 hover:bg-accent-600/30'
                                                             : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'
                                                     )}
                                                 >
-                                                    <Pin size={13} className={isBaseline ? 'fill-cyan-400' : ''} />
+                                                    <Pin size={13} className={isBaseline ? 'fill-accent-700' : ''} />
                                                 </button>
                                             </td>
 
@@ -1159,7 +1161,7 @@ ${perfRows}
                                             <td className="px-3 py-2">
                                                 <div className="font-sans font-bold text-slate-100 flex items-center gap-1.5">
                                                     <span>{m.shortModel}</span>
-                                                    <span className="text-[10px] text-purple-400 bg-purple-500/10 px-1 rounded font-mono font-normal">
+                                                    <span className="text-tiny text-purple-400 bg-purple-500/10 px-1 rounded font-mono font-normal">
                                                         {m.precision}
                                                     </span>
                                                 </div>
@@ -1167,10 +1169,10 @@ ${perfRows}
 
                                             {/* Hardware & TP */}
                                             <td className="px-3 py-2">
-                                                <div className="text-cyan-300 flex items-center gap-1 font-sans">
+                                                <div className="text-accent-800 flex items-center gap-1 font-sans">
                                                     <span>{m.hwShort}</span>
                                                     {m.pdRatio && m.pdRatio !== 'Aggregated' && (
-                                                        <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1 rounded">
+                                                        <span className="text-tiny text-amber-400 bg-amber-500/10 px-1 rounded">
                                                             {m.pdRatio}
                                                         </span>
                                                     )}
@@ -1181,7 +1183,7 @@ ${perfRows}
                                             <td className="px-3 py-2 text-slate-300">
                                                 <div className="font-sans">
                                                     <span>{m.islStr} / {m.oslStr}</span>
-                                                    <span className="text-[10px] text-slate-500 block truncate max-w-[120px]" title={m.useCase}>
+                                                    <span className="text-tiny text-slate-500 block truncate max-w-[120px]" title={m.useCase}>
                                                         {m.useCase}
                                                     </span>
                                                 </div>
@@ -1199,28 +1201,28 @@ ${perfRows}
 
                                             {/* Output Tput */}
                                             <td className="px-3 py-2 text-right font-bold text-slate-100">
-                                                {formatVal(row['output_tput_mean'], 0)} <span className="text-[10px] text-slate-500 font-normal">tok/s</span>
+                                                {formatVal(row['output_tput_mean'], 0)} <span className="text-tiny text-slate-500 font-normal">tok/s</span>
                                             </td>
 
                                             {/* TTFT */}
                                             <td className="px-3 py-2 text-right text-slate-200">
-                                                {formatVal(row['ttft_mean'], 1)} <span className="text-slate-500 text-[10px]">/ {formatVal(row['ttft_p99'], 1)} ms</span>
+                                                {formatVal(row['ttft_mean'], 1)} <span className="text-slate-500 text-tiny">/ {formatVal(row['ttft_p99'], 1)} ms</span>
                                             </td>
 
                                             {/* TPOT */}
                                             <td className="px-3 py-2 text-right text-slate-200">
-                                                {formatVal(row['tpot_mean'], 2)} <span className="text-slate-500 text-[10px]">/ {formatVal(row['tpot_p99'], 2)} ms</span>
+                                                {formatVal(row['tpot_mean'], 2)} <span className="text-slate-500 text-tiny">/ {formatVal(row['tpot_p99'], 2)} ms</span>
                                             </td>
 
                                             {/* Diff vs Baseline */}
                                             <td className="px-3 py-2 text-right">
                                                 {isBaseline ? (
-                                                    <span className="text-cyan-400 font-bold text-[10px] bg-cyan-500/10 px-1.5 py-0.5 rounded">
+                                                    <span className="text-accent-700 font-bold text-tiny bg-accent-600/10 px-1.5 py-0.5 rounded">
                                                         BASELINE
                                                     </span>
                                                 ) : diff !== null && diff !== undefined ? (
                                                     <span className={cn(
-                                                        'font-bold px-1.5 py-0.5 rounded text-[11px]',
+                                                        'font-bold px-1.5 py-0.5 rounded text-micro',
                                                         isImp === null
                                                             ? 'text-slate-400 bg-slate-800'
                                                             : isImp

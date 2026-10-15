@@ -157,11 +157,11 @@ const DataInspector = ({ data, qualityMetrics, isOpen, onClose, initialSelection
                       </span>
                       {isProblematic && <AlertTriangle size={12} className="text-amber-400 shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-slate-400 mb-1">
+                    <div className="flex items-center gap-2 text-tiny text-slate-400 mb-1">
                         <Badge tone="neutral" size="xs">{entry.source_info?.type || 'UNK'}</Badge>
                         <span className="truncate max-w-[120px]">{entry.source_info?.origin || 'Unknown'}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[10px]">
+                    <div className="flex items-center justify-between text-tiny">
                         <span className={!entry.metrics || entry.metrics.throughput === 0 ? "text-red-400" : "text-slate-500"}>
                             Tput: {entry.metrics?.throughput?.toFixed(0) ?? 'N/A'}
                         </span>
@@ -208,20 +208,20 @@ const DataInspector = ({ data, qualityMetrics, isOpen, onClose, initialSelection
                 {/* Source Details Card */}
                 <div className="bg-slate-900 rounded-lg border border-slate-700 p-4 grid grid-cols-2 gap-4">
                      <div>
-                        <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Source Origin</span>
+                        <span className="label-caps text-slate-500">Source Origin</span>
                         <div className="text-sm text-slate-300 font-mono mt-1 break-all">
                             {selectedEntry.source_info?.origin || 'Unknown Origin'}
                         </div>
                      </div>
                      <div>
-                        <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">File Identifier / Path</span>
+                        <span className="label-caps text-slate-500">File Identifier / Path</span>
                         <div className="text-sm text-slate-300 font-mono mt-1 break-all">
                             {selectedEntry.source_info?.file_identifier || 'Unknown File'}
                         </div>
                      </div>
                      {selectedEntry.source_info?.raw_url && (
                         <div className="col-span-2 border-t border-slate-800 pt-3 mt-1">
-                            <span className="text-[10px] uppercase text-slate-500 font-bold tracking-wider">Raw URL</span>
+                            <span className="label-caps text-slate-500">Raw URL</span>
                             <a 
                                 href={selectedEntry.source_info.raw_url} 
                                 target="_blank" 
@@ -245,7 +245,7 @@ const DataInspector = ({ data, qualityMetrics, isOpen, onClose, initialSelection
                        Normalized Schema (App State)
                     </div>
                     <div className="p-3 overflow-x-auto flex-1 h-[400px]">
-                        <pre className="text-[10px] font-mono text-green-300 leading-relaxed">
+                        <pre className="text-tiny font-mono text-green-300 leading-relaxed">
                           {JSON.stringify({
                               metadata: selectedEntry.metadata,
                               metrics: selectedEntry.metrics,
@@ -263,7 +263,7 @@ const DataInspector = ({ data, qualityMetrics, isOpen, onClose, initialSelection
                        Raw Source Snapshot
                     </div>
                     <div className="p-3 overflow-x-auto relative group flex-1 h-[400px]">
-                        <pre className="text-[10px] font-mono text-blue-300 leading-relaxed whitespace-pre-wrap break-all">
+                        <pre className="text-tiny font-mono text-blue-300 leading-relaxed whitespace-pre-wrap break-all">
                           {selectedEntry?._diagnostics?.raw_snapshot 
                             ? JSON.stringify(selectedEntry._diagnostics.raw_snapshot, null, 2)
                             : "// No raw snapshot available in entry._diagnostics"
@@ -296,13 +296,13 @@ const DataInspector = ({ data, qualityMetrics, isOpen, onClose, initialSelection
 
                                     return (
                                         <div key={key} className="bg-indigo-900/40 border border-indigo-500/20 p-3 rounded flex flex-col">
-                                            <span className="text-[10px] uppercase text-indigo-400 font-bold tracking-wider mb-1">{formatLabel(key)}</span>
+                                            <span className="label-caps text-indigo-400 mb-1">{formatLabel(key)}</span>
                                             <span className="text-xl font-bold text-indigo-100 font-mono">{displayValue || 'N/A'}</span>
                                         </div>
                                     );
                                 })}
                             </div>
-                            <div className="mt-2 text-[10px] text-indigo-500 italic">
+                            <div className="mt-2 text-tiny text-indigo-500 italic">
                                 Normalized model ID: {normModel}
                             </div>
                         </div>

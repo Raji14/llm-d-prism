@@ -161,8 +161,9 @@ export function calculateDiscountedRates(discountPct = 0) {
 }
 
 /**
- * Normalizes an arbitrary hardware string (e.g. '8x H100', 'tpu7x', 'L4', 'a2-ultragpu')
- * to standard accelerator catalog ID.
+ * Normalizes an arbitrary hardware string (e.g. '8x H100', 'L4', 'a2-ultragpu')
+ * to standard accelerator catalog ID. Accelerators the catalog doesn't price
+ * yet, such as TPU7x (Ironwood), L40S, H200 or B200, return 'other'.
  */
 export function normalizeAcceleratorId(hardwareStr) {
     if (!hardwareStr || typeof hardwareStr !== 'string') return 'other';
@@ -171,19 +172,22 @@ export function normalizeAcceleratorId(hardwareStr) {
     if (s.includes('h100') || s.includes('a3-high') || s.includes('a3-mega')) {
         return 'nvidia-h100-80gb';
     }
-    if (s.includes('a100-80') || s.includes('a100 80') || s.includes('a2-ultra') || s.includes('a2-80')) {
+    if (s.includes('a100-80') || s.includes('a100 80') || s.includes('a2-ultra') || s.includes('a2-80') || (s.includes('a100') && /80\s*gb/.test(s))) {
         return 'nvidia-a100-80gb';
     }
     if (s.includes('a100') || s.includes('a2-high')) {
         return 'nvidia-a100-40gb';
     }
-    if (s.includes('l4') || s.includes('g2-')) {
+    // L4 as its own token ('L4', 'nvidia-l4', '8xL4', 'L4x8'): an L40 or L40S
+    // is a different GPU.
+    if (/(^|[^a-z0-9]|\dx)l4(?!\d)/.test(s) || s.includes('g2-')) {
         return 'nvidia-l4';
     }
     if (s.includes('v100')) {
         return 'nvidia-v100';
     }
-    if (s.includes('v6e') || s.includes('trillium') || s.includes('tpu7x') || s.includes('tpu6')) {
+    // Trillium only. TPU7x (Ironwood) is a newer generation, not priced here yet.
+    if (s.includes('v6e') || s.includes('trillium') || s.includes('tpu6')) {
         return 'tpu-v6e-trillium';
     }
     if (s.includes('v5p')) {
@@ -289,6 +293,30 @@ export function calculateTokensPerDollar(hourlyCostUsd, tokensPerSec) {
     return Math.round(tokensPerHour / safeRate);
 }
 
+function resolveStandardVmType(accId, count, defaultVmType) {
+    if (accId === 'nvidia-l4') {
+        if (count === 1) return 'g2-standard-12';
+        if (count === 2) return 'g2-standard-24';
+        if (count === 4) return 'g2-standard-48';
+        return 'g2-standard-96';
+    }
+    if (accId === 'tpu-v6e-trillium') {
+        if (count === 1) return 'ct6e-standard-1t';
+        if (count === 4) return 'ct6e-standard-4t';
+        if (count === 8) return 'ct6e-standard-8t';
+        return `${count}x tpu-v6e`;
+    }
+    if (accId === 'tpu-v5e') {
+        if (count === 4) return 'ct5lp-hightpu-4t';
+        if (count === 8) return 'ct5lp-hightpu-8t';
+        return defaultVmType;
+    }
+    if (accId === 'nvidia-h100-80gb' && count > 8 && count % 8 === 0) {
+        return `${count / 8}x a3-highgpu-8g`;
+    }
+    return defaultVmType;
+}
+
 /**
  * Full Cost Breakdown object for a benchmark recipe.
  */
@@ -311,6 +339,28 @@ export function evaluateRecipeCost(hardwareStr, acceleratorCount, tokensPerSec, 
         tokensPerDollar,
         isCustomPricing: isCustom,
         vendor: catalogItem.vendor,
-        standardVmType: catalogItem.standardVmType
+        standardVmType: resolveStandardVmType(accId, count, catalogItem.standardVmType)
     };
 }
+
+/**
+ * Returns a human-friendly label for currently active custom rates or discount preset.
+ */
+export function getActivePricingLabel(customRates = {}) {
+    if (!customRates || Object.keys(customRates).length === 0) {
+        return null;
+    }
+
+    for (const preset of Object.values(DISCOUNT_PRESETS)) {
+        if (preset.discountPct > 0) {
+            const presetRates = calculateDiscountedRates(preset.discountPct);
+            const matches = Object.keys(DEFAULT_PRICING_CATALOG).every(id => {
+                if (id === 'other') return true;
+                return customRates[id] !== undefined && Math.abs(customRates[id] - presetRates[id]) < 0.02;
+            });
+            if (matches) return preset.label;
+        }
+    }
+    return 'Custom Pricing Active';
+}
+

@@ -14,6 +14,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
+import { cn } from '../../utils/cn';
 
 export const MultiSelectDropdown = ({ label, options, selected = new Set(), onChange, counts, formatLabel, labelSuffix }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -36,7 +37,7 @@ export const MultiSelectDropdown = ({ label, options, selected = new Set(), onCh
         <div className="relative" ref={containerRef}>
             <button 
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full bg-[#0b0f17] border border-slate-800/40 text-slate-300 text-xs rounded-xl px-3 py-2 flex items-center justify-between hover:border-slate-700/45 hover:bg-[#101622] transition-all duration-200"
+                className="w-full bg-slate-950 border border-slate-800/40 text-slate-300 text-xs rounded-xl px-3 py-2 flex items-center justify-between hover:border-slate-700/45 hover:bg-slate-900 transition-all duration-200"
                 title={`${label}: ${selectedCount > 0 ? [...safeSelected].join(', ') : 'All'}`}
             >
                 <div className="flex items-center gap-2 truncate pr-2">
@@ -46,20 +47,20 @@ export const MultiSelectDropdown = ({ label, options, selected = new Set(), onCh
                         {selectedCount === 0 ? 'All' : `${selectedCount} selected`}
                     </span>
                 </div>
-                <ChevronDown size={12} className={`text-slate-500 transition-transform duration-350 ${isOpen ? 'rotate-180 text-cyan-400' : ''}`} />
+                <ChevronDown size={12} className={cn('text-slate-500 transition-transform duration-350', isOpen ? 'rotate-180 text-accent-700' : '')} />
             </button>
 
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-64 max-h-80 overflow-y-auto bg-[#0b0f17]/95 border border-slate-800/40 rounded-xl shadow-2xl z-[100] p-2.5 space-y-1.5 backdrop-blur-md">
+                <div className="absolute top-full left-0 mt-2 w-64 max-h-80 overflow-y-auto bg-slate-950/95 border border-slate-800/40 rounded-xl shadow-2xl z-[100] p-2.5 space-y-1.5 backdrop-blur-md">
                     <div 
-                        className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-slate-800/80 transition-all ${selectedCount === 0 ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-300 hover:text-slate-200'}`}
+                        className={cn('flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer hover:bg-slate-800/80 transition-all', selectedCount === 0 ? 'bg-accent-600/10 text-accent-700 font-semibold' : 'text-slate-300 hover:text-slate-200')}
                         onClick={() => { onChange(''); setIsOpen(false); }}
                     >
-                         <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${selectedCount === 0 ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800/40 bg-slate-950'}`}>
+                         <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', selectedCount === 0 ? 'bg-accent-600 border-accent-600 text-white' : 'border-slate-800/40 bg-slate-950')}>
                             {selectedCount === 0 && <Check size={10} className="text-white" strokeWidth={3} />}
                          </div>
                          <span className="text-xs">All {label}</span>
-                         <span className="text-[10px] text-slate-500 ml-auto font-mono">{options.length}</span>
+                         <span className="text-tiny text-slate-500 ml-auto font-mono">{options.length}</span>
                     </div>
                     
                     <div className="h-px bg-slate-800/30 my-1.5 mx-1" />
@@ -70,17 +71,17 @@ export const MultiSelectDropdown = ({ label, options, selected = new Set(), onCh
                         return (
                             <div 
                                 key={opt} 
-                                className={`flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all ${count === 0 ? 'opacity-45 hover:bg-slate-800/30' : 'hover:bg-slate-800/80'} ${isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-300 hover:text-slate-200'}`}
+                                className={cn('flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all', count === 0 ? 'opacity-45 hover:bg-slate-800/30' : 'hover:bg-slate-800/80', isSelected ? 'bg-accent-600/10 text-accent-700 font-semibold' : 'text-slate-300 hover:text-slate-200')}
                                 onClick={() => onChange(opt)}
                                 title={formatLabel ? formatLabel(opt) : opt}
                             >
-                                 <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800/40 bg-slate-950'}`}>
+                                 <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', isSelected ? 'bg-accent-600 border-accent-600 text-white' : 'border-slate-800/40 bg-slate-950')}>
                                     {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
                                  </div>
-                                 <span className={`text-xs truncate flex-1 ${isSelected ? 'text-cyan-400 font-semibold' : 'text-slate-300'}`}>
+                                 <span className={cn('text-xs truncate flex-1', isSelected ? 'text-accent-700 font-semibold' : 'text-slate-300')}>
                                      {formatLabel ? formatLabel(opt) : opt}
                                  </span>
-                                 <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono ml-auto">{count}</span>
+                                 <span className="text-tiny text-slate-500 dark:text-slate-400 font-mono ml-auto">{count}</span>
                             </div>
                         );
                     })}

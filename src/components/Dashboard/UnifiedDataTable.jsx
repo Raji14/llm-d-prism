@@ -79,7 +79,7 @@ export const UnifiedDataTable = (props) => {
               <Panel padding="none" className="bg-slate-50 dark:bg-slate-900/50 rounded-lg shadow-none overflow-hidden text-xs">
                    <div className="max-h-[500px] overflow-y-auto">
                        <table className="w-full text-left text-slate-600 dark:text-slate-300">
-                           <thead className="bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-100 uppercase text-[10px] font-medium sticky top-0 z-10 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-700/50">
+                           <thead className="bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-100 uppercase text-tiny font-semibold sticky top-0 z-10 backdrop-blur-md shadow-sm border-b border-slate-200 dark:border-slate-700/50">
                                <tr>
                                    <th className="px-3 py-3 w-10 text-center">
                                        <span className="sr-only">Select</span>
@@ -170,7 +170,7 @@ export const UnifiedDataTable = (props) => {
                                            className={cn(
                                                'transition-colors hover:bg-slate-100 dark:hover:bg-slate-700/30 cursor-pointer border-b border-slate-100 dark:border-slate-800/50',
                                                isSelected && 'bg-blue-50 dark:bg-blue-900/10',
-                                               stat.benchmarkKey === baselineBenchmarkKey && 'ring-1 ring-inset ring-cyan-400/40'
+                                               stat.benchmarkKey === baselineBenchmarkKey && 'ring-1 ring-inset ring-accent-700/40'
                                            )}
                                            onClick={(e) => {
                                                // Prevent toggling if clicking specific action buttons if any
@@ -198,8 +198,8 @@ export const UnifiedDataTable = (props) => {
                                                             className={cn(
                                                                 'p-0.5 rounded transition-colors whitespace-nowrap',
                                                                 isBaseline
-                                                                    ? 'text-cyan-500 dark:text-cyan-400'
-                                                                    : 'text-slate-300 dark:text-slate-600 hover:text-cyan-500 dark:hover:text-cyan-400'
+                                                                    ? 'text-accent-600 dark:text-accent-700'
+                                                                    : 'text-slate-300 dark:text-slate-600 hover:text-accent-600 dark:hover:text-accent-700'
                                                             )}
                                                         >
                                                             <Pin size={11} className={cn('transition-transform duration-300', isBaseline ? 'rotate-[45deg]' : '-rotate-45 opacity-60')} fill={isBaseline ? 'currentColor' : 'none'} />
@@ -295,7 +295,7 @@ export const UnifiedDataTable = (props) => {
                                                 {stat.maxTput.toFixed(0)}
                                            </td>
                                            <td className="px-2 py-2 text-right font-mono text-slate-800 dark:text-slate-200">
-                                                {stat.minLat.toFixed(0)} <span className="text-[10px] text-slate-500">ms</span>
+                                                {stat.minLat.toFixed(0)} <span className="text-tiny text-slate-500">ms</span>
                                            </td>
                                             <td className="px-2 py-2 text-center">
                                                 <div className="flex items-center justify-center gap-1.5">
@@ -333,7 +333,7 @@ export const UnifiedDataTable = (props) => {
                                                               <div className="mb-2 p-2 bg-slate-100 dark:bg-slate-800/40 rounded border border-slate-200 dark:border-slate-700/80 font-sans flex flex-wrap gap-x-6 gap-y-2.5 text-xs text-slate-600 dark:text-slate-400">
                                                                   <div className="flex items-center gap-1.5">
                                                                       <span className="font-semibold text-slate-700 dark:text-slate-300">Run UUID:</span>
-                                                                      <span className="font-mono bg-slate-200 dark:bg-slate-800/50 px-1.5 py-0.5 rounded text-[11px] select-all">{benchmarkData[0]?.run_id}</span>
+                                                                      <span className="font-mono bg-slate-200 dark:bg-slate-800/50 px-1.5 py-0.5 rounded text-micro select-all">{benchmarkData[0]?.run_id}</span>
                                                                   </div>
                                                                   <div className="flex items-center gap-1.5">
                                                                       <span className="font-semibold text-slate-700 dark:text-slate-300">Submitted:</span>
@@ -362,7 +362,7 @@ export const UnifiedDataTable = (props) => {
                                                                       {(() => {
                                                                           const details = getSubmissionStatusDetails(benchmarkData[0]?.source_info?.submission_state);
                                                                           return (
-                                                                              <span className={cn('px-1.5 py-0.5 rounded border text-[11px] font-bold whitespace-nowrap', details.bg, details.text, details.border)}>
+                                                                              <span className={cn('px-1.5 py-0.5 rounded border text-micro font-bold whitespace-nowrap', details.bg, details.text, details.border)}>
                                                                                   {details.label}
                                                                               </span>
                                                                           );
@@ -376,7 +376,7 @@ export const UnifiedDataTable = (props) => {
                                                                   )}
                                                               </div>
                                                           ) : (
-                                                              <div className="mb-2 px-2 text-[10px] sm:text-xs text-slate-500 font-mono flex flex-wrap gap-x-4 gap-y-1 items-center bg-slate-100 dark:bg-slate-800/50 py-1.5 rounded">
+                                                              <div className="mb-2 px-2 text-tiny sm:text-xs text-slate-500 font-mono flex flex-wrap gap-x-4 gap-y-1 items-center bg-slate-100 dark:bg-slate-800/50 py-1.5 rounded">
                                                                   {benchmarkData[0]?.timestamp && (
                                                                       <span className="flex items-center gap-1">
                                                                           <b className="text-slate-700 dark:text-slate-300">Date:</b> 
@@ -395,7 +395,7 @@ export const UnifiedDataTable = (props) => {
 
                                                           <div className="overflow-x-auto">
                                                             <table className="w-full text-left text-slate-600 dark:text-slate-300 text-xs shadow-inner rounded-sm overflow-hidden">
-                                                                <thead className="bg-slate-200 dark:bg-slate-700/40 text-slate-700 dark:text-slate-100 uppercase text-[10px] font-medium border-b border-slate-300 dark:border-slate-600">
+                                                                <thead className="bg-slate-200 dark:bg-slate-700/40 text-slate-700 dark:text-slate-100 uppercase text-tiny font-semibold border-b border-slate-300 dark:border-slate-600">
                                                                     <tr>
                                                                         <th className="px-4 py-2">QPS</th>
                                                                         <th className="px-2 py-1">Input Tok/s</th>
@@ -434,7 +434,7 @@ export const UnifiedDataTable = (props) => {
                                                                            </td>
                                                                            <td className="px-2 py-1 font-mono text-xs">{d.isl?.toFixed(0) || d.workload?.input_tokens?.toFixed(0) || '-'}</td>
                                                                            <td className="px-2 py-1 font-mono text-xs">{d.osl?.toFixed(0) || d.workload?.output_tokens?.toFixed(0) || '-'}</td>
-                                                                           <td className="px-2 py-1 font-mono text-[10px] text-slate-400 whitespace-nowrap">
+                                                                           <td className="px-2 py-1 font-mono text-tiny text-slate-400 whitespace-nowrap">
                                                                                {(() => {
                                                                                    const ts = d.timestamp;
                                                                                    if (!ts) return '-';

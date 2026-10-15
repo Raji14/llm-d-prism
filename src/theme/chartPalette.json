@@ -1,0 +1,134 @@
+{
+  "_doc": "Prism 2.0 chart palette. Series order = SERIES. Validated by scripts/validate_chart_palette.py (>=3:1 on chart surface; worst-case OKLab separation under protan/deutan/tritan). 'soft'/'strong' are tints for legacy shade tiers, not extra series.",
+  "series": [
+    "blue",
+    "amber",
+    "green",
+    "purple",
+    "orange",
+    "sky",
+    "pink"
+  ],
+  "status": {
+    "good": "green",
+    "warning": "amber",
+    "critical": "orange",
+    "neutral": "neutral"
+  },
+  "tokens": {
+    "blue": {
+      "light": {
+        "base": "#1c3bb5",
+        "soft": "#0d1e9a",
+        "strong": "#6b89d3"
+      },
+      "dark": {
+        "base": "#567bf6",
+        "soft": "#7195fd",
+        "strong": "#263d97"
+      }
+    },
+    "sky": {
+      "light": {
+        "base": "#0095b6",
+        "soft": "#0b7b96",
+        "strong": "#99d5ea"
+      },
+      "dark": {
+        "base": "#70e4fe",
+        "soft": "#bff2ff",
+        "strong": "#419aae"
+      }
+    },
+    "green": {
+      "light": {
+        "base": "#0e825e",
+        "soft": "#00684a",
+        "strong": "#89bfa6"
+      },
+      "dark": {
+        "base": "#59c299",
+        "soft": "#7cd7b1",
+        "strong": "#277a5c"
+      }
+    },
+    "amber": {
+      "light": {
+        "base": "#b6811c",
+        "soft": "#9a6a00",
+        "strong": "#edcc99"
+      },
+      "dark": {
+        "base": "#fdb92b",
+        "soft": "#fed796",
+        "strong": "#a97803"
+      }
+    },
+    "orange": {
+      "light": {
+        "base": "#b54a07",
+        "soft": "#933900",
+        "strong": "#e49f81"
+      },
+      "dark": {
+        "base": "#fa5828",
+        "soft": "#fe8361",
+        "strong": "#992800"
+      }
+    },
+    "purple": {
+      "light": {
+        "base": "#895ee3",
+        "soft": "#7244c8",
+        "strong": "#c6b5fe"
+      },
+      "dark": {
+        "base": "#b39bed",
+        "soft": "#c8b3fe",
+        "strong": "#6f5d99"
+      }
+    },
+    "pink": {
+      "light": {
+        "base": "#863267",
+        "soft": "#6d1950",
+        "strong": "#ba83a2"
+      },
+      "dark": {
+        "base": "#bc6497",
+        "soft": "#ce7dab",
+        "strong": "#6d2d54"
+      }
+    }
+  },
+  "neutral": {
+    "light": {
+      "neutral": "#64748b",
+      "neutral-soft": "#94a3b8"
+    },
+    "dark": {
+      "neutral": "#94a3b8",
+      "neutral-soft": "#64748b"
+    }
+  },
+  "families": {
+    "blue": "blue",
+    "indigo": "blue",
+    "sky": "sky",
+    "cyan": "sky",
+    "emerald": "green",
+    "green": "green",
+    "teal": "green",
+    "lime": "green",
+    "amber": "amber",
+    "yellow": "amber",
+    "orange": "orange",
+    "red": "orange",
+    "violet": "purple",
+    "purple": "purple",
+    "fuchsia": "pink",
+    "pink": "pink",
+    "rose": "pink"
+  },
+  "extraHex": {}
+}

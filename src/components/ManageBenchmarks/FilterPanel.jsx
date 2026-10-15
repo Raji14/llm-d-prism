@@ -16,7 +16,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Filter, ChevronDown, ChevronUp, Check, ArrowDown01, ArrowDown10, Loader, FileText, FileClock, Sliders, Search, Activity, TrendingUp, ShieldCheck, Database, Layout, HelpCircle, Bookmark, Trash2, Settings, X, Pencil, Laptop, CloudUpload, ArrowRight } from 'lucide-react';
 import { MultiSelectDropdown } from '../common';
-import { Button, Input, Select, Label } from '../ui';
+import { Button, Input, Select, Label, CHART_SERIES } from '../ui';
 import { cn } from '../../utils/cn';
 import { USE_CASE_META, formatOriginLabel } from '../../utils/dashboardHelpers';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth';
@@ -615,9 +615,9 @@ export const FilterPanel = ({
             {/* Top Section: Submission Tracker & Upload Benchmarks */}
             <div className="flex flex-col lg:flex-row gap-4 relative z-40">
                 {/* Submission Tracker Card */}
-                <div className="flex-1 lg:flex-[7] flex flex-col justify-start p-5 rounded-3xl bg-[#090c15] border border-slate-800/80 hover:border-cyan-500/20 shadow-lg transition-all duration-300 min-h-[128px]">
+                <div className="flex-1 lg:flex-[7] flex flex-col justify-start p-5 rounded-3xl bg-slate-950 border border-slate-800/80 hover:border-accent-600/20 shadow-lg transition-all duration-300 min-h-[128px]">
                             {/* Header */}
-                            <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center justify-between select-none mb-2.5">
+                            <div className="text-micro font-semibold text-accent-700 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center justify-between select-none mb-2.5">
                                 <div className="flex flex-col">
                                     <span className="font-sans tracking-wide">
                                         Submission Tracker
@@ -627,10 +627,10 @@ export const FilterPanel = ({
                                     </span>
                                 </div>
                                 <div className="relative group/tooltip inline-block cursor-help shrink-0">
-                                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-cyan-400 transition-colors" />
+                                    <HelpCircle className="w-3.5 h-3.5 text-slate-500 hover:text-accent-700 transition-colors" />
                                     <div className="absolute right-0 top-5 mt-1.5 px-3.5 py-3 bg-slate-900/95 border border-slate-700/50 text-slate-200 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-[300px] pointer-events-none leading-relaxed normal-case tracking-normal backdrop-blur-md space-y-2">
                                         <div className="font-bold text-xs text-white border-b border-slate-800 pb-1 mb-1 font-sans">Submissions & Results Store:</div>
-                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-cyan-400" /> <strong>Results store</strong>: Total verified runs loaded into public database.</p>
+                                        <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-accent-700" /> <strong>Results store</strong>: Total verified runs loaded into public database.</p>
                                         <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-amber-500" /> <strong>Locally Staged</strong>: Runs staged locally in browser session.</p>
                                         <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-yellow-500" /> <strong>Processing</strong>: Runs uploaded and undergoing automated verification.</p>
                                         <p className="text-xs pl-3.5 relative select-none"><span className="absolute left-0 top-[5px] w-1.5 h-1.5 rounded-sm bg-purple-500" /> <strong>Under Review</strong>: Submissions in queue for maintainer verification.</p>
@@ -649,12 +649,12 @@ export const FilterPanel = ({
                                         className={cn(
                                             'flex-1 flex items-center justify-between px-3 py-1.5 rounded-lg border text-left transition-all duration-300 cursor-pointer',
                                             kpiFilter === null
-                                            ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.12)]'
+                                            ? 'bg-slate-900 border-accent-600/40 shadow-[0_0_12px_rgba(6,182,212,0.12)]'
                                             : 'bg-slate-900/40 border-slate-800/60 hover:border-slate-700/60 hover:bg-slate-800/40'
                                         )}
                                     >
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Public Store</span>
-                                        <span className={cn('text-sm font-black transition-colors duration-200', kpiFilter === null ? 'text-cyan-400' : 'text-slate-350')}>
+                                        <span className="label-caps text-slate-400">Public Store</span>
+                                        <span className={cn('text-sm font-black transition-colors duration-200', kpiFilter === null ? 'text-accent-700' : 'text-slate-300')}>
                                             {totalCount}
                                         </span>
                                     </button>
@@ -671,14 +671,14 @@ export const FilterPanel = ({
                                         className={cn(
                                             'flex-1 flex items-center justify-between px-3 py-1.5 rounded-lg border text-left transition-all duration-300 cursor-pointer',
                                             (kpiFilter === 'my-submissions' || ['staged', 'processing', 'in_review', 'approved', 'action'].includes(kpiFilter))
-                                            ? 'bg-slate-900 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.12)]'
+                                            ? 'bg-slate-900 border-accent-600/40 shadow-[0_0_12px_rgba(6,182,212,0.12)]'
                                             : 'bg-slate-900/40 border-slate-800/60 hover:border-slate-700/60 hover:bg-slate-800/40'
                                         )}
                                     >
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">My Benchmarks</span>
+                                        <span className="label-caps text-slate-400">My Benchmarks</span>
                                         <span className={cn(
                                             'text-sm font-black transition-colors duration-200',
-                                            (kpiFilter === 'my-submissions' || ['staged', 'processing', 'in_review', 'approved', 'action'].includes(kpiFilter)) ? 'text-cyan-400' : 'text-slate-350'
+                                            (kpiFilter === 'my-submissions' || ['staged', 'processing', 'in_review', 'approved', 'action'].includes(kpiFilter)) ? 'text-accent-700' : 'text-slate-300'
                                         )}>
                                             {verifiedCount}
                                         </span>
@@ -694,7 +694,7 @@ export const FilterPanel = ({
                                         
                                         return (
                                             <div className="flex-1 flex flex-col justify-between bg-slate-900/40 border border-slate-900/80 px-3 py-2 rounded-xl">
-                                                <div className="text-[10px] font-bold text-slate-400/90 uppercase tracking-wider select-none leading-none pt-0.5">
+                                                <div className="label-caps text-slate-400/90 select-none leading-none pt-0.5">
                                                     My Pipeline — Sub-Stage Tracking
                                                 </div>
                                                 <div className="flex items-center justify-between gap-1 border border-slate-900/60 p-1 rounded-lg select-none">
@@ -711,7 +711,7 @@ export const FilterPanel = ({
                                                     >
                                                         <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'staged' ? 'bg-amber-400 h-6' : 'bg-amber-500/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Staged</span>
+                                                            <span className="label-caps text-slate-400/90">Staged</span>
                                                             <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'staged' ? 'text-amber-400 font-black' : 'text-slate-200')}>{staged}</span>
                                                         </div>
                                                     </button>
@@ -724,14 +724,14 @@ export const FilterPanel = ({
                                                         className={cn(
                                                             'relative flex-1 flex items-center pl-3 pr-2 py-1 rounded-md border transition-all duration-300 cursor-pointer overflow-hidden',
                                                             kpiFilter === 'unlisted'
-                                                            ? 'bg-cyan-500/5 border-cyan-500/35 shadow-[0_0_12px_rgba(6,182,212,0.08)] -translate-y-0.5'
+                                                            ? 'bg-accent-600/5 border-accent-600/35 shadow-[0_0_12px_rgba(6,182,212,0.08)] -translate-y-0.5'
                                                             : 'bg-slate-900/25 border-transparent hover:border-slate-800/60 hover:bg-slate-900/40 hover:-translate-y-0.5'
                                                         )}
                                                     >
-                                                        <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'unlisted' ? 'bg-cyan-400 h-6' : 'bg-cyan-500/55')} />
+                                                        <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'unlisted' ? 'bg-accent-700 h-6' : 'bg-accent-600/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Unlisted</span>
-                                                            <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'unlisted' ? 'text-cyan-400 font-black' : 'text-slate-200')}>{unlisted}</span>
+                                                            <span className="label-caps text-slate-400/90">Unlisted</span>
+                                                            <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'unlisted' ? 'text-accent-700 font-black' : 'text-slate-200')}>{unlisted}</span>
                                                         </div>
                                                     </button>
 
@@ -749,7 +749,7 @@ export const FilterPanel = ({
                                                     >
                                                         <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'processing' ? 'bg-yellow-400 h-6' : 'bg-yellow-500/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Processing</span>
+                                                            <span className="label-caps text-slate-400/90">Processing</span>
                                                             <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'processing' ? 'text-yellow-400 font-black' : 'text-slate-200')}>{processing}</span>
                                                         </div>
                                                     </button>
@@ -768,7 +768,7 @@ export const FilterPanel = ({
                                                     >
                                                         <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'in_review' ? 'bg-purple-400 h-6' : 'bg-purple-500/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Review</span>
+                                                            <span className="label-caps text-slate-400/90">Review</span>
                                                             <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'in_review' ? 'text-purple-400 font-black' : 'text-slate-200')}>{inReview}</span>
                                                         </div>
                                                     </button>
@@ -787,7 +787,7 @@ export const FilterPanel = ({
                                                     >
                                                         <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'approved' ? 'bg-emerald-400 h-6' : 'bg-emerald-500/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Published</span>
+                                                            <span className="label-caps text-slate-400/90">Published</span>
                                                             <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'approved' ? 'text-emerald-450 font-black' : 'text-slate-200')}>{approved}</span>
                                                         </div>
                                                     </button>
@@ -807,7 +807,7 @@ export const FilterPanel = ({
                                                     >
                                                         <div className={cn('absolute left-0 top-1 bottom-1 w-0.5 rounded-r transition-all duration-300', kpiFilter === 'action' ? 'bg-red-400 h-6' : 'bg-red-500/55')} />
                                                         <div className="flex flex-col items-start leading-none text-left">
-                                                            <span className="text-[8px] font-bold uppercase text-slate-400/90 tracking-wider">Rejected</span>
+                                                            <span className="label-caps text-slate-400/90">Rejected</span>
                                                             <span className={cn('text-xs md:text-sm font-extrabold mt-0.5 transition-colors duration-200', kpiFilter === 'action' ? 'text-red-400 font-black' : 'text-slate-200')}>{rejected}</span>
                                                         </div>
                                                     </button>
@@ -822,8 +822,8 @@ export const FilterPanel = ({
                                                 {/* Pane 1: Public Store Analytics */}
                                                 <div className="flex-1 flex flex-row items-center justify-between bg-slate-900/40 border border-slate-900/80 px-4 py-2 rounded-xl">
                                                     <div className="flex flex-col justify-center">
-                                                        <span className="text-[10px] font-bold text-slate-400/95 uppercase tracking-wider leading-none">Public Store Analytics</span>
-                                                        <span className="text-[10px] text-slate-500 mt-1.5 leading-none">Submission activity (last 15 days)</span>
+                                                        <span className="label-caps text-slate-400/95 leading-none">Public Store Analytics</span>
+                                                        <span className="text-tiny text-slate-500 mt-1.5 leading-none">Submission activity (last 15 days)</span>
                                                     </div>
                                                     
                                                     <div className="flex items-center gap-4">
@@ -833,7 +833,7 @@ export const FilterPanel = ({
                                                                     <path
                                                                         d={sparklinePath}
                                                                         fill="none"
-                                                                        stroke="#06b6d4"
+                                                                        stroke={CHART_SERIES[1]}
                                                                         strokeWidth="1.5"
                                                                         strokeLinecap="round"
                                                                         strokeLinejoin="round"
@@ -845,19 +845,19 @@ export const FilterPanel = ({
                                                                     />
                                                                     <defs>
                                                                         <linearGradient id="sparkline-grad" x1="0" y1="0" x2="0" y2="1">
-                                                                            <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.15" />
-                                                                            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
+                                                                            <stop offset="0%" stopColor={CHART_SERIES[1]} stopOpacity="0.15" />
+                                                                            <stop offset="100%" stopColor={CHART_SERIES[1]} stopOpacity="0.0" />
                                                                         </linearGradient>
                                                                     </defs>
                                                                 </svg>
                                                             </div>
                                                         ) : (
-                                                            <span className="text-[10px] text-slate-600">No recent activity</span>
+                                                            <span className="text-tiny text-slate-600">No recent activity</span>
                                                         )}
                                                         
                                                         <div className="flex flex-col items-end border-l border-slate-800/80 pl-4 h-9 justify-center">
-                                                            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-wider leading-none">Total Runs</span>
-                                                            <span className="text-base font-black text-cyan-400 mt-1 leading-none">{totalCount}</span>
+                                                            <span className="label-caps text-slate-500 leading-none">Total Runs</span>
+                                                            <span className="text-base font-black text-accent-700 mt-1 leading-none">{totalCount}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -868,28 +868,28 @@ export const FilterPanel = ({
                                                     className={cn(
                                                         "flex flex-col justify-between px-4 py-3 rounded-xl border text-left transition-all duration-300 cursor-pointer select-none min-w-[195px]",
                                                         includeUnlisted
-                                                        ? "bg-slate-900 border-cyan-500/50 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
+                                                        ? "bg-slate-900 border-accent-600/50 shadow-[0_0_12px_rgba(6,182,212,0.15)]"
                                                         : "bg-slate-900/40 border-slate-900/80 hover:border-slate-800/80 hover:bg-slate-800/40"
                                                     )}
                                                     title="Toggle unlisted benchmarks inclusion"
                                                 >
                                                     <div className="flex flex-col justify-center">
-                                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400/95 leading-none">
+                                                        <span className="label-caps text-slate-400/95 leading-none">
                                                             Show Unlisted
                                                         </span>
-                                                        <span className="text-[10px] text-slate-500 mt-1.5 leading-none">
+                                                        <span className="text-tiny text-slate-500 mt-1.5 leading-none">
                                                             Experimental runs not reviewed yet
                                                         </span>
                                                     </div>
                                                     
                                                     <div className="pt-2 flex items-center justify-between border-t border-slate-800/60 mt-2.5">
-                                                        <span className={cn("text-[9px] font-bold uppercase tracking-wider", includeUnlisted ? "text-cyan-400" : "text-slate-500")}>
+                                                        <span className={cn("label-caps", includeUnlisted ? "text-accent-700" : "text-slate-500")}>
                                                             {includeUnlisted ? "Included" : "Hidden"}
                                                         </span>
                                                         
                                                         <div className={cn(
                                                             "w-7 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out flex items-center",
-                                                            includeUnlisted ? "bg-cyan-500 shadow-[0_0_8px_rgba(6,182,212,0.4)]" : "bg-slate-800 border border-slate-700/60"
+                                                            includeUnlisted ? "bg-accent-600 shadow-[0_0_8px_rgba(6,182,212,0.4)]" : "bg-slate-800 border border-slate-700/60"
                                                         )}>
                                                             <div className={cn(
                                                                 "w-3 h-3 rounded-full shadow-md transform transition-transform duration-200 ease-in-out",
@@ -906,21 +906,21 @@ export const FilterPanel = ({
                         </div>
 
                 {/* Upload Benchmarks Card */}
-                <div className="flex-1 lg:flex-[3] group relative bg-slate-950/70 border border-slate-900 rounded-3xl p-5 shadow-lg hover:border-cyan-500/20 transition-all duration-300 flex flex-col justify-between overflow-hidden min-h-[128px]">
+                <div className="flex-1 lg:flex-[3] group relative bg-slate-950/70 border border-slate-900 rounded-3xl p-5 shadow-lg hover:border-accent-600/20 transition-all duration-300 flex flex-col justify-between overflow-hidden min-h-[128px]">
                     <div>
                         {/* Header */}
-                        <div className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center select-none mb-2.5">
+                        <div className="text-micro font-semibold text-accent-700 uppercase tracking-wider pb-2 border-b border-slate-800/60 flex items-center select-none mb-2.5">
                             Upload Benchmarks
                         </div>
 
                         {/* Descriptions of two distinct scenarios */}
-                        <div className="flex flex-col gap-2.5 text-[10px] text-slate-400 leading-normal select-none my-2">
+                        <div className="flex flex-col gap-2.5 text-tiny text-slate-400 leading-normal select-none my-2">
                             <div className="flex flex-col items-start pl-2.5 border-l border-emerald-500/30">
-                                <strong className="text-slate-200 text-[10.5px]">1. Stage Benchmarks</strong>
+                                <strong className="text-slate-200 text-tiny">1. Stage Benchmarks</strong>
                                 <span className="text-slate-400 mt-0.5">Upload run files to validate format and preview curves locally.</span>
                             </div>
-                            <div className="flex flex-col items-start pl-2.5 border-l border-cyan-500/30">
-                                <strong className="text-slate-200 text-[10.5px]">2. Publish to Results Store</strong>
+                            <div className="flex flex-col items-start pl-2.5 border-l border-accent-600/30">
+                                <strong className="text-slate-200 text-tiny">2. Publish to Results Store</strong>
                                 <span className="text-slate-400 mt-0.5">Select staged runs in the grid and click Compare & Publish to publish them.</span>
                             </div>
                         </div>
@@ -948,10 +948,10 @@ export const FilterPanel = ({
             </div>
 
             {/* Section 2: Explorer & Registry Catalog */}
-            <div className="flex flex-col gap-3.5 bg-[#070b13]/65 border border-slate-900/90 rounded-3xl p-5 shadow-2xl backdrop-blur-md relative z-30">
+            <div className="flex flex-col gap-3.5 bg-slate-950/65 border border-slate-900/90 rounded-3xl p-5 shadow-2xl backdrop-blur-md relative z-30">
 
                     {/* Primary Row Controls (Always Visible) */}
-                    <div className="flex flex-wrap items-center gap-3 bg-[#0a0f1d] border border-slate-800/60 p-3 rounded-2xl relative z-30 shadow-md">
+                    <div className="flex flex-wrap items-center gap-3 bg-slate-950 border border-slate-800/60 p-3 rounded-2xl relative z-30 shadow-md">
                         {/* Search Bar */}
                         <div id="manage-tour-search" className="relative flex-1 min-w-[240px]">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -995,8 +995,8 @@ export const FilterPanel = ({
                                 className={cn(
                                     'px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer flex items-center gap-1.5',
                                     showViewSettings || groupBy !== 'None' || sortByField !== 'timestamp'
-                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-bold'
-                                    : 'bg-[#070b13] border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-205'
+                                    ? 'bg-accent-600/10 text-accent-700 border-accent-600/30 font-bold'
+                                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
                                 )}
                             >
                                 <Sliders size={13} />
@@ -1005,12 +1005,12 @@ export const FilterPanel = ({
                             {showViewSettings && (
                                 <>
                                     <div className="fixed inset-0 z-20" onClick={() => setShowViewSettings(false)} />
-                                    <div className="absolute right-0 mt-2 w-72 bg-[#090d16] border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-4 backdrop-blur-md">
-                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 pb-1 border-b border-slate-800">Display Options</div>
+                                    <div className="absolute right-0 mt-2 w-72 bg-slate-950 border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-4 backdrop-blur-md">
+                                        <div className="label-caps text-slate-500 pb-1 border-b border-slate-800">Display Options</div>
                                         
                                         {/* Grouping */}
                                         <div className="flex flex-col gap-1.5">
-                                            <Label className="mb-0 text-[9px] uppercase font-bold text-slate-400 tracking-wider">Group By</Label>
+                                            <Label className="label-caps mb-0 text-slate-400">Group By</Label>
                                             <Select
                                                 className="text-xs rounded-lg px-2.5 py-1.5 cursor-pointer"
                                                 value={groupBy}
@@ -1026,7 +1026,7 @@ export const FilterPanel = ({
 
                                         {/* Sorting */}
                                         <div className="flex flex-col gap-1.5">
-                                            <Label className="mb-0 text-[9px] uppercase font-bold text-slate-400 tracking-wider">Sort By</Label>
+                                            <Label className="label-caps mb-0 text-slate-400">Sort By</Label>
                                             <div className="flex gap-1.5">
                                                 <Select
                                                     className="flex-1 text-xs rounded-lg px-2.5 py-1.5 cursor-pointer"
@@ -1052,7 +1052,7 @@ export const FilterPanel = ({
                                                 <button
                                                     onClick={() => setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
                                                     title={sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-                                                    className="p-1.5 text-slate-400 hover:text-slate-200 bg-[#06080e] rounded-lg border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer flex items-center justify-center"
+                                                    className="p-1.5 text-slate-400 hover:text-slate-200 bg-slate-950 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer flex items-center justify-center"
                                                 >
                                                     {sortDirection === 'asc' ? <ArrowDown01 size={13} /> : <ArrowDown10 size={13} />}
                                                 </button>
@@ -1061,7 +1061,7 @@ export const FilterPanel = ({
 
                                         {/* Columns (Metrics) */}
                                         <div className="flex flex-col gap-1.5">
-                                            <Label className="mb-0 text-[9px] uppercase font-bold text-slate-400 tracking-wider">Metrics Columns</Label>
+                                            <Label className="label-caps mb-0 text-slate-400">Metrics Columns</Label>
                                             <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
                                                 {Object.entries(SPEC_LABELS).map(([key, label]) => {
                                                     const isColSelected = visibleSpecs[key];
@@ -1070,13 +1070,13 @@ export const FilterPanel = ({
                                                             key={key}
                                                             onClick={() => setVisibleSpecs(prev => ({ ...prev, [key]: !prev[key] }))}
                                                             className={cn(
-                                                                'text-left px-1.5 py-1 text-[10px] rounded transition-all flex items-center gap-1.5 cursor-pointer',
-                                                                isColSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-450 hover:text-slate-200'
+                                                                'text-left px-1.5 py-1 text-tiny rounded transition-all flex items-center gap-1.5 cursor-pointer',
+                                                                isColSelected ? 'bg-accent-600/10 text-accent-700 font-semibold' : 'text-slate-450 hover:text-slate-200'
                                                             )}
                                                         >
                                                             <div className={cn(
                                                                 'w-3 h-3 rounded-sm border flex items-center justify-center',
-                                                                isColSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800 bg-[#06080e]'
+                                                                isColSelected ? 'bg-accent-600 border-accent-600 text-white' : 'border-slate-800 bg-slate-950'
                                                             )}>
                                                                 {isColSelected && <Check size={8} strokeWidth={4} />}
                                                             </div>
@@ -1101,8 +1101,8 @@ export const FilterPanel = ({
                                 className={cn(
                                     'px-3 py-2 text-xs font-semibold rounded-xl border flex items-center gap-1.5 transition-colors cursor-pointer',
                                     activePreset
-                                    ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 font-bold'
-                                    : 'bg-[#070b13] border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-205'
+                                    ? 'bg-accent-600/10 text-accent-700 border-accent-600/30 font-bold'
+                                    : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-400 hover:text-slate-200'
                                 )}
                             >
                                 <Bookmark size={13} />
@@ -1111,8 +1111,8 @@ export const FilterPanel = ({
                             {showPresetsDropdown && (
                                 <>
                                     <div className="fixed inset-0 z-20" onClick={() => setShowPresetsDropdown(false)} />
-                                    <div className="absolute right-0 mt-2 w-72 bg-[#090d16] border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-3 backdrop-blur-md">
-                                        <div className="text-[10px] uppercase tracking-wider font-extrabold text-slate-500 pb-1 border-b border-slate-800">Filter Presets</div>
+                                    <div className="absolute right-0 mt-2 w-72 bg-slate-950 border border-slate-800/90 rounded-xl shadow-2xl p-4 z-[100] flex flex-col gap-3 backdrop-blur-md">
+                                        <div className="label-caps text-slate-500 pb-1 border-b border-slate-800">Filter Presets</div>
                                         {/* Presets List */}
                                         <div className="flex flex-col gap-1 max-h-40 overflow-y-auto overscroll-contain pr-1 custom-scrollbar">
                                             {presets.length === 0 ? (
@@ -1127,10 +1127,10 @@ export const FilterPanel = ({
                                                                     applyPreset(preset);
                                                                     setShowPresetsDropdown(false);
                                                                 }}
-                                                                className={cn('flex-1 text-left text-xs font-medium cursor-pointer transition-colors', isActive ? 'text-cyan-400 font-bold' : 'text-slate-450 hover:text-cyan-400')}
+                                                                className={cn('flex-1 text-left text-xs font-medium cursor-pointer transition-colors', isActive ? 'text-accent-700 font-bold' : 'text-slate-450 hover:text-accent-700')}
                                                             >
                                                                 <span className="flex items-center gap-1.5">
-                                                                    {isActive && <Check className="w-3 h-3 text-cyan-400 stroke-[2.5]" />}
+                                                                    {isActive && <Check className="w-3 h-3 text-accent-700 stroke-[2.5]" />}
                                                                     {preset.name}
                                                                 </span>
                                                             </button>
@@ -1140,7 +1140,7 @@ export const FilterPanel = ({
                                                                     setIsAdvancedExpanded(true);
                                                                     setShowPresetsDropdown(false);
                                                                 }}
-                                                                className="text-slate-500 hover:text-cyan-400 p-1 rounded hover:bg-slate-800/40"
+                                                                className="text-slate-500 hover:text-accent-700 p-1 rounded hover:bg-slate-800/40"
                                                                 title="Edit Preset"
                                                             >
                                                                 <Pencil size={11} />
@@ -1158,7 +1158,7 @@ export const FilterPanel = ({
                                             }}
                                             className="flex flex-col gap-2 pt-2 border-t border-slate-800"
                                         >
-                                            <div className="text-[9px] uppercase tracking-wider font-bold text-slate-500">Save current filters</div>
+                                            <div className="label-caps text-slate-500">Save current filters</div>
                                             <div className="flex gap-1.5">
                                                 <Input
                                                     type="text"
@@ -1173,7 +1173,7 @@ export const FilterPanel = ({
                                                     className={cn(
                                                         'px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
                                                         (newPresetName.trim() && hasFiltersToSave)
-                                                        ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-sm'
+                                                        ? 'bg-accent-400 hover:bg-accent-600 text-white shadow-sm'
                                                         : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-800/20'
                                                     )}
                                                 >
@@ -1215,7 +1215,7 @@ export const FilterPanel = ({
                     {/* Header */}
                     <div className="bg-slate-950/40 p-4 border-b border-slate-900/60 flex items-center justify-between select-none">
                         <div className="flex items-center gap-2">
-                            <Sliders className="w-4 h-4 text-cyan-400" />
+                            <Sliders className="w-4 h-4 text-accent-700" />
                             <span className="text-sm font-bold text-white tracking-wide">Advanced Filters</span>
                         </div>
                         <button 
@@ -1230,7 +1230,7 @@ export const FilterPanel = ({
                     <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                         {/* Saved Presets Section */}
                         <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-900/60 shadow-md shadow-slate-950/20 space-y-3.5 mb-2">
-                            <h4 className="text-[10px] font-black uppercase tracking-wider text-cyan-400 border-b border-slate-800/60 pb-1.5 flex items-center gap-1.5 select-none">
+                            <h4 className="label-caps text-accent-700 border-b border-slate-800/60 pb-1.5 flex items-center gap-1.5 select-none">
                                 <Bookmark className="w-3.5 h-3.5" /> Saved Filter Presets
                             </h4>
                             
@@ -1238,7 +1238,7 @@ export const FilterPanel = ({
                                 /* Edit Preset Inline Mode */
                                 <div className="space-y-4 pt-1 animate-in fade-in duration-200">
                                     <div className="flex items-center justify-between border-b border-slate-800/40 pb-1.5 select-none">
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-300">
+                                        <span className="label-caps text-slate-300">
                                             Editing Preset
                                         </span>
                                         <button 
@@ -1252,7 +1252,7 @@ export const FilterPanel = ({
 
                                     {/* Inline Name Input */}
                                     <div className="space-y-1.5">
-                                        <Label className="mb-0 text-[8px] font-extrabold uppercase tracking-widest text-slate-400 select-none">Preset Name</Label>
+                                        <Label className="label-caps mb-0 text-slate-400 select-none">Preset Name</Label>
                                         <Input
                                             type="text"
                                             value={editPresetName}
@@ -1263,13 +1263,13 @@ export const FilterPanel = ({
 
                                     {/* Inline Preset Filters List */}
                                     <div className="space-y-1.5">
-                                        <Label className="mb-0 text-[8px] font-extrabold uppercase tracking-widest text-slate-400 select-none">Saved Filter Parameters</Label>
+                                        <Label className="label-caps mb-0 text-slate-400 select-none">Saved Filter Parameters</Label>
                                         <div className="max-h-[140px] overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
                                             {editPresetSearch && (
-                                                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-[10px]">
+                                                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-tiny">
                                                     <div className="flex items-center gap-1.5 truncate">
-                                                        <span className="text-[8px] text-slate-500 font-bold uppercase select-none">Search:</span>
-                                                        <span className="font-medium text-cyan-400 truncate">"{editPresetSearch}"</span>
+                                                        <span className="text-tiny text-slate-500 font-semibold uppercase select-none">Search:</span>
+                                                        <span className="font-medium text-accent-700 truncate">"{editPresetSearch}"</span>
                                                     </div>
                                                     <button 
                                                         onClick={() => setEditPresetSearch('')}
@@ -1281,10 +1281,10 @@ export const FilterPanel = ({
                                             )}
 
                                             {editPresetKpi && (
-                                                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-[10px]">
+                                                <div className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-tiny">
                                                     <div className="flex items-center gap-1.5 truncate">
-                                                        <span className="text-[8px] text-slate-500 font-bold uppercase select-none">KPI Filter:</span>
-                                                        <span className="font-medium text-cyan-400 truncate">{getKpiFilterLabel(editPresetKpi)}</span>
+                                                        <span className="text-tiny text-slate-500 font-semibold uppercase select-none">KPI Filter:</span>
+                                                        <span className="font-medium text-accent-700 truncate">{getKpiFilterLabel(editPresetKpi)}</span>
                                                     </div>
                                                     <button 
                                                         onClick={() => setEditPresetKpi(null)}
@@ -1300,10 +1300,10 @@ export const FilterPanel = ({
                                                 const fieldLabel = FILTER_FIELD_LABELS[field] || field;
 
                                                 return values.map(val => (
-                                                    <div key={`${field}-${val}`} className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-[10px]">
+                                                    <div key={`${field}-${val}`} className="flex items-center justify-between bg-slate-900/60 border border-slate-800/40 rounded-xl px-2.5 py-1 text-tiny">
                                                         <div className="flex items-center gap-1.5 truncate">
-                                                            <span className="text-[8px] text-slate-500 font-bold uppercase select-none">{fieldLabel}:</span>
-                                                            <span className="font-medium text-cyan-400 truncate">{field === 'origins' ? val : val}</span>
+                                                            <span className="text-tiny text-slate-500 font-semibold uppercase select-none">{fieldLabel}:</span>
+                                                            <span className="font-medium text-accent-700 truncate">{field === 'origins' ? val : val}</span>
                                                         </div>
                                                         <button 
                                                             onClick={() => {
@@ -1323,7 +1323,7 @@ export const FilterPanel = ({
                                             })}
 
                                             {(!editPresetSearch && !editPresetKpi && Object.keys(editPresetFilters).length === 0) && (
-                                                <div className="text-center py-4 text-slate-500 text-[10px] select-none italic">
+                                                <div className="text-center py-4 text-slate-500 text-tiny select-none italic">
                                                     No filters configured in this preset.
                                                 </div>
                                             )}
@@ -1336,7 +1336,7 @@ export const FilterPanel = ({
                                             type="button"
                                             variant="danger"
                                             size="xs"
-                                            className="uppercase font-bold"
+                                            className="uppercase font-semibold"
                                             onClick={() => handleDeletePreset(editingPreset.id)}
                                         >
                                             <Trash2 size={10} /> Delete
@@ -1347,7 +1347,7 @@ export const FilterPanel = ({
                                                 type="button"
                                                 variant="secondary"
                                                 size="xs"
-                                                className="uppercase font-bold"
+                                                className="uppercase font-semibold"
                                                 onClick={() => setEditingPreset(null)}
                                             >
                                                 Cancel
@@ -1357,9 +1357,9 @@ export const FilterPanel = ({
                                                 onClick={handleUpdatePreset}
                                                 disabled={!editPresetName.trim() || (!editPresetSearch && !editPresetKpi && Object.keys(editPresetFilters).length === 0)}
                                                 className={cn(
-                                                    'px-3 py-1.5 text-[9px] font-bold uppercase text-white rounded-xl transition-all cursor-pointer',
+                                                    'px-3 py-1.5 text-tiny font-semibold uppercase text-white rounded-xl transition-all cursor-pointer',
                                                     (editPresetName.trim() && (editPresetSearch || editPresetKpi || Object.keys(editPresetFilters).length > 0))
-                                                    ? 'bg-cyan-600 hover:bg-cyan-500 shadow-md'
+                                                    ? 'bg-accent-400 hover:bg-accent-600 shadow-md'
                                                     : 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
                                                 )}
                                             >
@@ -1381,26 +1381,26 @@ export const FilterPanel = ({
                                                     <div
                                                         key={preset.id}
                                                         className={cn(
-                                                            'flex items-center gap-1.5 bg-[#0b0f17] border rounded-xl pl-2.5 pr-1.5 py-1 transition-all',
+                                                            'flex items-center gap-1.5 bg-slate-950 border rounded-xl pl-2.5 pr-1.5 py-1 transition-all',
                                                             isActive
-                                                            ? 'border-cyan-500/30 bg-cyan-500/5 shadow-sm shadow-cyan-500/5'
+                                                            ? 'border-accent-600/30 bg-accent-600/5 shadow-sm shadow-accent-600/5'
                                                             : 'border-slate-800/40'
                                                         )}
                                                     >
                                                         <button
                                                             onClick={() => applyPreset(preset)}
                                                             className={cn(
-                                                                'text-[10px] font-semibold cursor-pointer select-none truncate max-w-[110px] transition-colors flex items-center gap-1',
-                                                                isActive ? 'text-cyan-400 font-bold' : 'text-slate-350 hover:text-cyan-400'
+                                                                'text-tiny font-semibold cursor-pointer select-none truncate max-w-[110px] transition-colors flex items-center gap-1',
+                                                                isActive ? 'text-accent-700 font-bold' : 'text-slate-300 hover:text-accent-700'
                                                             )}
                                                             title={`Apply "${preset.name}"`}
                                                         >
-                                                            {isActive && <Check className="w-2.5 h-2.5 text-cyan-400 stroke-[2.5] animate-in zoom-in-50 duration-200" />}
+                                                            {isActive && <Check className="w-2.5 h-2.5 text-accent-700 stroke-[2.5] animate-in zoom-in-50 duration-200" />}
                                                             <span>{preset.name}</span>
                                                         </button>
                                                         <button 
                                                             onClick={() => openEditPreset(preset)}
-                                                            className="p-1 text-slate-400 hover:text-cyan-400 rounded transition-all cursor-pointer flex items-center justify-center hover:bg-slate-800/40"
+                                                            className="p-1 text-slate-400 hover:text-accent-700 rounded transition-all cursor-pointer flex items-center justify-center hover:bg-slate-800/40"
                                                             title="Edit Preset"
                                                         >
                                                             <Pencil size={12} className="stroke-[2.5]" />
@@ -1424,7 +1424,7 @@ export const FilterPanel = ({
                                             className={cn(
                                                 'px-3 py-1.5 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-lg',
                                                 (newPresetName.trim() && hasFiltersToSave)
-                                                ? 'bg-cyan-600/90 hover:bg-cyan-500 text-white'
+                                                ? 'bg-accent-400/90 hover:bg-accent-600 text-white'
                                                 : 'bg-slate-800/60 text-slate-500 cursor-not-allowed shadow-none border border-slate-800/20'
                                             )}
                                         >
@@ -1441,9 +1441,9 @@ export const FilterPanel = ({
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
                                 <button 
                                     onClick={() => toggleSection('stack')}
-                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                    className="label-caps w-full flex items-center justify-between text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
                                 >
-                                    <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-cyan-500" /> Serving Stack & Framework</span>
+                                    <span className="flex items-center gap-1.5"><Activity className="w-3 h-3 text-accent-600" /> Serving Stack & Framework</span>
                                     {openSections.stack ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                                 {openSections.stack && (
@@ -1492,9 +1492,9 @@ export const FilterPanel = ({
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
                                 <button 
                                     onClick={() => toggleSection('infra')}
-                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                    className="label-caps w-full flex items-center justify-between text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
                                 >
-                                    <span className="flex items-center gap-1.5"><Database className="w-3 h-3 text-cyan-500" /> Infrastructure Specs</span>
+                                    <span className="flex items-center gap-1.5"><Database className="w-3 h-3 text-accent-600" /> Infrastructure Specs</span>
                                     {openSections.infra ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                                 {openSections.infra && (
@@ -1535,9 +1535,9 @@ export const FilterPanel = ({
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
                                 <button 
                                     onClick={() => toggleSection('load')}
-                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                    className="label-caps w-full flex items-center justify-between text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
                                 >
-                                    <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-cyan-500" /> Benchmark Load</span>
+                                    <span className="flex items-center gap-1.5"><TrendingUp className="w-3 h-3 text-accent-600" /> Benchmark Load</span>
                                     {openSections.load ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                                 {openSections.load && (
@@ -1582,18 +1582,18 @@ export const FilterPanel = ({
                             <div className="bg-slate-950/20 p-4 rounded-xl border border-slate-800/40 space-y-3">
                                 <button 
                                     onClick={() => toggleSection('conn')}
-                                    className="w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
+                                    className="label-caps w-full flex items-center justify-between text-slate-400 border-b border-slate-800/30 pb-1.5 cursor-pointer select-none"
                                 >
-                                    <span className="flex items-center gap-1.5"><Sliders className="w-3 h-3 text-cyan-500" /> Connections</span>
+                                    <span className="flex items-center gap-1.5"><Sliders className="w-3 h-3 text-accent-600" /> Connections</span>
                                     {openSections.conn ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                 </button>
                                 {openSections.conn && (
                                     <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
                                         <div className="space-y-1.5 pt-1">
-                                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider pl-1">
+                                            <div className="label-caps text-slate-500 pl-1">
                                                 Connection / Source
                                             </div>
-                                            <div className="bg-[#0b0f17]/40 border border-slate-800/40 rounded-xl p-2.5 max-h-60 overflow-y-auto space-y-1">
+                                            <div className="bg-slate-950/40 border border-slate-800/40 rounded-xl p-2.5 max-h-60 overflow-y-auto space-y-1">
                                                 {(() => {
                                                     const selectedConnectionNames = draftFilters ? draftFilters.connectionNames : (activeFilters.connectionNames || new Set());
                                                     const selectedCount = selectedConnectionNames.size;
@@ -1601,14 +1601,14 @@ export const FilterPanel = ({
                                                     return (
                                                         <>
                                                             <div
-                                                                className={cn('flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-slate-800/80 transition-all', selectedCount === 0 ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-300 hover:text-slate-200')}
+                                                                className={cn('flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer hover:bg-slate-800/80 transition-all', selectedCount === 0 ? 'bg-accent-600/10 text-accent-700 font-semibold' : 'text-slate-300 hover:text-slate-200')}
                                                                 onClick={() => toggleDraftFilter('connectionNames', '')}
                                                             >
-                                                                 <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', selectedCount === 0 ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800/40 bg-slate-950')}>
+                                                                 <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', selectedCount === 0 ? 'bg-accent-600 border-accent-600 text-white' : 'border-slate-800/40 bg-slate-950')}>
                                                                     {selectedCount === 0 && <Check size={10} className="text-white" strokeWidth={3} />}
                                                                  </div>
                                                                  <span className="text-xs">All Connections</span>
-                                                                 <span className="text-[10px] text-slate-500 ml-auto font-mono">{options.length}</span>
+                                                                 <span className="text-tiny text-slate-500 ml-auto font-mono">{options.length}</span>
                                                             </div>
 
                                                             <div className="h-px bg-slate-800/30 my-1 mx-1" />
@@ -1622,17 +1622,17 @@ export const FilterPanel = ({
                                                                         className={cn(
                                                                             'flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all',
                                                                             count === 0 ? 'opacity-45 hover:bg-slate-800/30' : 'hover:bg-slate-800/80',
-                                                                            isSelected ? 'bg-cyan-500/10 text-cyan-400 font-semibold' : 'text-slate-300 hover:text-slate-200'
+                                                                            isSelected ? 'bg-accent-600/10 text-accent-700 font-semibold' : 'text-slate-300 hover:text-slate-200'
                                                                         )}
                                                                         onClick={() => toggleDraftFilter('connectionNames', opt)}
                                                                     >
-                                                                         <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', isSelected ? 'bg-cyan-500 border-cyan-500 text-white' : 'border-slate-800/40 bg-slate-950')}>
+                                                                         <div className={cn('w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors', isSelected ? 'bg-accent-600 border-accent-600 text-white' : 'border-slate-800/40 bg-slate-950')}>
                                                                             {isSelected && <Check size={10} className="text-white" strokeWidth={3} />}
                                                                          </div>
                                                                          <span className="text-xs truncate flex-1">
                                                                              {opt}
                                                                          </span>
-                                                                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono ml-auto">{count}</span>
+                                                                         <span className="text-tiny text-slate-500 dark:text-slate-400 font-mono ml-auto">{count}</span>
                                                                     </div>
                                                                 );
                                                             })}
@@ -1674,7 +1674,7 @@ export const FilterPanel = ({
                                 }
                                 setIsAdvancedExpanded(false);
                             }}
-                            className="px-4 py-2 text-xs font-bold uppercase text-white bg-cyan-600 hover:bg-cyan-500 rounded-xl transition-all shadow-md cursor-pointer flex-1 text-center"
+                            className="px-4 py-2 text-xs font-semibold uppercase text-white bg-accent-400 hover:bg-accent-600 rounded-xl transition-all shadow-md cursor-pointer flex-1 text-center"
                         >
                             Apply Filters
                         </button>

@@ -15,26 +15,39 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-// Multi-select pill group for chart stat/percentile visibility
-// ("Stats: Mean P90", "Percentiles: P50 P90 P99"). Unlike ToggleGroup
-// (single-select), every pill toggles independently. options: string[].
-export function StatPills({ options, active, onToggle, className }) {
+// Multi-select pill group for chart stat/percentile visibility.
+export function StatPills({ options, selected, active, onToggle, size = 'xs', className }) {
+    const activeList = selected ?? active ?? [];
     return (
-        <div className={cn('flex items-center gap-0.5 bg-slate-900/50 border border-slate-700/50 rounded-lg p-0.5 shrink-0', className)}>
-            {options.map((p) => (
-                <button
-                    key={p}
-                    type="button"
-                    aria-pressed={active.includes(p)}
-                    onClick={() => onToggle(p)}
-                    className={cn(
-                        'px-2.5 py-1 text-[10px] font-medium rounded-md transition-all cursor-pointer',
-                        active.includes(p) ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'
-                    )}
-                >
-                    {p}
-                </button>
-            ))}
+        <div
+            role="group"
+            className={cn(
+                'surface-light inline-flex items-center gap-0.5 bg-white border border-zinc-200 rounded-full p-0.5 shrink-0',
+                className
+            )}
+        >
+            {options.map((opt) => {
+                const value = typeof opt === 'object' ? opt.value : opt;
+                const label = typeof opt === 'object' ? opt.label : opt;
+                const isActive = activeList.includes(value);
+                return (
+                    <button
+                        key={value}
+                        type="button"
+                        aria-pressed={isActive}
+                        onClick={() => onToggle(value)}
+                        className={cn(
+                            'font-medium rounded-full transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+                            size === 'xs' ? 'px-2.5 py-0.5 text-micro' : 'px-3 py-1 text-xs',
+                            isActive
+                                ? 'bg-accent-600 text-white shadow-xs'
+                                : 'text-zinc-700 hover:text-zinc-900'
+                        )}
+                    >
+                        {label}
+                    </button>
+                );
+            })}
         </div>
     );
 }

@@ -13,7 +13,19 @@
 // limitations under the License.
 
 import { clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import { extendTailwindMerge } from 'tailwind-merge';
+
+// tailwind-merge must know the custom theme scales from src/index.css
+// (@theme --text-* / --tracking-*). Unregistered, `text-micro` is parsed as a
+// text *color* and silently dropped next to e.g. `text-zinc-500`.
+const twMerge = extendTailwindMerge({
+    extend: {
+        theme: {
+            text: ['micro', 'tiny'],
+            tracking: ['kicker', 'display'],
+        },
+    },
+});
 
 // Compose Tailwind class lists with conflict resolution: later classes win
 // (e.g. cn('p-4', condition && 'p-6') keeps only 'p-6' when the condition holds).

@@ -16,7 +16,7 @@ import React, { useMemo } from 'react';
 import { ResponsiveContainer, LineChart, CartesianGrid, Tooltip, Line } from 'recharts';
 import { RotateCcw, Maximize, Minimize, ChevronUp, ChevronDown } from 'lucide-react';
 import { CustomLabel, CustomChartTooltip } from '../common';
-import { Button, ChartContainer, ChartXAxis, ChartYAxis, Input, Select, gridProps } from '../ui';
+import { Button, ChartContainer, ChartXAxis, ChartYAxis, Input, Select, CHART_SERIES, CHART_STATUS, cursorProps, getChartTheme, gridProps, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { getBucket, getEffectiveTp, getParetoFrontier } from '../../utils/dashboardHelpers';
 import { normalizeQualityModelName } from '../../utils/qualityParser';
@@ -335,39 +335,33 @@ export const ThroughputCostChart = (props) => {
             };
 
             // 3. Color Logic (Spectrum)
+            // One base hue per family from CHART_SERIES. Sibling series within a
+            // family (slot 0..4) share the hue and are told apart by opacity
+            // (SHADE_OPACITY) rather than by extra hues outside the palette.
+            const chartTheme = getChartTheme();
+            const SHADE_OPACITY = [1, 0.7, 0.5, 0.85, 0.35];
+            const shades = (c) => [c, c, c, c, c];
             const colorPalettes = {
-                'h100': ['#3b82f6', '#60a5fa', '#93c5fd', '#2563eb', '#1d4ed8'], // Blue
-                'a100': ['#10b981', '#34d399', '#6ee7b7', '#059669', '#047857'], // Emerald
-                'h200': ['#f43f5e', '#fb7185', '#fda4af', '#e11d48', '#be123c'], // Rose (Red-ish)
-                'b200': ['#06b6d4', '#22d3ee', '#67e8f9', '#0891b2', '#155e75'], // Cyan (Distinct from H200)
-                'gb200':['#ec4899', '#f472b6', '#fbcfe8', '#db2777', '#be185d'], // Pink
+                'h100': shades(CHART_SERIES[5]), // Blue
+                'a100': shades(CHART_SERIES[0]), // Green
+                'h200': shades(CHART_SERIES[6]), // Orange
+                'b200': shades(CHART_SERIES[1]), // Sky (Distinct from H200)
+                'gb200':shades(CHART_SERIES[4]), // Pink
                 
-                // TPUs - Analogous Colors (Purples/Violets/Indigos) - Google Hardware Group
-                'tpu':    ['#d946ef', '#e879f9', '#f0abfc', '#c026d3', '#a21caf'], // Fuchsia (v7 fallback)
-                'tpu_v5': ['#6366f1', '#818cf8', '#a5b4fc', '#4f46e5', '#4338ca'], // Indigo (v5)
-                'tpu_v6': ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed', '#6d28d9'], // Violet (v6) - Slightly warmer than Indigo
-                'tpu_v7': ['#d946ef', '#e879f9', '#f0abfc', '#c026d3', '#a21caf'], // Fuchsia (v7) - Distinctive Pink/Purple
+                // TPUs - Google Hardware Group
+                'tpu':    shades(CHART_SERIES[4]), // Pink (v7 fallback)
+                'tpu_v5': shades(CHART_SERIES[5]), // Blue (v5)
+                'tpu_v6': shades(CHART_SERIES[3]), // Purple (v6)
+                'tpu_v7': shades(CHART_SERIES[4]), // Pink (v7)
                 
-                'l4':   ['#f59e0b', '#fbbf24', '#fcd34d', '#d97706', '#b45309'], // Amber
-                'rtx':  ['#71717a', '#a1a1aa', '#d4d4d8', '#52525b', '#3f3f46'], // Zinc
-                'mi300':['#14b8a6', '#5eead4', '#99f6e4', '#0d9488', '#0f766e'], // Teal
-                'other':['#94a3b8', '#cbd5e1', '#64748b', '#475569', '#e2e8f0']  // Slate
+                'l4':   shades(CHART_SERIES[2]), // Amber
+                'rtx':  shades(chartTheme.muted), // Neutral
+                'mi300':shades(CHART_SERIES[0]), // Green
+                'other':shades(chartTheme.muted)  // Neutral
             };
 
-            // Helper to generate a palette from a base color (varying lightness)
-            // We'll use a simple approach: if base is hex, we might just use a pre-defined set of categorical palettes that are arrays
-            const categoricalPalettes = [
-                 ['#3b82f6', '#60a5fa', '#93c5fd', '#2563eb', '#1d4ed8'], // Blue
-                 ['#ef4444', '#f87171', '#fca5a5', '#dc2626', '#b91c1c'], // Red
-                 ['#10b981', '#34d399', '#6ee7b7', '#059669', '#047857'], // Emerald
-                 ['#f59e0b', '#fbbf24', '#fcd34d', '#d97706', '#b45309'], // Amber
-                 ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed', '#6d28d9'], // Violet
-                 ['#ec4899', '#f472b6', '#fbcfe8', '#db2777', '#be185d'], // Pink
-                 ['#06b6d4', '#22d3ee', '#67e8f9', '#0891b2', '#155e75'], // Cyan
-                 ['#84cc16', '#a3e635', '#bef264', '#65a30d', '#4d7c0f'], // Lime
-                 ['#6366f1', '#818cf8', '#a5b4fc', '#4f46e5', '#4338ca'], // Indigo
-                 ['#14b8a6', '#5eead4', '#99f6e4', '#0d9488', '#0f766e'], // Teal
-            ];
+            // Generic (non-hardware) groups walk the fixed series order.
+            const categoricalPalette = (groupIndex) => shades(seriesColor(groupIndex));
 
             const getHwKey = (s) => {
                 const v = String(s).toLowerCase();
@@ -472,7 +466,7 @@ export const ThroughputCostChart = (props) => {
 
             // Assign Colors
             // If Hardware: key matches keys in 'colorPalettes'
-            // If Other: assign from categoricalPalettes dynamically
+            // If Other: assign from the fixed series order dynamically
             
             // Stable sort keys to ensure color stability
             const sortedGroupKeys = Object.keys(colorGroups).sort((a, b) => {
@@ -524,19 +518,22 @@ export const ThroughputCostChart = (props) => {
                 return a.localeCompare(b);
             });
             
+            const benchmarkShadeMap = new Map(); // benchmarkKey -> opacity for its sibling slot
             sortedGroupKeys.forEach((key, groupIndex) => {
                 let palette;
                 
                 if (chartColorMode === 'hardware') {
                     palette = colorPalettes[key] || colorPalettes['other'];
                 } else {
-                    // Cycle through categorical palettes
-                    palette = categoricalPalettes[groupIndex % categoricalPalettes.length];
+                    // Cycle through the fixed series order
+                    palette = categoricalPalette(groupIndex);
                 }
 
                 colorGroups[key].forEach((benchmarkKey, i) => {
-                    const color = palette[i % palette.length];
+                    const slot = i % palette.length;
+                    const color = palette[slot];
                     benchmarkColorMap.set(benchmarkKey, color);
+                    benchmarkShadeMap.set(benchmarkKey, SHADE_OPACITY[slot]);
                     const sample = visibleDataPoints.find(d => d.benchmarkKey === benchmarkKey);
                     if (sample) modelColorMap.set(sample.model, color);
                 });
@@ -687,13 +684,13 @@ export const ThroughputCostChart = (props) => {
                                     <h3 className="text-base font-bold text-white font-mono">
                                         {yLabel} vs {xLabel}
                                     </h3>
-                                    <div className="text-[10px] text-slate-500 font-medium font-sans">
+                                    <div className="text-tiny text-slate-500 font-medium font-sans">
                                         Toggle axis dimensions, normalizations and filters below
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => setShowFilters(!showFilters)} 
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-350 hover:text-white rounded-lg transition-all text-[10px] font-extrabold uppercase tracking-wider border border-slate-750"
+                                    className="label-caps flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-all border border-slate-700"
                                 >
                                     Filters
                                     {showFilters ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -706,31 +703,31 @@ export const ThroughputCostChart = (props) => {
                                     <div className="flex flex-col gap-3.5">
                                         {/* X-Axis Group */}
                                         <div className="flex items-center gap-3">
-                                             <span className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider w-16">X-Axis:</span>
+                                             <span className="label-caps text-slate-450 w-16">X-Axis:</span>
                                              <div className="flex flex-wrap bg-slate-950/60 border border-slate-800/80 rounded-lg p-0.5 gap-0.5">
-                                                 <button onClick={() => switchMode('tpot')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', chartMode === 'tpot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>TPOT</button>
-                                                 <button onClick={() => switchMode('ntpot')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', chartMode === 'ntpot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>NTPOT</button>
-                                                 <button onClick={() => switchMode('ttft')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', chartMode === 'ttft' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>TTFT</button>
-                                                 <button onClick={() => switchMode('itl')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', chartMode === 'itl' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>ITL</button>
-                                                 <button onClick={() => switchMode('lat')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', chartMode === 'lat' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>E2E Latency</button>
+                                                 <button onClick={() => switchMode('tpot')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', chartMode === 'tpot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>TPOT</button>
+                                                 <button onClick={() => switchMode('ntpot')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', chartMode === 'ntpot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>NTPOT</button>
+                                                 <button onClick={() => switchMode('ttft')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', chartMode === 'ttft' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>TTFT</button>
+                                                 <button onClick={() => switchMode('itl')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', chartMode === 'itl' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>ITL</button>
+                                                 <button onClick={() => switchMode('lat')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', chartMode === 'lat' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>E2E Latency</button>
                                              </div>
                                          </div>
 
                                         {/* Y-Axis Group */}
                                         <div className="flex items-center gap-3">
-                                             <span className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider w-16">Y-Axis:</span>
+                                             <span className="label-caps text-slate-450 w-16">Y-Axis:</span>
                                              <div className="flex flex-wrap bg-slate-950/60 border border-slate-800/80 rounded-lg p-0.5 gap-0.5">
-                                                 <button onClick={() => switchTput('output')} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', tputType === 'output' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Output</button>
-                                                 <button onClick={() => metricAvailability.input && switchTput('input')} disabled={!metricAvailability.input} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', !metricAvailability.input ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'input' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Input</button>
-                                                 <button onClick={() => metricAvailability.total && switchTput('total')} disabled={!metricAvailability.total} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', !metricAvailability.total ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'total' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Total</button>
-                                                 <button onClick={() => metricAvailability.qps && switchTput('qps')} disabled={!metricAvailability.qps} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', !metricAvailability.qps ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'qps' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>QPS</button>
-                                                 <button onClick={() => metricAvailability.cost && switchTput('cost')} disabled={!metricAvailability.cost} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', !metricAvailability.cost ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'cost' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Cost</button>
+                                                 <button onClick={() => switchTput('output')} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', tputType === 'output' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Output</button>
+                                                 <button onClick={() => metricAvailability.input && switchTput('input')} disabled={!metricAvailability.input} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', !metricAvailability.input ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'input' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Input</button>
+                                                 <button onClick={() => metricAvailability.total && switchTput('total')} disabled={!metricAvailability.total} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', !metricAvailability.total ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'total' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Total</button>
+                                                 <button onClick={() => metricAvailability.qps && switchTput('qps')} disabled={!metricAvailability.qps} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', !metricAvailability.qps ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'qps' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>QPS</button>
+                                                 <button onClick={() => metricAvailability.cost && switchTput('cost')} disabled={!metricAvailability.cost} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', !metricAvailability.cost ? 'text-slate-700 cursor-not-allowed opacity-40' : tputType === 'cost' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Cost</button>
                                              </div>
                                              {tputType === 'cost' && (
                                                  <select 
                                                      value={costMode} 
                                                      onChange={(e) => setCostMode(e.target.value)}
-                                                     className="bg-slate-950 border border-slate-800 rounded-md text-[10px] px-2 py-1 text-slate-350 outline-none focus:border-cyan-500 font-mono"
+                                                     className="bg-slate-950 border border-slate-800 rounded-md text-tiny px-2 py-1 text-slate-300 outline-none focus:border-accent-600 font-mono"
                                                  >
                                                      <option value="spot">Spot</option>
                                                      <option value="on_demand">On Demand</option>
@@ -745,28 +742,28 @@ export const ThroughputCostChart = (props) => {
                                          <div className="flex flex-wrap items-center gap-3 justify-start lg:justify-end w-full">
                                              {/* Normalization & Scale Options */}
                                              <div className="flex items-center gap-1.5 bg-slate-950/60 border border-slate-800/80 rounded-lg p-0.5">
-                                                 <button onClick={() => setIsLogScaleX(!isLogScaleX)} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', isLogScaleX ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Log Scale</button>
+                                                 <button onClick={() => setIsLogScaleX(!isLogScaleX)} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', isLogScaleX ? 'bg-amber-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Log Scale</button>
                                                  <div className="h-3 w-px bg-slate-850" />
-                                                 <button onClick={() => canShowPerChip && setShowPerChip(!showPerChip)} disabled={!canShowPerChip} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', !canShowPerChip ? 'text-slate-700 cursor-not-allowed opacity-40' : showPerChip ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white')} title="Normalize per chip">Per Chip</button>
+                                                 <button onClick={() => canShowPerChip && setShowPerChip(!showPerChip)} disabled={!canShowPerChip} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', !canShowPerChip ? 'text-slate-700 cursor-not-allowed opacity-40' : showPerChip ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white')} title="Normalize per chip">Per Chip</button>
                                              </div>
 
                                              {/* Visual Toggles Group */}
                                              <div className="flex items-center gap-1.5 bg-slate-950/60 border border-slate-800/80 rounded-lg p-0.5">
-                                                 <button onClick={() => setShowLabels(!showLabels)} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', showLabels ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Labels</button>
-                                                 <button onClick={() => setShowDataLabels(!showDataLabels)} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', showDataLabels ? 'bg-pink-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Points</button>
-                                                 <button onClick={() => setShowPareto(!showPareto)} className={cn('px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider rounded-md transition-all', showPareto ? 'bg-amber-500 text-white shadow' : 'text-slate-400 hover:text-white')}>Pareto</button>
+                                                 <button onClick={() => setShowLabels(!showLabels)} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', showLabels ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Labels</button>
+                                                 <button onClick={() => setShowDataLabels(!showDataLabels)} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', showDataLabels ? 'bg-pink-600 text-white shadow' : 'text-slate-400 hover:text-white')}>Points</button>
+                                                 <button onClick={() => setShowPareto(!showPareto)} className={cn('label-caps px-2.5 py-1 rounded-md transition-all', showPareto ? 'bg-amber-500 text-white shadow' : 'text-slate-400 hover:text-white')}>Pareto</button>
                                              </div>
 
                                              {/* Cap Input */}
                                              <div className="flex items-center gap-2 bg-slate-950/60 border border-slate-800/80 px-3 py-1 rounded-lg">
-                                                 <span className="text-[10px] text-slate-450 font-extrabold uppercase tracking-wider">Cap:</span>
+                                                 <span className="label-caps text-slate-450">Cap:</span>
                                                  <button 
                                                      type="button"
                                                      onClick={() => setXAxisMax(xAxisMax === Infinity ? Math.round(dataMax * 0.8) : Infinity)}
                                                      className={cn(
-                                                         'px-2 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wider rounded transition-all cursor-pointer',
+                                                         'label-caps px-2 py-0.5 rounded transition-all cursor-pointer',
                                                          xAxisMax === Infinity 
-                                                             ? 'bg-cyan-600 text-white shadow' 
+                                                             ? 'bg-accent-400 text-white shadow' 
                                                              : 'bg-slate-800 text-slate-400 hover:text-white'
                                                      )}
                                                  >
@@ -783,7 +780,7 @@ export const ThroughputCostChart = (props) => {
                                                          setXAxisMax(val);
                                                      }} 
                                                      className={cn(
-                                                         "w-24 h-1 rounded-lg appearance-none cursor-pointer accent-cyan-400",
+                                                         "w-24 h-1 rounded-lg appearance-none cursor-pointer accent-accent-700",
                                                          xAxisMax === Infinity ? "bg-slate-850 opacity-40" : "bg-slate-800"
                                                      )} 
                                                  />
@@ -797,11 +794,11 @@ export const ThroughputCostChart = (props) => {
                                                          else setXAxisMax(val);
                                                      }} 
                                                      className={cn(
-                                                         "w-14 bg-transparent text-[10px] focus:outline-none focus:ring-1 focus:ring-cyan-500/50 rounded px-1 text-right font-mono font-extrabold transition-all",
+                                                         "w-14 bg-transparent text-tiny focus:outline-none focus:ring-1 focus:ring-accent-600/50 rounded px-1 text-right font-mono font-extrabold transition-all",
                                                          xAxisMax === Infinity ? "text-slate-500" : "text-slate-200"
                                                      )} 
                                                  />
-                                                 <span className="text-[9px] text-slate-500 font-mono font-bold">ms</span>
+                                                 <span className="text-tiny text-slate-500 font-mono font-bold">ms</span>
                                              </div>
                                          </div>
                                      </div>
@@ -813,7 +810,7 @@ export const ThroughputCostChart = (props) => {
                                 {zoomDomain && (
                                     <button 
                                         onClick={() => setZoomDomain(null)}
-                                        className="absolute top-4 right-4 z-10 bg-slate-800/85 hover:bg-slate-700 text-slate-350 hover:text-white text-[10px] font-extrabold uppercase tracking-wider px-2 py-1 rounded-md border border-slate-750 shadow-lg flex items-center gap-1 cursor-pointer transition-all"
+                                        className="label-caps absolute top-4 right-4 z-10 bg-slate-800/85 hover:bg-slate-700 text-slate-300 hover:text-white px-2 py-1 rounded-md border border-slate-700 shadow-lg flex items-center gap-1 cursor-pointer transition-all"
                                     >
                                         <RotateCcw size={10} /> Reset Zoom
                                     </button>
@@ -873,7 +870,7 @@ export const ThroughputCostChart = (props) => {
                                                     baselineSeries={baselineSeries}
                                                 />}
                                                 wrapperStyle={{ outline: 'none', zIndex: 100 }}
-                                                cursor={{ stroke: '#475569', strokeWidth: 1, strokeDasharray: '4 4' }}
+                                                cursor={cursorProps()}
                                                 animationDuration={150}
                                             />
 
@@ -883,7 +880,8 @@ export const ThroughputCostChart = (props) => {
                                                 const model = sample.model;
                                                 if (!selectedBenchmarks.has(benchmarkKey)) return null;
                                                 
-                                                const color = benchmarkColorMap.get(benchmarkKey) || modelColorMap.get(model) || '#38bdf8';
+                                                const color = benchmarkColorMap.get(benchmarkKey) || modelColorMap.get(model) || CHART_SERIES[1];
+                                                const shadeOpacity = benchmarkShadeMap.get(benchmarkKey) ?? 1;
                                                 const lineData = visibleDataPoints
                                                      .filter(d => d.benchmarkKey === benchmarkKey)
                                                      .sort((a, b) => {
@@ -916,9 +914,10 @@ export const ThroughputCostChart = (props) => {
                                                          dataKey="vy" 
                                                          name={displayName} 
                                                          stroke={color} 
+                                                         strokeOpacity={shadeOpacity}
                                                          strokeWidth={isBaseline ? 2.5 : 2} 
                                                          strokeDasharray={isBaseline ? "4 4" : "0"}
-                                                         dot={showDataLabels ? { r: 3, fill: color, strokeWidth: 0 } : false} 
+                                                         dot={showDataLabels ? { r: 3, fill: color, fillOpacity: shadeOpacity, strokeWidth: 0 } : false} 
                                                          label={(props) => <CustomLabel {...props} lastIndex={lineData.length - 1} text={smartLabels[benchmarkKey] || displayName} stroke={color} showLineLabel={showLabels} showDataLabels={showDataLabels} dataPoint={lineData[props.index]} />}
                                                          isAnimationActive={false}
                                                      />
@@ -930,10 +929,10 @@ export const ThroughputCostChart = (props) => {
                                                     data={paretoData}
                                                     type="monotone"
                                                     dataKey="vy"
-                                                    stroke="#f59e0b"
+                                                    stroke={CHART_STATUS.warning}
                                                     strokeWidth={2}
                                                     strokeDasharray="5 5"
-                                                    dot={{ r: 4, fill: '#f59e0b', strokeWidth: 0 }}
+                                                    dot={{ r: 4, fill: CHART_STATUS.warning, strokeWidth: 0 }}
                                                     name="Pareto Frontier"
                                                     isAnimationActive={false}
                                                 />
@@ -945,18 +944,18 @@ export const ThroughputCostChart = (props) => {
                                 {/* Hardware / Color Legend */}
                                 <div className="mt-1 border-t border-slate-800 pt-3 px-6 pb-4">
                                     <div className="flex items-center justify-between mb-2">
-                                        <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest font-mono">
+                                        <h4 className="label-caps text-slate-500 font-mono">
                                             {chartColorMode === 'hardware' ? 'Hardware / Machine Types' : 
                                              chartColorMode === 'model' ? 'Models' : 'Node Configurations'}
                                         </h4>
                                         
                                         {/* Color Mode Selector */}
                                         <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-slate-500 font-medium">Color By:</span>
+                                            <span className="text-tiny text-slate-500 font-medium">Color By:</span>
                                             <select 
                                                 value={chartColorMode}
                                                 onChange={(e) => setChartColorMode(e.target.value)}
-                                                className="bg-slate-850 border border-slate-800 rounded text-[10px] px-2 py-1 text-slate-200 outline-none focus:border-cyan-500"
+                                                className="bg-slate-850 border border-slate-800 rounded text-tiny px-2 py-1 text-slate-200 outline-none focus:border-accent-600"
                                             >
                                                 <option value="hardware">Hardware</option>
                                                 <option value="node_config">Node Config</option>
@@ -972,7 +971,7 @@ export const ThroughputCostChart = (props) => {
                                                 palette = colorPalettes[key] || colorPalettes['other'];
                                             } else {
                                                 const groupIndex = sortedGroupKeys.indexOf(key);
-                                                palette = categoricalPalettes[groupIndex % categoricalPalettes.length];
+                                                palette = categoricalPalette(groupIndex);
                                             }
                                             
                                             let label = groupLabels[key] || key;
@@ -998,11 +997,11 @@ export const ThroughputCostChart = (props) => {
                                             return (
                                                 <div key={key} className="flex flex-col gap-1">
                                                     <div className="flex rounded overflow-hidden shadow-sm">
-                                                        {palette.map(c => (
-                                                            <div key={c} className="w-4 h-3" style={{ backgroundColor: c }} />
+                                                        {palette.map((c, slot) => (
+                                                            <div key={slot} className="w-4 h-3" style={{ backgroundColor: c, opacity: SHADE_OPACITY[slot] }} />
                                                         ))}
                                                     </div>
-                                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight max-w-[200px] truncate" title={label}>{label}</span>
+                                                    <span className="text-tiny font-semibold text-slate-400 uppercase tracking-tight max-w-[200px] truncate" title={label}>{label}</span>
                                                 </div>
                                             );
                                         })}
@@ -1021,7 +1020,7 @@ export const ThroughputCostChart = (props) => {
                        <div className="flex-1 flex items-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50">
                           {/* Y-Axis Group */}
                           <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-slate-700 dark:text-slate-500 font-bold uppercase tracking-wider">Y-Axis</span>
+                              <span className="label-caps text-slate-700 dark:text-slate-500">Y-Axis</span>
                               <div className="h-4 w-px bg-slate-300 dark:bg-slate-700"/>
                               <button onClick={() => setTputType('output')} className={cn('px-3 py-1 text-xs font-medium rounded-md transition-all', tputType === 'output' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/50')}>Output</button>
                               <button onClick={() => metricAvailability.input && setTputType('input')} disabled={!metricAvailability.input} className={cn('px-3 py-1 text-xs font-medium rounded-md transition-all', !metricAvailability.input ? 'text-slate-600 cursor-not-allowed opacity-50' : tputType === 'input' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/50')} title={metricAvailability.input ? "Input Tokens per Second" : "Available only when input token stats are reported"}>Input</button>
@@ -1144,7 +1143,7 @@ export const ThroughputCostChart = (props) => {
                                 baselineSeries={baselineSeries}
                             />}
                             wrapperStyle={{ outline: 'none', zIndex: 100 }}
-                            cursor={{ stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4 4' }}
+                            cursor={cursorProps()}
                             animationDuration={200}
                           />
     
@@ -1159,6 +1158,7 @@ export const ThroughputCostChart = (props) => {
                               
                               const color = benchmarkColorMap.get(benchmarkKey) || modelColorMap.get(model);
                               if (!color) return null;
+                              const shadeOpacity = benchmarkShadeMap.get(benchmarkKey) ?? 1;
 
                               const lineData = visibleDataPoints
                                   .filter(d => d.benchmarkKey === benchmarkKey)
@@ -1208,7 +1208,7 @@ export const ThroughputCostChart = (props) => {
                                           key={key}
                                           points={points.join(' ')}
                                           fill={color}
-                                          stroke={theme === 'dark' ? '#0f172a' : '#ffffff'}
+                                          stroke={chartTheme.surface}
                                           strokeWidth={1.2}
                                       />
                                   );
@@ -1222,6 +1222,7 @@ export const ThroughputCostChart = (props) => {
                                 dataKey="vy"
                                 name={isBaseline ? `★ ${displayName} (baseline)` : displayName}
                                 stroke={color}
+                                strokeOpacity={shadeOpacity}
                                 strokeDasharray="0"
                                 strokeWidth={isBaseline ? 3.5 : 2}
                                 dot={isBaseline ? starDot : true}
@@ -1229,8 +1230,8 @@ export const ThroughputCostChart = (props) => {
                                 label={(props) => <CustomLabel {...props} lastIndex={lineData.length - 1} text={smartLabels[benchmarkKey] || displayName} stroke={color} showLineLabel={showLabels} showDataLabels={showDataLabels} dataPoint={lineData[props.index]} />}
                                 activeDot={{
                                     r: 6,
-                                    fill: "#ef4444",
-                                    stroke: "#fff",
+                                    fill: CHART_STATUS.critical,
+                                    stroke: chartTheme.surface,
                                     strokeWidth: 2,
                                     style: { cursor: 'pointer' },
                                     onClick: (_, payload) => {
@@ -1255,7 +1256,7 @@ export const ThroughputCostChart = (props) => {
                                    type="linear"
                                    dataKey="vy"
                                    name="Pareto Frontier"
-                                   stroke="#f59e0b" // Amber-500
+                                   stroke={CHART_STATUS.warning}
                                    strokeWidth={3}
                                    strokeDasharray="5 5"
                                    dot={false}
@@ -1271,18 +1272,18 @@ export const ThroughputCostChart = (props) => {
                    {/* Hardware / Color Legend */}
                    <div className="mt-1 border-t border-slate-700/50 pt-1 px-2">
                        <div className="flex items-center justify-between mb-2">
-                           <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                           <h4 className="label-caps text-slate-500">
                                {chartColorMode === 'hardware' ? 'Hardware / Machine Types' : 
                                 chartColorMode === 'model' ? 'Models' : 'Node Configurations'}
                            </h4>
                            
                            {/* Color Mode Selector */}
                            <div className="flex items-center gap-2">
-                               <span className="text-[10px] text-slate-500 font-medium">Color By:</span>
+                               <span className="text-tiny text-slate-500 font-medium">Color By:</span>
                                <Select
                                    value={chartColorMode}
                                    onChange={(e) => setChartColorMode(e.target.value)}
-                                   className="w-auto text-[10px] px-1 py-0.5 rounded"
+                                   className="w-auto text-tiny px-1 py-0.5 rounded"
                                >
                                    <option value="hardware">Hardware</option>
                                    <option value="node_config">Node Config</option>
@@ -1303,7 +1304,7 @@ export const ThroughputCostChart = (props) => {
                                    palette = colorPalettes[key] || colorPalettes['other'];
                                } else {
                                    const groupIndex = sortedGroupKeys.indexOf(key);
-                                   palette = categoricalPalettes[groupIndex % categoricalPalettes.length];
+                                   palette = categoricalPalette(groupIndex);
                                }
                                
                                // Label resolution
@@ -1331,11 +1332,11 @@ export const ThroughputCostChart = (props) => {
                                return (
                                    <div key={key} className="flex flex-col gap-1">
                                        <div className="flex rounded overflow-hidden shadow-sm">
-                                           {palette.map(c => (
-                                               <div key={c} className="w-4 h-3" style={{ backgroundColor: c }} />
+                                           {palette.map((c, slot) => (
+                                               <div key={slot} className="w-4 h-3" style={{ backgroundColor: c, opacity: SHADE_OPACITY[slot] }} />
                                            ))}
                                        </div>
-                                       <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-tight max-w-[200px] truncate" title={label}>{label}</span>
+                                       <span className="text-tiny font-semibold text-slate-400 uppercase tracking-tight max-w-[200px] truncate" title={label}>{label}</span>
                                    </div>
                                );
                            })}
@@ -1347,7 +1348,7 @@ export const ThroughputCostChart = (props) => {
                        <div className="flex-1 flex items-center gap-4 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700/50">
                            {/* X-Axis Controls */}
                            <div className="flex items-center gap-2">
-                               <span className="text-[10px] text-slate-700 dark:text-slate-500 font-bold uppercase tracking-wider">X-Axis</span>
+                               <span className="label-caps text-slate-700 dark:text-slate-500">X-Axis</span>
                                <div className="h-4 w-px bg-slate-300 dark:bg-slate-700"/>
                                <button onClick={() => setChartMode('tpot')} className={cn('px-3 py-1 text-xs font-medium rounded-md transition-all', chartMode === 'tpot' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/50')}>TPOT</button>
                                <button
@@ -1396,10 +1397,10 @@ export const ThroughputCostChart = (props) => {
                                 const currentMax = xAxisMax === Infinity ? dataMax : xAxisMax;
                                 return (
                                     <div className="flex-1 flex items-center gap-2 border-l border-slate-300 dark:border-slate-700 pl-4">
-                                        <span className="text-[10px] text-slate-500 dark:text-slate-400">Max:</span>
+                                        <span className="text-tiny text-slate-500 dark:text-slate-400">Max:</span>
                                         <input type="range" min={0} max={dataMax} step={step} value={currentMax} onChange={(e) => { const val = parseFloat(e.target.value); if (val >= dataMax * 0.99) setXAxisMax(Infinity); else setXAxisMax(val); }} className="w-full h-1 bg-slate-300 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-blue-500" />
                                         <Input type="number" value={xAxisMax === Infinity ? '' : xAxisMax} placeholder={dataMax.toFixed(chartMode === 'tpot' ? 2 : 0)} onChange={(e) => { const val = parseFloat(e.target.value); if (!val || isNaN(val)) setXAxisMax(Infinity); else setXAxisMax(val); }} className="w-16 rounded text-xs px-1 py-0.5 placeholder:text-slate-500 dark:placeholder:text-slate-600 text-right" />
-                                        <span className="text-[10px] text-slate-500 w-4">{chartMode === 'tpot' || chartMode === 'lat' ? 'ms' : ''}</span>
+                                        <span className="text-tiny text-slate-500 w-4">{chartMode === 'tpot' || chartMode === 'lat' ? 'ms' : ''}</span>
                                     </div>
                                 );
                            })()}

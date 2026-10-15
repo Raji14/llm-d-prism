@@ -119,8 +119,8 @@ export const FilterPanel = ({
             <div className="flex flex-col gap-2.5">
                 <div className="flex justify-between items-center flex-wrap gap-2 py-0.5">
                     <div className="flex items-center gap-2.5 flex-wrap">
-                        <h2 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
-                            <Filter size={13} className="text-cyan-400" />
+                        <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+                            <Filter size={13} className="text-accent-700" />
                             Benchmark Filters
                         </h2>
 
@@ -135,7 +135,7 @@ export const FilterPanel = ({
                                     {activeFilterPills.slice(0, isFiltersExpanded ? 8 : 4).map(pill => (
                                         <span
                                             key={pill.id}
-                                            className="inline-flex items-center gap-1 text-[11px] bg-slate-800 text-cyan-300 border border-slate-700/80 px-2 py-0.5 rounded-full font-sans"
+                                            className="inline-flex items-center gap-1 text-micro bg-slate-800 text-accent-800 border border-slate-700/80 px-2 py-0.5 rounded-full font-sans"
                                         >
                                             <span className="text-slate-400">{pill.category}:</span>
                                             <span className="font-semibold truncate max-w-[120px]" title={pill.label}>{pill.label}</span>
@@ -153,20 +153,20 @@ export const FilterPanel = ({
                                     ))}
 
                                     {activeFilterPills.length > (isFiltersExpanded ? 8 : 4) && (
-                                        <span className="text-[10px] text-slate-400 font-mono">
+                                        <span className="text-tiny text-slate-400 font-mono">
                                             +{activeFilterPills.length - (isFiltersExpanded ? 8 : 4)} more
                                         </span>
                                     )}
 
                                     <button
                                         onClick={handleClearAllFilters}
-                                        className="text-[11px] text-slate-400 hover:text-red-400 underline ml-1 flex items-center gap-1"
+                                        className="text-micro text-slate-400 hover:text-red-400 underline ml-1 flex items-center gap-1"
                                     >
                                         <RotateCcw size={10} /> Clear all
                                     </button>
                                 </>
                             ) : (
-                                <span className="text-[11px] text-slate-500">
+                                <span className="text-micro text-slate-500">
                                     (Showing all matching runs)
                                 </span>
                             )}
@@ -204,7 +204,7 @@ export const FilterPanel = ({
                     <div className="flex flex-col md:flex-row gap-4 border-t border-slate-700/50 pt-2.5 animate-in fade-in duration-200">
                         {/* Section 1: Application / Model Server */}
                         <div className="flex-1 min-w-[200px]">
-                            <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-1 px-1">Application / Model Server</h4>
+                            <h4 className="text-tiny font-semibold uppercase text-slate-400 mb-1 px-1">Application / Model Server</h4>
                             <div className="grid grid-cols-2 gap-1">
                                 <MultiSelectDropdown 
                                     label="Models"
@@ -241,7 +241,7 @@ export const FilterPanel = ({
                         
                         {/* Section 2: Hardware Infrastructure */}
                         <div className="flex-1 min-w-[200px]">
-                            <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-1 px-1">Hardware Infrastructure</h4>
+                            <h4 className="text-tiny font-semibold uppercase text-slate-400 mb-1 px-1">Hardware Infrastructure</h4>
                             <div className="grid grid-cols-2 gap-1">
                                 <MultiSelectDropdown 
                                     label="Machine Type"
@@ -271,7 +271,7 @@ export const FilterPanel = ({
 
                         {/* Section 3: Orchestration */}
                         <div className="flex-1 min-w-[200px]">
-                            <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-1 px-1">Orchestration / Serving Framework</h4>
+                            <h4 className="text-tiny font-semibold uppercase text-slate-400 mb-1 px-1">Orchestration / Serving Framework</h4>
                             <div className="grid grid-cols-2 gap-1">
                                 <MultiSelectDropdown 
                                     label="Serving Stack"
@@ -316,7 +316,7 @@ export const FilterPanel = ({
 
                         {/* Section 4: Benchmark Load */}
                         <div className="flex-1 min-w-[200px]">
-                            <h4 className="text-[10px] font-bold uppercase text-slate-400 mb-1 px-1">Benchmark Load</h4>
+                            <h4 className="text-tiny font-semibold uppercase text-slate-400 mb-1 px-1">Benchmark Load</h4>
                             <div className="grid grid-cols-2 gap-1">
                                 <MultiSelectDropdown 
                                     label="Input (ISL)"

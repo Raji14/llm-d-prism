@@ -15,8 +15,33 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { X, Award, Download, Copy, Check, Share2, Sparkles, Trophy, ShieldCheck } from 'lucide-react';
 import { generateCertificateData } from '../../utils/gamificationEngine.js';
+import { CHART_STATUS, resolveSeriesColor } from '../ui';
+
+// The certificate is a downloadable SVG export artifact (serialized via
+// XMLSerializer), not themed UI: the CSS palette redirect does not travel with
+// the file, so its dark-card chrome is pinned to literal values here.
+const CERT_THEME = {
+    bg: '#0f172a',
+    bgAlt: '#1e1b4b',
+    bgDeep: '#020617',
+    bgInset: '#030712',
+    ink: '#f8fafc',
+    inkMuted: '#94a3b8',
+    inkFaint: '#64748b',
+    border: '#334155',
+    borderSubtle: '#1e293b',
+    goldHighlight: '#fef08a',
+    goldDeep: '#d97706',
+};
+// Series hues resolved for the dark card so the export matches in-app colors.
+const CERT_SKY = resolveSeriesColor(1, 'dark');
+const CERT_PURPLE = resolveSeriesColor(3, 'dark');
+const CERT_GREEN = resolveSeriesColor(0, 'dark');
 
 export default function CertificateModal({ isOpen, onClose, recipe }) {
+    const [copied, setCopied] = useState(false);
+    const svgRef = useRef(null);
+
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.key === 'Escape' && isOpen) {
@@ -27,13 +52,21 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [isOpen, onClose]);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = originalOverflow;
+        };
+    }, [isOpen]);
+
     if (!isOpen || !recipe) return null;
 
     const cert = generateCertificateData(recipe);
-    const [copied, setCopied] = useState(false);
-    const svgRef = useRef(null);
+    if (!cert) return null;
 
-    const markdownSnippet = `[![Prism ${cert.tier} Certificate](https://img.shields.io/badge/Prism_Leaderboard-${cert.tier}_${encodeURIComponent(cert.metrics.throughput)}-${cert.tierConfig.colorHex.replace('#', '')}?logo=trophy&style=for-the-badge)](${window.location.origin}/?view=model-leaderboard&recipe=${cert.certificateId})`;
+    const markdownSnippet = `[![Prism ${cert.tier} Certificate](https://img.shields.io/badge/Prism_Leaderboard-${cert.tier}_${encodeURIComponent(cert.metrics?.throughput || '')}-${cert.tierConfig?.colorHex?.replace('#', '') || 'amber'}?logo=trophy&style=for-the-badge)](${window.location.origin}/?view=model-leaderboard&recipe=${cert.certificateId})`;
 
     const handleCopyMarkdown = () => {
         navigator.clipboard.writeText(markdownSnippet);
@@ -55,8 +88,8 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-            <div className="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative text-slate-200">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm transition-opacity animate-in fade-in duration-200" onClick={onClose}>
+            <div className="bg-slate-900/95 border border-slate-700/80 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative text-slate-200 backdrop-blur-xl animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
                 {/* Close Button */}
                 <button
                     onClick={onClose}
@@ -71,7 +104,7 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
                         <Trophy className="w-6 h-6" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-white">Verifiable Achievement Certificate</h2>
+                        <h2 className="text-lg font-bold text-white">Verifiable achievement certificate</h2>
                         <p className="text-xs text-slate-400">
                             Cryptographically certified benchmark record for verified reproducibility.
                         </p>
@@ -88,23 +121,23 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
                     >
                         <defs>
                             <linearGradient id="certBg" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stopColor="#0f172a" />
-                                <stop offset="50%" stopColor="#1e1b4b" />
-                                <stop offset="100%" stopColor="#020617" />
+                                <stop offset="0%" stopColor={CERT_THEME.bg} />
+                                <stop offset="50%" stopColor={CERT_THEME.bgAlt} />
+                                <stop offset="100%" stopColor={CERT_THEME.bgDeep} />
                             </linearGradient>
                             <linearGradient id="goldText" x1="0%" y1="0%" x2="100%" y2="0%">
-                                <stop offset="0%" stopColor="#f59e0b" />
-                                <stop offset="50%" stopColor="#fef08a" />
-                                <stop offset="100%" stopColor="#d97706" />
+                                <stop offset="0%" stopColor={CHART_STATUS.warning} />
+                                <stop offset="50%" stopColor={CERT_THEME.goldHighlight} />
+                                <stop offset="100%" stopColor={CERT_THEME.goldDeep} />
                             </linearGradient>
                         </defs>
 
                         {/* Card Border & Background */}
-                        <rect x="2" y="2" width="536" height="316" rx="16" fill="url(#certBg)" stroke="#334155" strokeWidth="2" />
+                        <rect x="2" y="2" width="536" height="316" rx="16" fill="url(#certBg)" stroke={CERT_THEME.border} strokeWidth="2" />
                         <rect x="10" y="10" width="520" height="300" rx="12" fill="none" stroke={cert.tierConfig.colorHex} strokeWidth="1.5" strokeDasharray="6 3" opacity="0.6" />
 
                         {/* Top Banner */}
-                        <text x="270" y="38" textAnchor="middle" fill="#94a3b8" fontSize="9" letterSpacing="3" fontWeight="bold">
+                        <text x="270" y="38" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="9" letterSpacing="3" fontWeight="bold">
                             PRISM INFERENCE BENCHMARKING LEADERBOARD
                         </text>
                         <text x="270" y="65" textAnchor="middle" fill="url(#goldText)" fontSize="18" fontWeight="bold" letterSpacing="1">
@@ -112,48 +145,48 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
                         </text>
 
                         {/* Author Info */}
-                        <text x="270" y="98" textAnchor="middle" fill="#f8fafc" fontSize="15" fontWeight="bold">
+                        <text x="270" y="98" textAnchor="middle" fill={CERT_THEME.ink} fontSize="15" fontWeight="bold">
                             Awarded to: {cert.authorName} (@{cert.authorHandle})
                         </text>
-                        <text x="270" y="118" textAnchor="middle" fill="#94a3b8" fontSize="11">
-                            for optimizing <tspan fill="#38bdf8" fontWeight="bold">{cert.modelName}</tspan> on <tspan fill="#a855f7" fontWeight="bold">{cert.hardware}</tspan>
+                        <text x="270" y="118" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="11">
+                            for optimizing <tspan fill={CERT_SKY} fontWeight="bold">{cert.modelName}</tspan> on <tspan fill={CERT_PURPLE} fontWeight="bold">{cert.hardware}</tspan>
                         </text>
 
                         {/* Metrics Badges Box */}
-                        <rect x="30" y="140" width="480" height="90" rx="8" fill="#030712" fillOpacity="0.8" stroke="#1e293b" />
+                        <rect x="30" y="140" width="480" height="90" rx="8" fill={CERT_THEME.bgInset} fillOpacity="0.8" stroke={CERT_THEME.borderSubtle} />
 
                         {/* Metric 1: Throughput */}
-                        <text x="90" y="165" textAnchor="middle" fill="#94a3b8" fontSize="10">THROUGHPUT</text>
-                        <text x="90" y="195" textAnchor="middle" fill="#f59e0b" fontSize="16" fontWeight="bold" fontFamily="monospace">
+                        <text x="90" y="165" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="10">THROUGHPUT</text>
+                        <text x="90" y="195" textAnchor="middle" fill={CHART_STATUS.warning} fontSize="16" fontWeight="bold" fontFamily="monospace">
                             {cert.metrics.throughput}
                         </text>
 
                         {/* Metric 2: TTFT */}
-                        <text x="210" y="165" textAnchor="middle" fill="#94a3b8" fontSize="10">TTFT (P50)</text>
-                        <text x="210" y="195" textAnchor="middle" fill="#38bdf8" fontSize="16" fontWeight="bold" fontFamily="monospace">
+                        <text x="210" y="165" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="10">TTFT (P50)</text>
+                        <text x="210" y="195" textAnchor="middle" fill={CERT_SKY} fontSize="16" fontWeight="bold" fontFamily="monospace">
                             {cert.metrics.ttft}
                         </text>
 
                         {/* Metric 3: Cost / 1M */}
-                        <text x="330" y="165" textAnchor="middle" fill="#94a3b8" fontSize="10">COST / 1M TOKENS</text>
-                        <text x="330" y="195" textAnchor="middle" fill="#10b981" fontSize="16" fontWeight="bold" fontFamily="monospace">
+                        <text x="330" y="165" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="10">COST / 1M TOKENS</text>
+                        <text x="330" y="195" textAnchor="middle" fill={CHART_STATUS.good} fontSize="16" fontWeight="bold" fontFamily="monospace">
                             {cert.metrics.costPer1M}
                         </text>
 
                         {/* Metric 4: Tokens / $ */}
-                        <text x="450" y="165" textAnchor="middle" fill="#94a3b8" fontSize="10">TOKENS / $</text>
-                        <text x="450" y="195" textAnchor="middle" fill="#34d399" fontSize="16" fontWeight="bold" fontFamily="monospace">
+                        <text x="450" y="165" textAnchor="middle" fill={CERT_THEME.inkMuted} fontSize="10">TOKENS / $</text>
+                        <text x="450" y="195" textAnchor="middle" fill={CERT_GREEN} fontSize="16" fontWeight="bold" fontFamily="monospace">
                             {cert.metrics.tokensPerDollar}
                         </text>
 
                         {/* Footer & Verification Hash */}
-                        <text x="35" y="265" fill="#64748b" fontSize="9" fontFamily="monospace">
+                        <text x="35" y="265" fill={CERT_THEME.inkFaint} fontSize="9" fontFamily="monospace">
                             VERIFICATION HASH: {cert.verificationHash}
                         </text>
-                        <text x="35" y="280" fill="#64748b" fontSize="9">
+                        <text x="35" y="280" fill={CERT_THEME.inkFaint} fontSize="9">
                             ISSUED: {cert.issuedAt} • SERVING STACK: {cert.servingEngine}
                         </text>
-                        <text x="505" y="275" textAnchor="end" fill="#38bdf8" fontSize="10" fontWeight="bold">
+                        <text x="505" y="275" textAnchor="end" fill={CERT_SKY} fontSize="10" fontWeight="bold">
                             ✓ VERIFIED SOTA
                         </text>
                     </svg>
@@ -162,7 +195,7 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
                 {/* Markdown snippet */}
                 <div className="mb-5">
                     <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 block">
-                        GitHub Profile README Badge Snippet
+                        GitHub profile README badge snippet
                     </label>
                     <div className="flex items-center gap-2">
                         <input
@@ -199,7 +232,7 @@ export default function CertificateModal({ isOpen, onClose, recipe }) {
                             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 text-xs font-bold shadow-[0_0_15px_rgba(245,158,11,0.3)] transition-all cursor-pointer"
                         >
                             <Download className="w-3.5 h-3.5" />
-                            <span>Download SVG Certificate</span>
+                            <span>Download SVG certificate</span>
                         </button>
                     </div>
                 </div>

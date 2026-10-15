@@ -13,63 +13,119 @@
 // limitations under the License.
 
 import React, { useState } from 'react';
-import { ArrowLeft, Menu, Share2 } from 'lucide-react';
+import { ArrowLeft, Share2, Check } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { Button } from './Button';
 
-// Standard dashboard header chrome: mobile nav toggle, back arrow, title block,
-// and a right-hand action cluster (Share link, Export, etc.).
+// Subtle architectural perspective-fan background shared with PrismHome.
+// Colors come from the accent ramp (src/index.css). SVG presentation
+// attributes can't resolve var(), so stop colors are set through `style`.
+const ARC_STOPS = [
+    { offset: '0%', color: 'var(--color-accent-600)', opacity: 0.22 },
+    { offset: '65%', color: 'var(--color-accent-500)', opacity: 0.06 },
+    { offset: '100%', color: 'var(--color-accent-500)', opacity: 0 },
+];
+
+export function HeroCurvesBg() {
+    const fan = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5];
+    const stops = ARC_STOPS.map((s) => (
+        <stop key={s.offset} offset={s.offset} stopOpacity={s.opacity} style={{ stopColor: s.color }} />
+    ));
+    return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none overflow-hidden">
+            <div
+                className="absolute inset-x-0 -top-24 h-[260px]"
+                style={{
+                    background:
+                        'radial-gradient(50% 60% at 50% 0%, color-mix(in oklab, var(--color-accent-400) 13%, transparent) 0%, color-mix(in oklab, var(--color-accent-500) 5%, transparent) 45%, transparent 75%)',
+                }}
+            />
+            <svg className="w-full h-full" viewBox="0 0 1440 240" preserveAspectRatio="none" fill="none">
+                <defs>
+                    <linearGradient id="prism-page-arc-l" x1="0" y1="0" x2="640" y2="200" gradientUnits="userSpaceOnUse">
+                        {stops}
+                    </linearGradient>
+                    <linearGradient id="prism-page-arc-r" x1="1440" y1="0" x2="800" y2="200" gradientUnits="userSpaceOnUse">
+                        {stops}
+                    </linearGradient>
+                </defs>
+                {fan.map((i) => (
+                    <React.Fragment key={i}>
+                        <path
+                            d={`M ${-60 + i * 16} ${20 + i * 24} C 240 ${60 + i * 14}, 460 ${120 + i * 10}, 720 ${160 + i * 6}`}
+                            stroke="url(#prism-page-arc-l)"
+                            strokeWidth={i === 0 ? 1.35 : 0.9}
+                        />
+                        <path
+                            d={`M ${1500 - i * 16} ${20 + i * 24} C 1200 ${60 + i * 14}, 980 ${120 + i * 10}, 720 ${160 + i * 6}`}
+                            stroke="url(#prism-page-arc-r)"
+                            strokeWidth={i === 0 ? 1.35 : 0.9}
+                        />
+                    </React.Fragment>
+                ))}
+            </svg>
+        </div>
+    );
+}
+
+// Prism 2.0 editorial page header — replaces the legacy secondary sticky navbar
+// with a clean hero band matching PrismHome.
 export function PageHeader({
     title,
     subtitle,
+    kicker,
     badge,
     onNavigateBack,
-    onToggleMobileNav,
     actions,
     className,
 }) {
     return (
         <header
             className={cn(
-                'sticky top-0 z-40 w-full border-b border-theme-border bg-theme-bg/80 backdrop-blur-xl',
-                'flex items-center justify-between gap-4 px-4 sm:px-6 py-3',
+                'surface-light relative shrink-0 overflow-hidden w-full border-b border-zinc-200/80 bg-white text-zinc-900',
                 className
             )}
         >
-            <div className="flex items-center gap-2 min-w-0">
-                {onToggleMobileNav && (
-                    <button
-                        onClick={onToggleMobileNav}
-                        aria-label="Toggle navigation"
-                        className="p-1.5 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors md:hidden"
-                    >
-                        <Menu className="h-5 w-5" />
-                    </button>
-                )}
-                {onNavigateBack && (
-                    <button
-                        onClick={onNavigateBack}
-                        aria-label="Back"
-                        className="p-1.5 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                    >
-                        <ArrowLeft className="h-5 w-5" />
-                    </button>
-                )}
-                <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-base sm:text-lg font-bold text-theme-text truncate">{title}</h1>
-                        {badge}
+            <HeroCurvesBg />
+            <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-7 pb-6">
+                <div className="flex flex-wrap items-center gap-2.5 mb-3">
+                    {onNavigateBack && (
+                        <button
+                            type="button"
+                            onClick={onNavigateBack}
+                            aria-label="Back to Home"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white/95 px-3 py-1 text-xs font-medium text-zinc-700 hover:text-zinc-900 hover:border-zinc-400 transition-colors shadow-xs"
+                        >
+                            <ArrowLeft className="h-3.5 w-3.5" />
+                            <span>Home</span>
+                        </button>
+                    )}
+                    {kicker && (
+                        <span className="text-xs font-semibold uppercase tracking-kicker text-accent-600">
+                            {kicker}
+                        </span>
+                    )}
+                    {badge}
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div className="min-w-0">
+                        <h1 className="display-title text-2xl sm:text-3xl md:text-[36px] text-zinc-900 leading-[1.08]">
+                            {title}
+                        </h1>
+                        {subtitle && (
+                            <p className="mt-2 text-sm sm:text-[15px] text-zinc-700 max-w-2xl leading-relaxed">
+                                {subtitle}
+                            </p>
+                        )}
                     </div>
-                    {subtitle && <p className="text-xs text-theme-muted truncate">{subtitle}</p>}
+                    {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
                 </div>
             </div>
-            {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
         </header>
     );
 }
 
-// "Share link" button with the built-in "Link copied!" toast used across dashboards.
-// Pass getUrl to share a constructed deep link instead of the current location.
+// "Share link" pill button with built-in "Copied" state.
 export function ShareLinkButton({ label = 'Share link', getUrl, className }) {
     const [copied, setCopied] = useState(false);
 
@@ -80,14 +136,16 @@ export function ShareLinkButton({ label = 'Share link', getUrl, className }) {
     };
 
     return (
-        <Button variant="secondary" size="sm" onClick={handleShare} className={cn('relative', className)}>
-            <Share2 className="w-3.5 h-3.5" />
-            <span>{label}</span>
-            {copied && (
-                <span className="absolute -bottom-10 right-0 bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded shadow-lg z-50 whitespace-nowrap">
-                    Link copied!
-                </span>
+        <button
+            type="button"
+            onClick={handleShare}
+            className={cn(
+                'surface-light inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-zinc-300 bg-white hover:bg-zinc-50 hover:border-zinc-400 text-xs font-medium text-zinc-800 transition-colors whitespace-nowrap',
+                className
             )}
-        </Button>
+        >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-zinc-600" />}
+            <span>{copied ? 'Link copied' : label}</span>
+        </button>
     );
 }

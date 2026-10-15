@@ -8,7 +8,7 @@ import yaml from 'js-yaml';
 import { getBenchmarkKey } from '../../utils/dashboardHelpers';
 import IntelligentRoutingChart from '../IntelligentRoutingChart';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth';
-import { Badge, Button, Checkbox, Input, Label, Panel, Select, Spinner } from '../ui';
+import { Badge, Button, Checkbox, Input, Label, PageHeader, Panel, Select, Spinner } from '../ui';
 import { cn } from '../../utils/cn';
 
 const checkStageMetrics = (entry, format) => {
@@ -1528,12 +1528,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1.5 select-none">
                                     <Check className="text-emerald-500" size={14} />
-                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Authenticated via GitHub</span>
+                                    <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Authenticated via GitHub</span>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={handleGithubDisconnect}
-                                    className="text-[10px] text-red-500 hover:text-red-400 font-bold uppercase tracking-wider hover:bg-red-500/5 px-2 py-0.5 rounded transition-all border border-red-500/20 cursor-pointer"
+                                    className="label-caps text-red-500 hover:text-red-400 hover:bg-red-500/5 px-2 py-0.5 rounded transition-all border border-red-500/20 cursor-pointer"
                                 >
                                     Disconnect
                                 </button>
@@ -1555,7 +1555,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     {/* DCO Block */}
                     <div className="space-y-2">
                         <Label className="uppercase tracking-wider mb-0 select-none">Developer Certificate of Origin (DCO)</Label>
-                        <div className="border border-slate-900/60 bg-slate-950/65 p-4 rounded-xl h-36 overflow-y-auto text-[10px] font-mono leading-relaxed text-slate-400 shadow-inner">
+                        <div className="border border-slate-900/60 bg-slate-950/65 p-4 rounded-xl h-36 overflow-y-auto text-tiny font-mono leading-relaxed text-slate-400 shadow-inner">
                             <p className="font-bold mb-2">Developer Certificate of Origin Version 1.1</p>
                             <p className="mb-2">By making a contribution to this project, I certify that:</p>
                             <p className="mb-2">(a) The contribution was created in whole or in part by me and I have the right to submit it under the open source license indicated in the file; or</p>
@@ -1599,7 +1599,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             <div className="flex-1 flex flex-col p-6 overflow-y-auto space-y-6 bg-transparent">
                 <div className="max-w-2xl mx-auto w-full space-y-6 text-slate-200">
                     <div className="text-center py-4 select-none">
-                        <CheckCircle size={48} className="text-cyan-500 mx-auto mb-3" />
+                        <CheckCircle size={48} className="text-accent-600 mx-auto mb-3" />
                         <h3 className="text-base font-extrabold text-slate-100 tracking-tight">Ready to Submit</h3>
                         <p className="text-xs text-slate-500 mt-1">Review the summary below before pushing to the review queue.</p>
                     </div>
@@ -1611,7 +1611,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         </div>
                         
                         <div className="space-y-3">
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block select-none">Staging Summary</span>
+                            <span className="label-caps text-slate-500 block select-none">Staging Summary</span>
                             <div className="space-y-2 max-h-40 overflow-y-auto">
                                 {validBundles.map(b => (
                                     <div key={b.id} className="flex justify-between items-center text-xs bg-slate-950/60 border border-slate-900/40 px-3.5 py-2 rounded-xl">
@@ -1623,19 +1623,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         </div>
 
                         <div className="space-y-2 pt-2">
-                            <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest block select-none">Attribution & Compliance</span>
+                            <span className="label-caps text-slate-500 block select-none">Attribution & Compliance</span>
                             <div className="grid grid-cols-2 gap-4 text-xs">
                                 <div>
-                                    <span className="text-slate-550 block mb-0.5 select-none">Contributor</span>
+                                    <span className="text-slate-500 block mb-0.5 select-none">Contributor</span>
                                     <span className="font-semibold text-slate-300">@{user?.username || 'Contributor'}</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-550 block mb-0.5 select-none">GitHub User</span>
+                                    <span className="text-slate-500 block mb-0.5 select-none">GitHub User</span>
                                     <span className="font-semibold text-slate-300">@{user?.username || 'Not specified'}</span>
                                 </div>
                                 <div className="col-span-2">
-                                    <span className="text-slate-550 block mb-0.5 select-none">DCO Signature</span>
-                                    <span className="text-emerald-400 font-bold flex items-center gap-1 text-[11px]">
+                                    <span className="text-slate-500 block mb-0.5 select-none">DCO Signature</span>
+                                    <span className="text-emerald-400 font-bold flex items-center gap-1 text-micro">
                                         <Check size={13} className="text-emerald-500" /> Signed and Verified
                                     </span>
                                 </div>
@@ -1646,17 +1646,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     {/* Visibility Selection Section */}
                     <div className="bg-slate-950/40 rounded-2xl border border-slate-900/80 p-5 space-y-3 shadow-inner">
                         <div>
-                            <h4 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Benchmark Visibility</h4>
-                            <p className="text-[11px] text-slate-400 mt-0.5">Select the visibility and publishing workflow for this submission.</p>
+                            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Benchmark Visibility</h4>
+                            <p className="text-micro text-slate-400 mt-0.5">Select the visibility and publishing workflow for this submission.</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                             <div 
                                 onClick={() => setTargetVisibility('submitted_pending_review')}
-                                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                                    targetVisibility === 'submitted_pending_review'
+                                className={cn('p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'submitted_pending_review'
                                     ? 'bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
-                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700'
-                                }`}
+                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700')}
                             >
                                 <div className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-emerald-400">
@@ -1670,21 +1668,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         className="accent-emerald-500 cursor-pointer"
                                     />
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-normal">
+                                <p className="text-tiny text-slate-400 leading-normal">
                                     Submits to the maintainer review queue for formal verification and publishing on the global grid.
                                 </p>
                             </div>
 
                             <div 
                                 onClick={() => setTargetVisibility('unlisted')}
-                                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                                    targetVisibility === 'unlisted'
-                                    ? 'bg-cyan-500/10 border-cyan-500/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
-                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700'
-                                }`}
+                                className={cn('p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'unlisted'
+                                    ? 'bg-accent-600/10 border-accent-600/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
+                                    : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700')}
                             >
                                 <div className="flex items-center justify-between mb-1">
-                                    <span className="text-xs font-bold text-cyan-400">
+                                    <span className="text-xs font-bold text-accent-700">
                                         Unlisted
                                     </span>
                                     <input 
@@ -1692,10 +1688,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         name="visibility" 
                                         checked={targetVisibility === 'unlisted'} 
                                         onChange={() => setTargetVisibility('unlisted')}
-                                        className="accent-cyan-500 cursor-pointer"
+                                        className="accent-accent-600 cursor-pointer"
                                     />
                                 </div>
-                                <p className="text-[10px] text-slate-400 leading-normal">
+                                <p className="text-tiny text-slate-400 leading-normal">
                                     Experimental runs that haven't been reviewed yet.
                                 </p>
                             </div>
@@ -1827,21 +1823,21 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 {/* KPI metrics row */}
                 <div className="grid grid-cols-3 gap-3">
                     <div className="bg-slate-900 border border-slate-800/80 p-3 px-4 rounded-xl shadow-sm flex flex-col gap-1.5 justify-center">
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Avg Throughput</span>
+                        <span className="label-caps text-slate-400">Avg Throughput</span>
                         <div className="text-lg font-extrabold text-slate-200 font-mono leading-none">
-                            {avgThroughput} <span className="text-[10px] font-semibold text-slate-400">tok/s</span>
+                            {avgThroughput} <span className="text-tiny font-semibold text-slate-400">tok/s</span>
                         </div>
                     </div>
                     <div className="bg-slate-900 border border-slate-800/80 p-3 px-4 rounded-xl shadow-sm flex flex-col gap-1.5 justify-center">
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Max Throughput</span>
-                        <div className="text-lg font-extrabold text-cyan-400 font-mono leading-none">
-                            {maxThroughput} <span className="text-[10px] font-semibold text-slate-500">tok/s</span>
+                        <span className="label-caps text-slate-400">Max Throughput</span>
+                        <div className="text-lg font-extrabold text-accent-700 font-mono leading-none">
+                            {maxThroughput} <span className="text-tiny font-semibold text-slate-500">tok/s</span>
                         </div>
                     </div>
                     <div className="bg-slate-900 border border-slate-800/80 p-3 px-4 rounded-xl shadow-sm flex flex-col gap-1.5 justify-center">
-                        <span className="text-[10px] text-slate-400 uppercase tracking-wider font-bold">Avg Latency (E2E)</span>
+                        <span className="label-caps text-slate-400">Avg Latency (E2E)</span>
                         <div className="text-lg font-extrabold text-slate-200 font-mono leading-none">
-                            {avgLatency} <span className="text-[10px] font-semibold text-slate-400">ms</span>
+                            {avgLatency} <span className="text-tiny font-semibold text-slate-400">ms</span>
                         </div>
                     </div>
                 </div>
@@ -1860,21 +1856,21 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
                     {/* Data Grid / Stage Table */}
                     <div className="w-full bg-slate-900/40 border border-slate-800/60 rounded-xl p-4 flex flex-col shrink-0">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-3 block">Stage Details</span>
+                        <span className="label-caps text-slate-400 mb-3 block">Stage Details</span>
                         <div className="grid grid-cols-1 gap-3">
                             {filteredStagesList.map((stage, idx) => (
                                 <div key={stage.id} className="p-2.5 bg-slate-900/80 border border-slate-800 rounded-lg flex items-center justify-start gap-12 text-xs">
                                     <div>
-                                        <div className="font-bold text-slate-200 font-mono text-[10px] leading-tight">
+                                        <div className="font-bold text-slate-200 font-mono text-tiny leading-tight">
                                             Stage {idx + 1}: {stage.qps} QPS
                                         </div>
-                                        <div className="text-[9px] text-slate-400 mt-0 leading-tight">
+                                        <div className="text-tiny text-slate-400 mt-0 leading-tight">
                                             {stage.model} • {stage.hardware}
                                         </div>
                                     </div>
-                                    <div className="text-left font-mono text-[10px] font-bold text-slate-200 leading-tight">
+                                    <div className="text-left font-mono text-tiny font-bold text-slate-200 leading-tight">
                                         <div>Tput: {stage.throughput.toFixed(1)} tok/s</div>
-                                        <div className="text-slate-400 font-normal text-[9px] mt-0.5">Lat: {stage.latency.toFixed(1)} ms</div>
+                                        <div className="text-slate-400 font-normal text-tiny mt-0.5">Lat: {stage.latency.toFixed(1)} ms</div>
                                     </div>
                                 </div>
                             ))}
@@ -1889,7 +1885,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     const formatCount = stagedFiles.filter(f => !f.isSkipped && f.validation.format).length;
 
     return (
-        <div className="h-screen bg-[#02050b] text-slate-100 flex flex-col font-sans antialiased relative overflow-hidden pt-0 pl-28">
+        <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0">
             {/* Toast Stack */}
             <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
                 {toasts.map(t => (
@@ -1905,90 +1901,86 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     </div>
                 ))}
             </div>
-            {/* Ambient Aurora Glow */}
-            <div className="absolute top-[-10%] left-[20%] w-[600px] h-[400px] bg-cyan-950/15 rounded-full blur-[120px] pointer-events-none animate-pulse" style={{ animationDuration: '10s' }} />
-            <div className="absolute bottom-[5%] right-[5%] w-[500px] h-[350px] bg-purple-950/15 rounded-full blur-[130px] pointer-events-none animate-pulse" style={{ animationDelay: '2s', animationDuration: '12s' }} />
-            
-            {/* Dotted Backdrop Mesh */}
-            <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none z-[1]" />
-            <div className="absolute top-1/4 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-cyan-500/5 to-transparent -skew-y-12 pointer-events-none z-[1]" />
-            <div className="absolute top-2/3 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-purple-500/5 to-transparent -skew-y-12 pointer-events-none z-[1]" />
-            {/* Header */}
-            <header className="w-full h-16 border-b border-slate-900/65 flex justify-between items-center px-6 bg-slate-950/20 backdrop-blur-md sticky top-0 z-[49]">
-                <div className="flex items-center gap-4">
-                    <button onClick={onNavigateBack} className="p-1.5 rounded-xl hover:bg-slate-900/60 text-slate-400 hover:text-white transition-colors cursor-pointer border border-transparent hover:border-slate-800/60">
-                        <ArrowLeft className="h-5 w-5" />
-                    </button>
-                    
-                    <div className="flex items-center gap-2.5 border-r border-slate-800 pr-4">
-                        <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-6 object-contain" />
-                        <span className="text-lg font-bold tracking-wide bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600 select-none">
-                            Prism
-                        </span>
-                    </div>
-
-                    <div className="flex items-center">
-                        <h1 className="text-sm font-semibold text-slate-200 tracking-wide select-none">Upload and Stage Benchmarks</h1>
-                    </div>
-                </div>
-            </header>
-            <div className="flex-1 flex flex-col bg-transparent overflow-hidden relative z-10">
+            <PageHeader
+                kicker="Prism toolkit"
+                title={uploadIntent === 'stage-locally' ? 'Stage & preview benchmarks' : 'Submit benchmarks'}
+                subtitle={
+                    uploadIntent === 'stage-locally'
+                        ? 'Validate benchmark report structure and preview performance curves locally in your browser session.'
+                        : 'Validate Benchmark Report v0.2 bundles, attach hardware and stack metadata, and submit runs for community review.'
+                }
+                onNavigateBack={onNavigateBack}
+            />
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8 flex-1 flex flex-col bg-transparent relative z-10 space-y-6">
 
                 {/* Wizard Steps Progress Indicator */}
                 {uploadIntent === 'submit-review' ? (
-                    <div className="bg-slate-950/40 backdrop-blur-md border-b border-slate-900/65 px-6 py-4 flex items-center justify-between">
-                        <div className="flex flex-wrap items-center gap-5 text-[13px] font-semibold text-slate-500 select-none">
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 1 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all', wizardStep === 1 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>1</span>
-                                Upload Files
-                            </span>
-                            <ChevronRight size={14} className="text-slate-700 shrink-0" />
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 2 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all', wizardStep === 2 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>2</span>
-                                Validation & Preview
-                            </span>
-                            <ChevronRight size={14} className="text-slate-700 shrink-0" />
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 3 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-mono font-bold transition-all', wizardStep === 3 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>3</span>
-                                Attribution & DCO
-                            </span>
-                            <ChevronRight size={14} className="text-slate-700 shrink-0" />
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 4 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all', wizardStep === 4 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>4</span>
-                                Submit & Confirm
-                            </span>
+                    <div className="surface-light rounded-2xl border border-zinc-200 bg-zinc-50/80 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-500 select-none">
+                            {[
+                                { step: 1, label: 'Upload files' },
+                                { step: 2, label: 'Validation & preview' },
+                                { step: 3, label: 'Attribution & DCO' },
+                                { step: 4, label: 'Submit & confirm' },
+                            ].map((item, idx) => (
+                                <React.Fragment key={item.step}>
+                                    {idx > 0 && <ChevronRight size={14} className="text-zinc-300 shrink-0" />}
+                                    <span className={cn('inline-flex items-center gap-2 transition-colors', wizardStep === item.step ? 'text-zinc-900 font-semibold' : 'text-zinc-500')}>
+                                        <span className={cn(
+                                            'w-6 h-6 rounded-full flex items-center justify-center text-micro font-mono font-semibold transition-all',
+                                            wizardStep === item.step
+                                                ? 'bg-zinc-900 text-white'
+                                                : wizardStep > item.step
+                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                : 'bg-white border border-zinc-200 text-zinc-500'
+                                        )}>
+                                            {wizardStep > item.step ? '✓' : item.step}
+                                        </span>
+                                        {item.label}
+                                    </span>
+                                </React.Fragment>
+                            ))}
                         </div>
                         {wizardStep === 2 && (
-                            <div className="text-xs font-semibold text-slate-400 font-mono bg-slate-900 border border-slate-800 px-3 py-1 rounded-xl shadow-sm">
+                            <div className="text-xs font-semibold text-zinc-700 font-mono bg-white border border-zinc-200 px-3 py-1 rounded-full">
                                 {validCount} of {stagedFiles.filter(f => !f.isSkipped).length} runs valid
                             </div>
                         )}
                     </div>
                 ) : (
-                    <div className="bg-slate-950/40 backdrop-blur-md border-b border-slate-900/65 px-6 py-4 flex items-center justify-between">
-                        <div className="flex flex-wrap items-center gap-5 text-[13px] font-semibold text-slate-500 select-none">
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 1 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all', wizardStep === 1 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>1</span>
-                                Upload Files
-                            </span>
-                            <ChevronRight size={14} className="text-slate-700 shrink-0" />
-                            <span className={cn('flex items-center gap-2 transition-all', wizardStep === 2 ? 'text-cyan-400 font-extrabold scale-105' : 'text-slate-400')}>
-                                <span className={cn('w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all', wizardStep === 2 ? 'bg-cyan-500/10 text-cyan-400 border-2 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.25)]' : 'bg-slate-950/60 border border-slate-900 text-slate-500')}>2</span>
-                                Validation & Preview
-                            </span>
+                    <div className="surface-light rounded-2xl border border-zinc-200 bg-zinc-50/80 px-5 py-3.5 flex items-center justify-between">
+                        <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-zinc-500 select-none">
+                            {[
+                                { step: 1, label: 'Upload files' },
+                                { step: 2, label: 'Validation & preview' },
+                            ].map((item, idx) => (
+                                <React.Fragment key={item.step}>
+                                    {idx > 0 && <ChevronRight size={14} className="text-zinc-300 shrink-0" />}
+                                    <span className={cn('inline-flex items-center gap-2 transition-colors', wizardStep === item.step ? 'text-zinc-900 font-semibold' : 'text-zinc-500')}>
+                                        <span className={cn(
+                                            'w-6 h-6 rounded-full flex items-center justify-center text-micro font-mono font-semibold transition-all',
+                                            wizardStep === item.step
+                                                ? 'bg-zinc-900 text-white'
+                                                : 'bg-white border border-zinc-200 text-zinc-500'
+                                        )}>
+                                            {item.step}
+                                        </span>
+                                        {item.label}
+                                    </span>
+                                </React.Fragment>
+                            ))}
                         </div>
                     </div>
                 )}
 
-
                 {/* Content */}
-                <div className="flex-1 flex overflow-hidden">
+                <div className="flex-1 flex overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/40 shadow-xs">
                     
                     {/* Left Pane: Ingestion Source Toggle & Input */}
                     {wizardStep === 1 && (
                         <div className={cn(
                             stagedFiles.length === 0
-                            ? 'w-full flex items-center justify-center p-8 min-h-[70vh]'
+                            ? 'w-full flex items-center justify-center p-8 py-12'
                             : (isUploadSidebarCollapsed ? 'w-0 p-0 overflow-hidden border-r-0' : 'w-1/3 border-r border-slate-900/60 p-6'),
                             'flex flex-col bg-slate-950/20 backdrop-blur-md transition-all duration-300 relative'
                         )}>
@@ -2052,16 +2044,16 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 className={cn(
                                     'flex-1 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center p-6 text-center transition-all bg-slate-950/40',
                                     isDragging
-                                    ? 'border-cyan-500 bg-cyan-500/5 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
-                                    : 'border-slate-900 hover:border-cyan-500/50'
+                                    ? 'border-accent-600 bg-accent-600/5 shadow-[0_0_15px_rgba(6,182,212,0.05)]'
+                                    : 'border-slate-900 hover:border-accent-600/50'
                                 )}
                             >
-                                <UploadCloud size={48} className={cn('mb-4', isDragging ? 'text-cyan-400' : 'text-slate-500')} />
+                                <UploadCloud size={48} className={cn('mb-4', isDragging ? 'text-accent-700' : 'text-slate-500')} />
                                 <h3 className="font-semibold text-slate-200 mb-2 select-none">Drag & Drop files here</h3>
                                 <p className="text-xs text-slate-500 mb-6">Supports .yaml and .json benchmark reports.</p>
                                 
                                 <div className="flex flex-col gap-2 w-full max-w-xs">
-                                    <label className="relative flex items-center justify-center px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer transition-all shadow-md">
+                                    <label className="relative flex items-center justify-center px-4 py-2 bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer transition-all shadow-md">
                                         Browse Files
                                         <input type="file" multiple accept=".yaml,.yml,.json" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={handleFileInput} />
                                     </label>
@@ -2075,7 +2067,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         ) : (
                             <div className="flex-1 flex flex-col justify-between bg-slate-950/40 p-5 rounded-2xl border border-slate-900 shadow-inner">
                                 <div className="space-y-4">
-                                    <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs">
+                                    <div className="flex items-center gap-2 text-accent-700 font-semibold text-xs">
                                         <UploadCloud size={16} />
                                         <span>Cloud Bucket Import</span>
                                     </div>
@@ -2106,14 +2098,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         />
                                     </div>
                                     
-                                    <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-xl p-2.5 text-[10px] text-slate-500 leading-normal">
+                                    <div className="bg-accent-600/5 border border-accent-600/10 rounded-xl p-2.5 text-tiny text-slate-500 leading-normal">
                                         Note: Requires matching bucket permissions or configured service account roles. Click scan to ingest.
                                     </div>
                                 </div>
 
                                 <button 
                                     onClick={handleCloudScan}
-                                    className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-cyan-500/10 transition-all flex items-center justify-center gap-1.5 mt-4 cursor-pointer"
+                                    className="w-full py-2 bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-accent-600/10 transition-all flex items-center justify-center gap-1.5 mt-4 cursor-pointer"
                                 >
                                     <UploadCloud size={14} /> Scan & Stage Cloud Run
                                 </button>
@@ -2131,7 +2123,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     )}>
                         {stagedFiles.length === 0 ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-5 shadow-[0_0_30px_rgba(34,211,238,0.15)] bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+                                <div className="w-16 h-16 rounded-3xl flex items-center justify-center mb-5 shadow-[0_0_30px_rgba(34,211,238,0.15)] bg-accent-600/10 border border-accent-600/20 text-accent-700">
                                     <UploadCloud className="w-8 h-8" />
                                 </div>
                                 <h3 className="text-sm font-bold text-slate-200 mb-2 select-none">
@@ -2142,11 +2134,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 </p>
                                 <div className="text-xs text-slate-500 border-t border-slate-900 pt-4 space-y-1.5 w-full max-w-[240px] text-left select-none">
                                     <div className="flex items-center gap-1.5">
-                                        <Check size={12} className="text-cyan-400" />
+                                        <Check size={12} className="text-accent-700" />
                                         <span>Supports `prism_benchmark_v0.2` logs</span>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                        <Check size={12} className="text-cyan-500" />
+                                        <Check size={12} className="text-accent-600" />
                                         <span>Requires GitHub login to submit runs</span>
                                     </div>
                                 </div>
@@ -2158,7 +2150,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
                                         <div className="flex-1">
                                             <span className="font-bold text-amber-450 block mb-0.5">Verification Required for Inferred Metadata</span>
-                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <Badge tone="warning" size="xs" className="px-1 text-[10px] font-extrabold font-mono mx-0.5">Inferred</Badge> before continuing to publish to the Results store.
+                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <Badge tone="warning" size="xs" className="px-1 text-tiny font-extrabold font-mono mx-0.5">Inferred</Badge> before continuing to publish to the Results store.
                                         </div>
                                     </div>
                                 )}
@@ -2166,11 +2158,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs mb-1">
                                         <button 
                                             onClick={() => setIsUploadSidebarCollapsed(!isUploadSidebarCollapsed)}
-                                            className="p-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-cyan-400 cursor-pointer transition-all flex items-center gap-1 select-none"
+                                            className="p-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-accent-700 cursor-pointer transition-all flex items-center gap-1 select-none"
                                             title={isUploadSidebarCollapsed ? "Show Ingestion panel" : "Hide Ingestion panel"}
                                         >
-                                            {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-cyan-400" /> : <ChevronLeft size={14} />}
-                                            <span className="text-[9px] font-extrabold uppercase tracking-wider px-0.5">{isUploadSidebarCollapsed ? "Upload Benchmarks" : "Maximize"}</span>
+                                            {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-accent-700" /> : <ChevronLeft size={14} />}
+                                            <span className="label-caps px-0.5">{isUploadSidebarCollapsed ? "Upload Benchmarks" : "Maximize"}</span>
                                         </button>
                                     </div>
                                 )}
@@ -2191,7 +2183,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         }
                                         return isInferred 
                                             ? "border-amber-500/30 hover:border-amber-500/50 focus:border-amber-500/70 focus:bg-amber-950/10" 
-                                             : "border-slate-800/40 hover:border-slate-700/60 focus:border-cyan-500/35 focus:bg-slate-900/50";
+                                             : "border-slate-800/40 hover:border-slate-700/60 focus:border-accent-600/35 focus:bg-slate-900/50";
                                     };
                                     
                                     // Find inference engine
@@ -2285,7 +2277,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 const similarRuns = getSimilarBenchmarks(bundle);
                                                                 if (wizardStep !== 2 || similarRuns.length === 0) return null;
                                                                 return (
-                                                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold bg-cyan-50 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-400 px-2.5 py-0.5 rounded border border-cyan-200 dark:border-cyan-900/50 hover:bg-cyan-100 dark:hover:bg-cyan-900/70 cursor-pointer select-none transition-colors shadow-sm animate-in fade-in zoom-in-95 duration-150"
+                                                                    <span className="inline-flex items-center gap-1.5 text-tiny font-extrabold bg-accent-950 dark:bg-accent-50/30 text-accent-300 dark:text-accent-700 px-2.5 py-0.5 rounded border border-accent-900 dark:border-accent-100/50 hover:bg-accent-950 dark:hover:bg-accent-100/70 cursor-pointer select-none transition-colors shadow-sm animate-in fade-in zoom-in-95 duration-150"
                                                                           onClick={(e) => { e.stopPropagation(); if (!bundle.isExpanded) toggleExpand(bundle.id); }}
                                                                           title="Click to view similar public benchmarks and sync configurations"
                                                                     >
@@ -2350,7 +2342,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                             </div>
                                                         );
                                                     })()}
-                                                    <div className="text-[10px] text-slate-500 italic mb-2 px-1 select-none font-semibold">
+                                                    <div className="text-tiny text-slate-500 italic mb-2 px-1 select-none font-semibold">
                                                           * Fields marked with "Inferred" are auto-populated by guessing from configuration files and should be verified (these fields will become editable in the next stage).
                                                       </div>
 
@@ -2359,7 +2351,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                               <tbody className="divide-y divide-slate-800/35">
                                                                   <tr className="hover:bg-slate-900/20">
                                                                       <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>Run Directory</td>
-                                                                      <td className="px-3.5 py-2.5 font-mono text-slate-455 select-all">{bundle.dirKey}</td>
+                                                                      <td className="px-3.5 py-2.5 font-mono text-slate-400 select-all">{bundle.dirKey}</td>
                                                                   </tr>
                                                                   <tr className="hover:bg-slate-900/20">
                                                                       <td className="px-3.5 py-2.5 font-semibold text-slate-400 border-r border-slate-800/45 bg-slate-950/30" style={{ width: '220px', minWidth: '220px' }}>
@@ -2372,11 +2364,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                       type="text" 
                                                                                       value={bundle.name || bundle.payload?.runLabel || ''} 
                                                                                       onChange={(e) => updateSingleField(bundle.id, 'runLabel', e.target.value)}
-                                                                                      className={`w-full bg-slate-900/20 border rounded-lg pl-3 pr-8 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none transition-all text-xs ${getFieldClassName('runLabel', false)}`}
+                                                                                      className={cn('w-full bg-slate-900/20 border rounded-lg pl-3 pr-8 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none transition-all text-xs', getFieldClassName('runLabel', false))}
                                                                                       placeholder="e.g. My custom run name"
                                                                                   />
                                                                                   <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
-                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-accent-700 transition-colors" />
                                                                                   </div>
                                                                               </div>
                                                                           ) : (
@@ -2403,20 +2395,20 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                   />
                                                                                   <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
                                                                                       {bundle.payload.modelNameInferred && (
-                                                                                          <Badge tone="warning" size="xs" className="text-[8px] font-extrabold animate-pulse"
+                                                                                          <Badge tone="warning" size="xs" className="text-tiny font-extrabold animate-pulse"
                                                                                               title="This field was guessed/inferred from metadata/config files. Verify for correctness."
                                                                                           >
                                                                                               Inferred
                                                                                           </Badge>
                                                                                       )}
-                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-accent-700 transition-colors" />
                                                                                   </div>
                                                                               </div>
                                                                           ) : (
                                                                               <div className="flex items-center gap-2 text-xs">
                                                                                   <span className="text-slate-300 font-semibold select-all px-1 py-0.5">{bundle.payload.model_name || 'N/A'}</span>
                                                                                   {bundle.payload.modelNameInferred && (
-                                                                                      <Badge tone="warning" size="xs" className="text-[8px] font-extrabold"
+                                                                                      <Badge tone="warning" size="xs" className="text-tiny font-extrabold"
                                                                                           title="Inferred field"
                                                                                       >
                                                                                           Inferred
@@ -2445,20 +2437,20 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                   />
                                                                                   <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
                                                                                       {bundle.payload.hardwareInferred && (
-                                                                                          <Badge tone="warning" size="xs" className="text-[8px] font-extrabold animate-pulse"
+                                                                                          <Badge tone="warning" size="xs" className="text-tiny font-extrabold animate-pulse"
                                                                                               title="This field was guessed/inferred from metadata/config files. Verify for correctness."
                                                                                           >
                                                                                               Inferred
                                                                                           </Badge>
                                                                                       )}
-                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-accent-700 transition-colors" />
                                                                                   </div>
                                                                               </div>
                                                                           ) : (
                                                                               <div className="flex items-center gap-2 text-xs">
                                                                                   <span className="text-slate-300 font-semibold select-all px-1 py-0.5">{bundle.payload.hardware?.hardware_name || 'N/A'}</span>
                                                                                   {bundle.payload.hardwareInferred && (
-                                                                                      <Badge tone="warning" size="xs" className="text-[8px] font-extrabold"
+                                                                                      <Badge tone="warning" size="xs" className="text-tiny font-extrabold"
                                                                                           title="Inferred field"
                                                                                       >
                                                                                           Inferred
@@ -2487,20 +2479,20 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                   />
                                                                                   <div className="absolute right-2.5 flex items-center gap-2 pointer-events-none select-none">
                                                                                       {bundle.payload.acceleratorCountInferred && (
-                                                                                          <Badge tone="warning" size="xs" className="text-[8px] font-extrabold animate-pulse"
+                                                                                          <Badge tone="warning" size="xs" className="text-tiny font-extrabold animate-pulse"
                                                                                               title="This field was guessed/inferred from metadata/config files. Verify for correctness."
                                                                                           >
                                                                                               Inferred
                                                                                           </Badge>
                                                                                       )}
-                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                                      <Pencil size={10} className="text-slate-650 group-focus-within:text-accent-700 transition-colors" />
                                                                                   </div>
                                                                               </div>
                                                                           ) : (
                                                                               <div className="flex items-center gap-2 text-xs">
                                                                                   <span className="text-slate-300 font-semibold select-all font-mono px-1 py-0.5">{bundle.payload.hardware?.accelerator_count ?? 'N/A'}</span>
                                                                                   {bundle.payload.acceleratorCountInferred && (
-                                                                                      <Badge tone="warning" size="xs" className="text-[8px] font-extrabold"
+                                                                                      <Badge tone="warning" size="xs" className="text-tiny font-extrabold"
                                                                                           title="Inferred field"
                                                                                       >
                                                                                           Inferred
@@ -2524,19 +2516,19 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                      type="text" 
                                                                                      value={bundle.payload.inference_tool || ''} 
                                                                                      onChange={(e) => updateSingleField(bundle.id, 'inference_tool', e.target.value)}
-                                                                                     className={`w-1/2 bg-slate-900/20 border rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none placeholder-slate-750 transition-all text-xs ${getFieldClassName('inference_tool', false)}`}
+                                                                                     className={cn('w-1/2 bg-slate-900/20 border rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:ring-0 focus:outline-none placeholder-slate-700 transition-all text-xs', getFieldClassName('inference_tool', false))}
                                                                                      placeholder="Tool e.g. vLLM"
                                                                                  />
                                                                                  <input 
                                                                                      type="text" 
                                                                                      value={bundle.payload.inference_tool_version || ''} 
                                                                                      onChange={(e) => updateSingleField(bundle.id, 'inference_tool_version', e.target.value)}
-                                                                                     className={`w-1/2 bg-slate-900/20 border rounded-lg px-3 py-1.5 text-slate-400 focus:ring-0 focus:outline-none placeholder-slate-750 transition-all font-mono text-xs ${getFieldClassName('inference_tool_version', false)}`}
+                                                                                     className={cn('w-1/2 bg-slate-900/20 border rounded-lg px-3 py-1.5 text-slate-400 focus:ring-0 focus:outline-none placeholder-slate-700 transition-all font-mono text-xs', getFieldClassName('inference_tool_version', false))}
                                                                                      placeholder="Version e.g. 0.4.2"
                                                                                  />
                                                                              </div>
                                                                              <div className="flex items-center gap-2 shrink-0 select-none">
-                                                                                 <Pencil size={10} className="text-slate-650 group-focus-within:text-cyan-400 transition-colors" />
+                                                                                 <Pencil size={10} className="text-slate-650 group-focus-within:text-accent-700 transition-colors" />
                                                                              </div>
                                                                          </div>
                                                                      ) : (
@@ -2558,8 +2550,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                       {(bundle.attachedManifests || []).map((file, idx) => (
                                                                                           <div key={`local-${idx}`} className="flex items-center justify-between bg-slate-950/40 border border-slate-900 px-3 py-1.5 rounded-lg max-w-xl">
                                                                                               <div className="flex items-center gap-2">
-                                                                                                  <span className="text-cyan-400 font-bold text-[11px] font-mono">{file.name}</span>
-                                                                                                  <span className="text-[9px] text-slate-500 font-semibold font-mono">({Math.round(file.content.length / 1024 * 10) / 10} KB)</span>
+                                                                                                  <span className="text-accent-700 font-bold text-micro font-mono">{file.name}</span>
+                                                                                                  <span className="text-tiny text-slate-500 font-semibold font-mono">({Math.round(file.content.length / 1024 * 10) / 10} KB)</span>
                                                                                               </div>
                                                                                               {wizardStep === 2 && (
                                                                                                   <button 
@@ -2575,8 +2567,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                       {Object.entries(bundle.payload.manifests || {}).map(([name, url], idx) => (
                                                                                           <div key={`url-${idx}`} className="flex items-center justify-between bg-slate-950/40 border border-slate-900 px-3 py-1.5 rounded-lg max-w-xl">
                                                                                               <div className="flex items-center gap-2 truncate pr-4">
-                                                                                                  <span className="text-cyan-400 font-bold text-[11px] font-mono">{name}</span>
-                                                                                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-slate-500 hover:text-cyan-400 font-mono truncate max-w-xs transition-colors" title={url}>({url})</a>
+                                                                                                  <span className="text-accent-700 font-bold text-micro font-mono">{name}</span>
+                                                                                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-tiny text-slate-500 hover:text-accent-700 font-mono truncate max-w-xs transition-colors" title={url}>({url})</a>
                                                                                               </div>
                                                                                               {wizardStep === 2 && (
                                                                                                   <button 
@@ -2600,9 +2592,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                               {/* Simple inline Drag-and-drop or File input area */}
                                                                               {wizardStep === 2 && (
                                                                                   <div className="space-y-2 max-w-xl">
-                                                                                      <div className="border border-dashed border-slate-800 hover:border-cyan-500/60 rounded-lg px-3 py-1.5 flex items-center justify-center gap-2 bg-slate-950/20 transition-all cursor-pointer relative group">
-                                                                                          <Upload size={13} className="text-slate-500 group-hover:text-cyan-400 shrink-0" />
-                                                                                          <span className="text-[10px] text-slate-400 font-bold block truncate">Drag or click to attach YAML/JSON configuration</span>
+                                                                                      <div className="border border-dashed border-slate-800 hover:border-accent-600/60 rounded-lg px-3 py-1.5 flex items-center justify-center gap-2 bg-slate-950/20 transition-all cursor-pointer relative group">
+                                                                                          <Upload size={13} className="text-slate-500 group-hover:text-accent-700 shrink-0" />
+                                                                                          <span className="text-tiny text-slate-400 font-bold block truncate">Drag or click to attach YAML/JSON configuration</span>
                                                                                           <input 
                                                                                               type="file" 
                                                                                               accept=".yaml,.yml,.json" 
@@ -2653,8 +2645,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                       {(bundle.attachedEvidence || []).map((file, idx) => (
                                                                                           <div key={`local-ev-${idx}`} className="flex items-center justify-between bg-slate-950/40 border border-slate-900 px-3 py-1.5 rounded-lg max-w-xl">
                                                                                               <div className="flex items-center gap-2">
-                                                                                                  <span className="text-cyan-400 font-bold text-[11px] font-mono">{file.name}</span>
-                                                                                                  <span className="text-[9px] text-slate-500 font-semibold font-mono">({Math.round(file.content.length / 1024 * 10) / 10} KB)</span>
+                                                                                                  <span className="text-accent-700 font-bold text-micro font-mono">{file.name}</span>
+                                                                                                  <span className="text-tiny text-slate-500 font-semibold font-mono">({Math.round(file.content.length / 1024 * 10) / 10} KB)</span>
                                                                                               </div>
                                                                                               {wizardStep === 2 && (
                                                                                                   <button 
@@ -2670,8 +2662,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                       {Object.entries(bundle.payload.evidence || {}).map(([name, url], idx) => (
                                                                                           <div key={`url-ev-${idx}`} className="flex items-center justify-between bg-slate-950/40 border border-slate-900 px-3 py-1.5 rounded-lg max-w-xl">
                                                                                               <div className="flex items-center gap-2 truncate pr-4">
-                                                                                                  <span className="text-cyan-400 font-bold text-[11px] font-mono">{name}</span>
-                                                                                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-slate-500 hover:text-cyan-400 font-mono truncate max-w-xs transition-colors" title={url}>({url})</a>
+                                                                                                  <span className="text-accent-700 font-bold text-micro font-mono">{name}</span>
+                                                                                                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-tiny text-slate-500 hover:text-accent-700 font-mono truncate max-w-xs transition-colors" title={url}>({url})</a>
                                                                                               </div>
                                                                                               {wizardStep === 2 && (
                                                                                                   <button 
@@ -2695,9 +2687,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                               {/* Simple inline Drag-and-drop or File input area */}
                                                                               {wizardStep === 2 && (
                                                                                   <div className="space-y-2 max-w-xl">
-                                                                                      <div className="border border-dashed border-slate-800 hover:border-cyan-500/60 rounded-lg px-3 py-1.5 flex items-center justify-center gap-2 bg-slate-950/20 transition-all cursor-pointer relative group">
-                                                                                          <Upload size={13} className="text-slate-500 group-hover:text-cyan-400 shrink-0" />
-                                                                                          <span className="text-[10px] text-slate-400 font-bold block truncate">Drag or click to attach verification run logs/evidence</span>
+                                                                                      <div className="border border-dashed border-slate-800 hover:border-accent-600/60 rounded-lg px-3 py-1.5 flex items-center justify-center gap-2 bg-slate-950/20 transition-all cursor-pointer relative group">
+                                                                                          <Upload size={13} className="text-slate-500 group-hover:text-accent-700 shrink-0" />
+                                                                                          <span className="text-tiny text-slate-400 font-bold block truncate">Drag or click to attach verification run logs/evidence</span>
                                                                                           <input 
                                                                                               type="file" 
                                                                                               accept=".txt,.log,.json,.yaml,.yml" 
@@ -2740,10 +2732,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                     
                                                     {bundle.payload.entries && bundle.payload.entries.length > 0 && (
                                                         <div>
-                                                            <h4 className="font-bold text-slate-300 text-xs uppercase tracking-wider mb-2.5 select-none">Parsed Sub-runs / Stages Validation Checklist ({bundle.payload.entries.length})</h4>
+                                                            <h4 className="font-semibold text-slate-300 text-xs uppercase tracking-wider mb-2.5 select-none">Parsed Sub-runs / Stages Validation Checklist ({bundle.payload.entries.length})</h4>
                                                             <div className="overflow-x-auto border border-slate-900/60 rounded-xl bg-slate-950/20">
                                                                 <table className="w-full text-left text-xs border-collapse">
-                                                                    <thead className="bg-[#0b101c]/45 text-slate-400 border-b border-slate-900/80 uppercase tracking-widest text-[9px]">
+                                                                    <thead className="bg-slate-950/45 text-slate-400 border-b border-slate-900/80 uppercase tracking-wider text-tiny">
                                                                         <tr>
                                                                             <th className="px-3 py-2.5 w-16 text-center">Stage</th>
                                                                             <th className="px-3 py-2.5">File Name</th>
@@ -2764,7 +2756,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                 return (
                                                                                     <tr key={idx} className="hover:bg-slate-900/30 border-b border-slate-900/10 font-medium transition-colors">
                                                                                         <td className="px-3 py-2.5 text-center font-bold font-mono text-slate-500">Stage {check.stageIndex}</td>
-                                                                                        <td className="px-3 py-2.5 font-mono text-[10px] text-slate-400 max-w-[120px] truncate" title={check.filename}>{check.filename.split('/').pop()}</td>
+                                                                                        <td className="px-3 py-2.5 font-mono text-tiny text-slate-400 max-w-[120px] truncate" title={check.filename}>{check.filename.split('/').pop()}</td>
                                                                                         
                                                                                         <td className="px-3 py-2.5 text-right font-mono">
                                                                                             {check.throughput.isValid ? (
@@ -2787,7 +2779,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                                 check.ttft.val !== null ? (
                                                                                                     <span className="text-emerald-500">✅ {check.ttft.val.toFixed(1)}ms</span>
                                                                                                 ) : (
-                                                                                                    <span className="text-slate-455">N/A (Legacy)</span>
+                                                                                                    <span className="text-slate-400">N/A (Legacy)</span>
                                                                                                 )
                                                                                             ) : (
                                                                                                 <span className="text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20" title="Time to first token (TTFT) is required for V0.2 formats">❌ Absent</span>
@@ -2799,14 +2791,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                                 check.tpot.val !== null ? (
                                                                                                     <span className="text-emerald-500">✅ {check.tpot.val.toFixed(2)}ms</span>
                                                                                                 ) : (
-                                                                                                    <span className="text-slate-455">N/A (Legacy)</span>
+                                                                                                    <span className="text-slate-400">N/A (Legacy)</span>
                                                                                                 )
                                                                                             ) : (
                                                                                                 <span className="text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded border border-red-500/20" title="Time per output token (TPOT) is required for V0.2 formats">❌ Absent</span>
                                                                                             )}
                                                                                         </td>
 
-                                                                                        <td className="px-3 py-2.5 text-center font-mono text-[10px] space-y-1">
+                                                                                        <td className="px-3 py-2.5 text-center font-mono text-tiny space-y-1">
                                                                                             <div className={check.hardware.isValid ? "text-slate-300" : "text-amber-500"} title={check.hardware.val || 'No hardware tag'}>
                                                                                                 {check.hardware.isValid ? `💻 ${check.hardware.val}` : '⚠️ Hw Missing'}
                                                                                             </div>
@@ -2835,14 +2827,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                                         {/* Publish Destinations Selection */}
                                                     {wizardStep === 2 && (
                                                         <div className="mt-4 p-4 bg-slate-950/20 border border-slate-900/80 rounded-xl shadow-inner">
-                                                        <h5 className="font-bold text-xs text-slate-300 mb-1 flex items-center gap-1.5 uppercase tracking-wider select-none">
+                                                        <h5 className="font-semibold text-xs text-slate-300 mb-1 flex items-center gap-1.5 uppercase tracking-wider select-none">
                                                             Publish Destinations
                                                         </h5>
-                                                        <p className="text-[10px] text-slate-500 mb-3 leading-normal">
+                                                        <p className="text-tiny text-slate-500 mb-3 leading-normal">
                                                             Select the dashboards where this benchmark run should be published.
                                                         </p>
                                                         <div className="flex flex-wrap gap-4 text-xs font-semibold select-none">
-                                                            <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-cyan-500/35 shadow-md transition-all">
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-accent-600/35 shadow-md transition-all">
                                                                 <Checkbox
                                                                     checked={bundle.targetDashboards?.includes('inference-scheduling') ?? false}
                                                                     onChange={(e) => {
@@ -2868,7 +2860,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 />
                                                                 <span className="text-slate-300">Intelligent Routing (Inference Scheduling)</span>
                                                             </label>
-                                                            <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-cyan-500/35 shadow-md transition-all">
+                                                            <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-accent-600/35 shadow-md transition-all">
                                                                 <Checkbox
                                                                     checked={bundle.targetDashboards?.includes('agentic-serving') ?? false}
                                                                     onChange={(e) => {
@@ -2903,10 +2895,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                         {wizardStep === 2 && (
                                                             <div className="bg-slate-100/30 dark:bg-slate-800/10 border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm self-start text-xs space-y-4 w-full">
                                                             <div>
-                                                                <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5 text-[13px]">
+                                                                <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5 text-sm">
                                                                     <span>🔍 Benchmark Assistant</span>
                                                                 </h4>
-                                                                <p className="text-[10px] text-slate-500 mb-4 leading-relaxed">
+                                                                <p className="text-tiny text-slate-500 mb-4 leading-relaxed">
                                                                     Compare staging metrics and sync metadata tags with matching public runs.
                                                                 </p>
 
@@ -2955,14 +2947,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                         <div className="flex justify-between items-start gap-1">
                                                                                             <div className="min-w-0 flex-1">
                                                                                                 <span className="font-bold text-slate-800 dark:text-slate-100 select-all block truncate" title={run.model || run.model_name}>{run.model || run.model_name}</span>
-                                                                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block mt-0.5">{run.hardware || 'H100'}</span>
+                                                                                                <span className="text-tiny text-slate-400 dark:text-slate-500 font-mono block mt-0.5">{run.hardware || 'H100'}</span>
                                                                                             </div>
-                                                                                            <Badge tone="neutral" size="xs" className="text-[8px] font-bold scale-90 origin-right shrink-0">
+                                                                                            <Badge tone="neutral" size="xs" className="text-tiny font-bold scale-90 origin-right shrink-0">
                                                                                                 {run.well_lit_path || 'No Path'}
                                                                                             </Badge>
                                                                                         </div>
 
-                                                                                        <div className="flex justify-between items-center text-[10px]">
+                                                                                        <div className="flex justify-between items-center text-tiny">
                                                                                             <div className="text-slate-500">
                                                                                                 Tput: <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">{publicTput.toFixed(1)} tok/s</span>
                                                                                             </div>
@@ -2974,7 +2966,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                                         </div>
 
                                                                                         <div className="border-t border-slate-100 dark:border-slate-800/80 pt-2 mt-2">
-                                                                                            <span className="text-[9px] text-slate-400 font-mono truncate block" title={run.inference_tool ? `${run.inference_tool} ${run.inference_tool_version || ''}` : 'Unknown serving stack'}>
+                                                                                            <span className="text-tiny text-slate-400 font-mono truncate block" title={run.inference_tool ? `${run.inference_tool} ${run.inference_tool_version || ''}` : 'Unknown serving stack'}>
                                                                                                 Serving Stack: {run.inference_tool ? `${run.inference_tool} ${run.inference_tool_version || ''}` : 'Unknown Stack'}
                                                                                             </span>
                                                                                         </div>
@@ -3029,7 +3021,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 className={cn(
                                     'px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer',
                                     stagedFiles.filter(f => !f.isSkipped).length > 0
-                                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md'
+                                    ? 'bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white shadow-md'
                                     : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
                                 )}
                             >
@@ -3040,7 +3032,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         {wizardStep === 2 && (
                             <div className="flex items-center gap-2">
                                 {uploadIntent !== 'stage-locally' && validCount === 0 && (
-                                    <span className="text-[10px] text-amber-500 font-semibold max-w-[200px] text-right animate-pulse mr-2">
+                                    <span className="text-tiny text-amber-500 font-semibold max-w-[200px] text-right animate-pulse mr-2">
                                         At least one valid run is required to proceed.
                                     </span>
                                 )}
@@ -3053,7 +3045,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         className={cn(
                                             'px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer border',
                                             formatCount > 0
-                                            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-transparent shadow-md'
+                                            ? 'bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white border-transparent shadow-md'
                                             : 'bg-slate-900/40 text-slate-500 border-slate-900/50 cursor-not-allowed'
                                         )}
                                     >
@@ -3067,7 +3059,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         className={cn(
                                             'px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer',
                                             validCount > 0
-                                            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md'
+                                            ? 'bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white shadow-md'
                                             : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
                                         )}
                                     >
@@ -3080,7 +3072,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         {wizardStep === 3 && (
                             <div className="flex items-center gap-3">
                                 {(!isAuthenticated || !user?.username || !dcoSigned) && (
-                                    <span className="text-[10px] text-amber-500 font-semibold max-w-[200px] text-right animate-pulse">
+                                    <span className="text-tiny text-amber-500 font-semibold max-w-[200px] text-right animate-pulse">
                                         Please authenticate via GitHub and accept DCO to continue.
                                     </span>
                                 )}
@@ -3090,7 +3082,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     className={cn(
                                         'px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer',
                                         isAuthenticated && user?.username && dcoSigned
-                                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md'
+                                        ? 'bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white shadow-md'
                                         : 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed'
                                     )}
                                 >
@@ -3102,20 +3094,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         {wizardStep === 4 && (
                             <div className="flex items-center gap-3">
                                 {user?.permission === 'none' && (
-                                    <span className="text-[10px] text-amber-500 font-semibold max-w-[240px] text-right">
+                                    <span className="text-tiny text-amber-500 font-semibold max-w-[240px] text-right">
                                         You are not in the Results Store closed-beta. Check back later once the feature is released.
                                     </span>
                                 )}
                                 <button 
                                     onClick={() => handleSubmit(targetVisibility)}
                                     disabled={isSubmitting || user?.permission === 'none'}
-                                    className={`px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all ${
-                                        isSubmitting || user?.permission === 'none'
+                                    className={cn('px-5 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all', isSubmitting || user?.permission === 'none'
                                         ? 'bg-slate-900/40 text-slate-500 border border-slate-900/50 cursor-not-allowed opacity-50 shadow-none'
                                         : targetVisibility === 'unlisted'
-                                        ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-md hover:shadow-cyan-500/10 cursor-pointer border border-cyan-500/20'
-                                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md hover:shadow-emerald-500/10 cursor-pointer border border-emerald-500/20'
-                                    }`}
+                                        ? 'bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white shadow-md hover:shadow-accent-600/10 cursor-pointer border border-accent-600/20'
+                                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-md hover:shadow-emerald-500/10 cursor-pointer border border-emerald-500/20')}
                                 >
                                     {isSubmitting ? (
                                         <Spinner size="xs" className="text-white dark:text-white" />

@@ -26,7 +26,24 @@
  * @param {object} options Configuration overrides.
  * @returns {{domain: [number, number], ticks: number[]}} The calculated domain and tick list.
  */
-export function getAxisConfig(minVal, maxVal, isLog = false, options = {}) {
+export function getAxisConfig(minOrValues, maxOrIsLog, isLogArg = false, optionsArg = {}) {
+    let minVal;
+    let maxVal;
+    let isLog = isLogArg;
+    let options = optionsArg;
+
+    if (Array.isArray(minOrValues)) {
+        const finite = minOrValues.filter((v) => typeof v === 'number' && Number.isFinite(v));
+        isLog = Boolean(maxOrIsLog);
+        options = typeof isLogArg === 'object' && isLogArg !== null ? isLogArg : {};
+        const positive = isLog ? finite.filter((v) => v > 0) : finite;
+        minVal = positive.length > 0 ? Math.min(...positive) : isLog ? 1 : 0;
+        maxVal = positive.length > 0 ? Math.max(...positive) : 100;
+    } else {
+        minVal = Number.isFinite(minOrValues) ? minOrValues : isLog ? 1 : 0;
+        maxVal = Number.isFinite(maxOrIsLog) ? maxOrIsLog : 100;
+    }
+
     const { includeZero = true, padding = 0.05, tickCount = 6 } = options;
 
     if (isLog) {

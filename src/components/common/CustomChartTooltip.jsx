@@ -16,6 +16,7 @@ import React from 'react';
 import { Row } from './Row';
 import { normalizeQualityModelName } from '../../utils/qualityParser';
 import { getAcceleratorCount } from '../../utils/dashboardHelpers';
+import { cn } from '../../utils/cn';
 
 // Find the baseline Y at the nearest baseline point to a target X. Used to
 // compute %diff for non-baseline points hovered on the scatter chart.
@@ -98,7 +99,7 @@ export const CustomChartTooltip = ({ active, payload, label, xLabel, yLabel, cos
                                         {hardware !== 'Unknown' ? hardware : ''} 
                                         {machine && machine !== hardware ? ` • ${machine}` : ''}
                                      </div>
-                                     <div className="text-[10px] text-orange-500/90 dark:text-orange-400 mt-0.5 font-mono font-medium">
+                                     <div className="text-tiny text-accent-600 mt-0.5 font-mono font-medium">
                                         Source: {source}
                                      </div>
                                  </div>
@@ -140,7 +141,7 @@ export const CustomChartTooltip = ({ active, payload, label, xLabel, yLabel, cos
                                     <span className="text-slate-900 dark:text-white font-bold font-mono text-xl">
                                         {Number(entry.value).toLocaleString(undefined, { maximumFractionDigits: 2 })}
                                         {yLabel.includes('Cost') && d.metrics?.cost?.source === 'derived_constant_product' && (
-                                            <span className="text-[10px] text-amber-500 ml-1 font-normal align-top">(Est)</span>
+                                            <span className="text-tiny text-amber-500 ml-1 font-normal align-top">(Est)</span>
                                         )}
                                     </span>
                                 </div>
@@ -151,7 +152,7 @@ export const CustomChartTooltip = ({ active, payload, label, xLabel, yLabel, cos
                                     if (d.benchmarkKey === baselineBenchmarkKey) {
                                         return (
                                             <div className="flex justify-between items-baseline">
-                                                <span className="text-cyan-500 dark:text-cyan-400 font-bold text-xs uppercase tracking-wider">★ Baseline</span>
+                                                <span className="text-accent-600 dark:text-accent-700 font-semibold text-xs uppercase tracking-wider">★ Baseline</span>
                                             </div>
                                         );
                                     }
@@ -170,7 +171,7 @@ export const CustomChartTooltip = ({ active, payload, label, xLabel, yLabel, cos
                                     return (
                                         <div className="flex justify-between items-baseline">
                                             <span className="text-slate-400 dark:text-slate-500 font-medium text-xs">vs baseline:</span>
-                                            <span className={`font-mono text-sm font-bold ${color}`}>
+                                            <span className={cn('font-mono text-sm font-bold', color)}>
                                                 {diff > 0 ? '+' : ''}{diff.toFixed(1)}%
                                             </span>
                                         </div>
@@ -202,7 +203,7 @@ export const CustomChartTooltip = ({ active, payload, label, xLabel, yLabel, cos
 
                                             return (
                                                 <div key={key} className="flex justify-between items-baseline">
-                                                    <span className="text-indigo-500 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider">{formatLabel(key)}:</span>
+                                                    <span className="text-indigo-500 dark:text-indigo-400 font-semibold text-xs uppercase tracking-wider">{formatLabel(key)}:</span>
                                                     <span className="text-slate-900 dark:text-white font-bold font-mono text-sm">
                                                         {displayValue || 'N/A'}
                                                     </span>

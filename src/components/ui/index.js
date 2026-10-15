@@ -16,7 +16,7 @@
 // skills/style.md — read it before adding UI.
 
 export { Button } from './Button';
-export { Badge, StatusChip } from './Badge';
+export { Badge, StatusChip, VisibilityChip } from './Badge';
 export { Modal } from './Modal';
 export { Input, Select, Textarea, Checkbox, Label } from './FormControls';
 export { Panel } from './Panel';
@@ -29,11 +29,29 @@ export { ToggleGroup } from './ToggleGroup';
 export { StatPills } from './StatPills';
 export { SectionLabel } from './SectionLabel';
 export { FactCell } from './FactCell';
+export { GoogleMark } from './BrandMarks';
+export { InlineSelect } from './InlineSelect';
+export { Tabs, TabPanel } from './Tabs';
+export { FilterPill } from './FilterPill';
+export { Switch } from './Switch';
 
-export { ChartContainer } from './charts/ChartContainer';
+export {
+    ChartContainer,
+    ChartFilterRow,
+    ChartFilterGroup,
+    ChartCapControl,
+} from './charts/ChartContainer';
 export { ChartTooltip, ChartTooltipRow } from './charts/ChartTooltip';
-export { ChartLegend } from './charts/ChartLegend';
+export {
+    ChartLegend,
+    SeriesMarkerSvg,
+    SeriesLineSwatch,
+    SeriesPercentileLegend,
+    CustomSeriesDot,
+    PercentileLegendKey,
+    getSeriesShape,
+} from './charts/ChartLegend';
 export { ChartXAxis, ChartYAxis } from './charts/Axis';
-export { CHART_SERIES, seriesColor, CHART_STATUS } from './charts/palette';
-export { getChartTheme, gridProps, tooltipProps } from './charts/theme';
+export { CHART_SERIES, seriesColor, CHART_STATUS, resolveSeriesColor } from './charts/palette';
+export { getChartTheme, gridProps, cursorProps, tooltipProps } from './charts/theme';
 export { getAxisConfig } from './charts/utils';

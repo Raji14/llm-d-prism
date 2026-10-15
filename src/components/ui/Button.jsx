@@ -18,48 +18,69 @@ import { cn } from '../../utils/cn';
 
 const VARIANTS = {
     primary:
-        'bg-emerald-600 hover:bg-emerald-500 text-white border border-transparent shadow-sm',
+        'bg-zinc-900 hover:bg-zinc-700 text-white border border-transparent shadow-xs',
     secondary:
-        'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700',
+        'bg-white hover:bg-zinc-50 text-zinc-700 hover:text-zinc-900 border border-zinc-200/90 hover:border-zinc-300 shadow-xs',
     ghost:
-        'bg-transparent hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-transparent',
+        'bg-transparent hover:bg-zinc-100 text-zinc-700 hover:text-zinc-900 border border-transparent',
     danger:
-        'bg-red-600 hover:bg-red-500 text-white border border-transparent shadow-sm',
+        'bg-red-600 hover:bg-red-500 text-white border border-transparent shadow-xs',
     outline:
-        'bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600',
+        'bg-transparent hover:bg-zinc-50 text-zinc-700 border border-zinc-200 hover:border-zinc-300',
     dangerOutline:
-        'bg-transparent text-red-600 dark:text-rose-400 border border-red-300 dark:border-rose-500/40 hover:bg-red-50 dark:hover:bg-rose-500/10',
+        'bg-transparent text-red-600 border border-red-200 hover:bg-red-50',
     link:
-        'bg-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 underline underline-offset-2 border border-transparent px-0 py-0',
+        'bg-transparent text-zinc-700 hover:text-zinc-900 underline underline-offset-4 border border-transparent px-0 py-0',
+    // For dark `.surface-keep` bands: the primary and secondary actions.
+    inverse:
+        'bg-white hover:bg-zinc-200 text-zinc-900 border border-transparent',
+    inverseOutline:
+        'bg-transparent hover:bg-white/10 text-white border border-white/15 hover:border-white/30',
 };
 
 const SIZES = {
-    xs: 'px-2.5 py-1 text-[11px] rounded-md gap-1',
-    sm: 'px-3.5 py-1.5 text-xs rounded-lg gap-1.5',
-    md: 'px-4 py-2 text-sm rounded-lg gap-2',
-    icon: 'p-1.5 rounded-lg',
+    xs: 'px-3 py-1 text-xs rounded-full gap-1.5',
+    sm: 'px-4 py-1.5 text-xs rounded-full gap-1.5',
+    md: 'px-5 py-2.5 text-sm rounded-full gap-2',
+    // Page-level calls to action (Home hero, dark bands).
+    lg: 'h-12 px-6 text-base rounded-full gap-2',
+    icon: 'p-2 rounded-full',
 };
 
+// Pass `href` for navigation: the button renders as an <a>, so it can be
+// opened in a new tab and read as a link by assistive tech. In-app routes
+// still pass `onClick` to navigate without a reload.
 export const Button = React.forwardRef(function Button(
-    { variant = 'primary', size = 'sm', isLoading = false, disabled, className, children, ...props },
+    { variant = 'primary', size = 'sm', isLoading = false, disabled, href, className, children, ...props },
     ref
 ) {
-    return (
-        <button
-            ref={ref}
-            disabled={disabled || isLoading}
-            className={cn(
-                'inline-flex items-center justify-center font-medium transition-colors whitespace-nowrap',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50',
-                'disabled:opacity-50 disabled:pointer-events-none',
-                VARIANTS[variant],
-                SIZES[size],
-                className
-            )}
-            {...props}
-        >
-            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />}
+    const inactive = disabled || isLoading;
+    const classes = cn(
+        'surface-light inline-flex items-center justify-center font-medium transition-colors whitespace-nowrap',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+        'disabled:opacity-50 disabled:pointer-events-none',
+        href && inactive && 'opacity-50 pointer-events-none',
+        VARIANTS[variant],
+        SIZES[size],
+        className
+    );
+    const content = (
+        <>
+            {isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
             {children}
+        </>
+    );
+
+    if (href) {
+        return (
+            <a ref={ref} href={href} aria-disabled={inactive || undefined} className={classes} {...props}>
+                {content}
+            </a>
+        );
+    }
+    return (
+        <button ref={ref} disabled={inactive} className={classes} {...props}>
+            {content}
         </button>
     );
 });

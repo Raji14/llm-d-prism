@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prism Leaderboard — 2-Minute UX Lead Video Walkthrough</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .slide-transition { transition: opacity 0.4s ease-in-out, transform 0.4s ease-in-out; }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-cyan-500 selection:text-slate-950">
+
+    <!-- Top Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl px-6 py-3.5 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center font-black text-sm text-white shadow-[0_0_15px_rgba(6,182,212,0.4)]">
+                P
+            </div>
+            <div>
+                <h1 class="text-sm font-bold text-white flex items-center gap-2">
+                    Prism Leaderboard Proposal
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        2:00 Walkthrough
+                    </span>
+                </h1>
+                <p class="text-xs text-slate-400">Cross-Functional Team Presentation Deck & Voice-Over Guide</p>
+            </div>
+        </div>
+
+        <!-- Video Player Controls -->
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 font-mono text-xs">
+                <span id="timerDisplay" class="text-cyan-400 font-bold text-sm">0:00</span>
+                <span class="text-slate-600">/</span>
+                <span class="text-slate-400">2:00</span>
+            </div>
+
+            <button id="playPauseBtn" onclick="togglePlay()" class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold text-xs shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer">
+                <span id="playIcon">▶ Play Demo</span>
+            </button>
+
+            <button onclick="resetDemo()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs border border-slate-700 transition-colors cursor-pointer" title="Reset to start">
+                ↺ Reset
+            </button>
+        </div>
+    </header>
+
+    <!-- Progress Timeline Bar -->
+    <div class="w-full bg-slate-900 h-1.5 relative overflow-hidden">
+        <div id="progressBar" class="h-full bg-gradient-to-r from-cyan-500 via-emerald-400 to-purple-500 w-0 transition-all duration-300"></div>
+    </div>
+
+    <!-- Main 2-Column Presentation Layout -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Left: Real UI Screenshot Viewer (7 cols) -->
+        <section class="lg:col-span-7 flex flex-col gap-4">
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl relative overflow-hidden backdrop-blur-xl">
+                
+                <!-- Scene Badge -->
+                <div class="flex items-center justify-between mb-3 text-xs">
+                    <span id="sceneBadge" class="px-2.5 py-1 rounded-full font-bold text-[11px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Scene 1: Discovery & Pareto Frontier
+                    </span>
+                    <span id="sceneTimeRange" class="font-mono text-slate-400 text-xs">
+                        0:00 – 0:25 (25s)
+                    </span>
+                </div>
+
+                <!-- High-Res Image Display Container -->
+                <div class="relative w-full rounded-xl overflow-hidden border border-slate-800 bg-slate-950 aspect-[16/10] flex items-center justify-center group">
+                    <img id="sceneImage" src="real_leaderboard_dashboard.png" alt="Real UI Scene" class="w-full h-full object-contain slide-transition" />
+                    
+                    <!-- Fullscreen / Zoom Trigger -->
+                    <a id="imageLink" href="real_leaderboard_dashboard.png" target="_blank" class="absolute top-3 right-3 p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-md">
+                        🔍 Open full image
+                    </a>
+                </div>
+
+                <!-- Visual Cue Annotation -->
+                <div class="mt-3.5 p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-start gap-2.5 text-xs text-slate-300">
+                    <span class="text-cyan-400 font-bold shrink-0">📍 Visual cue:</span>
+                    <span id="visualCueText" class="leading-relaxed text-slate-300">
+                        Point to top SOTA cards, hover over the stepped gold Pareto frontier line, and toggle linear vs log scale.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Slide Navigation Pills -->
+            <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-900/50 border border-slate-800/60 p-2.5 rounded-xl text-xs">
+                <div class="flex gap-1.5 overflow-x-auto">
+                    <button onclick="goToScene(0)" class="scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">1. Pareto SOTA</button>
+                    <button onclick="goToScene(1)" class="scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-slate-800 text-slate-400 hover:text-slate-200">2. Sizing Wizard</button>
+                    <button onclick="goToScene(2)" class="scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-slate-800 text-slate-400 hover:text-slate-200">3. Cost Engine</button>
+                    <button onclick="goToScene(3)" class="scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-slate-800 text-slate-400 hover:text-slate-200">4. PR Comparator</button>
+                    <button onclick="goToScene(4)" class="scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-slate-800 text-slate-400 hover:text-slate-200">5. Manifests & Certs</button>
+                </div>
+                <span class="text-slate-500 text-[11px] font-mono shrink-0">Total: 5 Scenes</span>
+            </div>
+        </section>
+
+        <!-- Right: Teleprompter & CUJ Deep-Dive (5 cols) -->
+        <section class="lg:col-span-5 flex flex-col gap-4">
+            
+            <!-- Voice-Over Teleprompter Card -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl backdrop-blur-xl relative">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                        <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400">
+                            🎙️ UX Lead Voice-Over Script
+                        </h2>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-500">Plain English</span>
+                </div>
+
+                <div class="p-4 rounded-xl bg-slate-950/90 border border-slate-800/80 min-h-[160px] flex items-center">
+                    <p id="voiceOverText" class="text-sm md:text-base leading-relaxed text-white font-medium">
+                        "Hi team! Today I'm walking you through our new Prism Leaderboard. Right now, engineers have to guess which serving configuration works best under latency pressure. We solved this with an interactive Pareto optimization curve that plots the mathematical best trade-off between Time to First Token and throughput across NVIDIA H100s, L4s, and Google Cloud TPU v6e clusters."
+                    </p>
+                </div>
+
+                <div class="mt-3 flex items-center justify-between text-xs text-slate-500">
+                    <span>Pacing: <strong class="text-slate-400">Conversational & Clear</strong></span>
+                    <span>Target length: <strong class="text-cyan-400 font-mono" id="sceneDurationText">25 seconds</strong></span>
+                </div>
+            </div>
+
+            <!-- CUJ Breakdown Card -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-2xl backdrop-blur-xl">
+                <div class="flex items-center gap-2 border-b border-slate-800 pb-3 mb-3">
+                    <span class="p-1 rounded-md bg-purple-500/20 text-purple-400 border border-purple-500/30 text-xs">🎯</span>
+                    <h3 id="cujTitle" class="text-xs font-bold text-slate-300">
+                        CUJ 1: Discovering SOTA Performance & Pareto Frontiers
+                    </h3>
+                </div>
+
+                <div class="space-y-2.5 text-xs text-slate-400">
+                    <div>
+                        <strong class="text-slate-200 block mb-0.5">Target Persona:</strong>
+                        <span id="cujPersona" class="text-slate-300">ML Performance Engineer & Researcher</span>
+                    </div>
+                    <div>
+                        <strong class="text-slate-200 block mb-0.5">User Problem:</strong>
+                        <span id="cujProblem" class="text-slate-300">Evaluating throughput numbers in isolation without knowing if they meet latency SLAs.</span>
+                    </div>
+                    <div>
+                        <strong class="text-slate-200 block mb-0.5">How the UI Solves It:</strong>
+                        <span id="cujSolution" class="text-slate-300">Renders a non-dominated Pareto frontier curve with live tooltips, axis switchers, and zero-horizontal-scroll table rankings.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const scenes = [
+            {
+                id: 0,
+                badge: "Scene 1: Discovery & Pareto Frontier",
+                timeRange: "0:00 – 0:25 (25s)",
+                durationSec: 25,
+                image: "real_leaderboard_dashboard.png",
+                visualCue: "Point to top SOTA cards (#1 SOTA DeepSeek-R1 / Llama 3.1), hover over the stepped gold Pareto frontier line, and highlight zero horizontal table scrolling.",
+                voiceOver: "“Hi team! Today I'm walking you through our new Prism Leaderboard. Right now, engineers have to guess which serving configuration works best under latency pressure. We solved this with an interactive Pareto optimization curve that plots the mathematical best trade-off between Time to First Token and throughput across NVIDIA H100s, L4s, and Google Cloud TPU v6e clusters.”",
+                cujTitle: "CUJ 1: Discovering SOTA Performance & Pareto Frontiers",
+                persona: "ML Performance Engineer & Researcher",
+                problem: "Evaluating throughput numbers in isolation without knowing if they meet latency SLAs.",
+                solution: "Renders a non-dominated Pareto frontier curve with live tooltips, axis switchers, and zero-horizontal-scroll table rankings."
+            },
+            {
+                id: 1,
+                badge: "Scene 2: SLA & Sizing Wizard",
+                timeRange: "0:25 – 0:55 (30s)",
+                durationSec: 30,
+                image: "real_sizing_wizard_modal.png",
+                visualCue: "Open Sizing Wizard modal, drag the TTFT SLA slider to 25ms, set budget to $35/hr, and point to the single 'Inspect recipe →' green action button.",
+                voiceOver: "“Next, imagine you're a Solutions Architect talking to an enterprise customer with strict latency requirements. Instead of doing manual math, you open the Sizing Wizard, set your TTFT SLA to under 25 milliseconds, choose your concurrency, and set your hourly budget. The wizard immediately spotlights the number one architecture, calculates your monthly run rate, and gives you one clean button to inspect the recipe.”",
+                cujTitle: "CUJ 2: Interactive Workload & SLA Hardware Sizing",
+                persona: "Solutions Architect & Customer Engineer",
+                problem: "Manually sizing multi-GPU cluster topologies to satisfy customer latency SLAs and budget caps.",
+                solution: "Provides interactive SLA sliders, instant SOTA recommendations with cost advantages, and direct one-click manifest inspection."
+            },
+            {
+                id: 2,
+                badge: "Scene 3: GCP Cost Engine & CUD Sweeper",
+                timeRange: "0:55 – 1:20 (25s)",
+                durationSec: 25,
+                image: "real_gcp_pricing_modal.png",
+                visualCue: "Open GCP pricing modal, click the '1-Year CUD (37% Off)' preset, drag the flat discount slider, and highlight live cluster monthly burn rate projections.",
+                voiceOver: "“In the real world, almost nobody pays list on-demand cloud prices. With our GCP Accelerator Cost Engine, FinOps teams can select 1-Year or 3-Year Committed Use Discounts, or use the global discount slider to model custom enterprise contracts. Saving changes instantly recalculates Cost per 1 Million tokens across the entire leaderboard in real time.”",
+                cujTitle: "CUJ 3: Enterprise Contract TCO & Real-World Pricing",
+                persona: "FinOps Lead & Infrastructure Buyer",
+                problem: "Standard benchmarks only show hardcoded list prices that don't match enterprise negotiated discounts.",
+                solution: "Interactive CUD discount presets, global % slider, accelerator category tabs, and live TCO recalculation."
+            },
+            {
+                id: 3,
+                badge: "Scene 4: Side-by-Side Comparator & PR Export",
+                timeRange: "1:20 – 1:45 (25s)",
+                durationSec: 25,
+                image: "real_recipe_comparator_modal.png",
+                visualCue: "Select 3 recipes, open Comparator modal, point out green (+18.4%) and red (-46.1%) delta badges against baseline, and click 'Copy PR markdown report'.",
+                voiceOver: "“When performance engineers optimize a model—like moving from TP4 to TP8 or applying FP8 quantization—they can select up to three recipes to compare side-by-side. The comparator shows verified apples-to-apples performance deltas against a baseline, and with one click on 'Copy PR markdown report', generates a formatted Markdown table ready for a GitHub Pull Request description.”",
+                cujTitle: "CUJ 4: Side-by-Side Comparison & PR Artifact Generation",
+                persona: "Performance Engineer & Open-Source Contributor",
+                problem: "Creating consistent, trustworthy benchmark comparison reports for pull request reviews.",
+                solution: "Multi-recipe delta comparison matrix with fairness audit certification and 1-click GitHub PR markdown export."
+            },
+            {
+                id: 4,
+                badge: "Scene 5: Production Manifests & Certificates",
+                timeRange: "1:45 – 2:00 (15s)",
+                durationSec: 15,
+                image: "real_certificate_view.png",
+                visualCue: "Open Recipe Detail Drawer, scroll through Docker CLI and Helm values, and reveal the in-drawer SVG Verifiable Achievement Certificate.",
+                voiceOver: "“Finally, every recipe slides open into complete production configs—including Docker run commands, Helm values, and KubeRay manifests for GKE—plus a cryptographically certified SVG achievement certificate for verified reproducibility. That's the new Prism Leaderboard—connecting raw benchmark telemetry directly to production AI architecture decisions. Thank you!”",
+                cujTitle: "CUJ 5: Reference Infrastructure Manifests & Certificates",
+                persona: "Platform Engineer & Community Contributor",
+                problem: "Benchmark scores are dead-ends without reproducible deployment manifests.",
+                solution: "In-drawer Docker/Helm/KubeRay YAML manifests and cryptographically verifiable SVG achievement badges."
+            }
+        ];
+
+        let currentSceneIdx = 0;
+        let isPlaying = false;
+        let timerSeconds = 0;
+        let timerInterval = null;
+
+        function updateSceneUI(idx) {
+            currentSceneIdx = idx;
+            const scene = scenes[idx];
+
+            document.getElementById('sceneBadge').textContent = scene.badge;
+            document.getElementById('sceneTimeRange').textContent = scene.timeRange;
+            document.getElementById('sceneImage').src = scene.image;
+            document.getElementById('imageLink').href = scene.image;
+            document.getElementById('visualCueText').textContent = scene.visualCue;
+            document.getElementById('voiceOverText').textContent = scene.voiceOver;
+            document.getElementById('sceneDurationText').textContent = `${scene.durationSec} seconds`;
+
+            document.getElementById('cujTitle').textContent = scene.cujTitle;
+            document.getElementById('cujPersona').textContent = scene.persona;
+            document.getElementById('cujProblem').textContent = scene.problem;
+            document.getElementById('cujSolution').textContent = scene.solution;
+
+            // Update scene buttons
+            document.querySelectorAll('.scene-btn').forEach((btn, i) => {
+                if (i === idx) {
+                    btn.className = "scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-cyan-500/20 text-cyan-300 border border-cyan-500/40";
+                } else {
+                    btn.className = "scene-btn px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-colors bg-slate-800 text-slate-400 hover:text-slate-200";
+                }
+            });
+        }
+
+        function goToScene(idx) {
+            updateSceneUI(idx);
+            // set timer to start of scene
+            let total = 0;
+            for (let i = 0; i < idx; i++) {
+                total += scenes[i].durationSec;
+            }
+            timerSeconds = total;
+            updateTimerDisplay();
+        }
+
+        function updateTimerDisplay() {
+            const mins = Math.floor(timerSeconds / 60);
+            const secs = timerSeconds % 60;
+            document.getElementById('timerDisplay').textContent = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            const pct = (timerSeconds / 120) * 100;
+            document.getElementById('progressBar').style.width = `${Math.min(100, pct)}%`;
+        }
+
+        function togglePlay() {
+            if (isPlaying) {
+                pauseDemo();
+            } else {
+                playDemo();
+            }
+        }
+
+        function playDemo() {
+            isPlaying = true;
+            document.getElementById('playIcon').textContent = "⏸ Pause";
+            document.getElementById('playPauseBtn').className = "px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-1.5 cursor-pointer";
+
+            timerInterval = setInterval(() => {
+                timerSeconds++;
+                updateTimerDisplay();
+
+                // Determine active scene
+                let acc = 0;
+                for (let i = 0; i < scenes.length; i++) {
+                    acc += scenes[i].durationSec;
+                    if (timerSeconds < acc) {
+                        if (currentSceneIdx !== i) updateSceneUI(i);
+                        break;
+                    }
+                }
+
+                if (timerSeconds >= 120) {
+                    pauseDemo();
+                    timerSeconds = 120;
+                    updateTimerDisplay();
+                }
+            }, 1000);
+        }
+
+        function pauseDemo() {
+            isPlaying = false;
+            clearInterval(timerInterval);
+            document.getElementById('playIcon').textContent = "▶ Play Demo";
+            document.getElementById('playPauseBtn').className = "px-4 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-extrabold text-xs shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-1.5 cursor-pointer";
+        }
+
+        function resetDemo() {
+            pauseDemo();
+            timerSeconds = 0;
+            updateTimerDisplay();
+            goToScene(0);
+        }
+
+        // Initialize
+        goToScene(0);
+    </script>
+</body>
+</html>

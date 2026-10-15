@@ -1,848 +1,570 @@
-import React, { useState, useEffect } from 'react';
-import { Activity, Zap, BarChart2, ArrowRight, Server, Cpu, CheckCircle, Shield, TrendingUp, HelpCircle, FileCode, Link, Database, Sliders, Layers, ChevronDown, ChevronUp, Lightbulb, ChevronLeft, ChevronRight, Trophy, Sparkles, Crown } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { ArrowRight, ArrowUpRight, Activity, BarChart2, Blocks, Bot, FileCode, Trophy, UploadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { normalizeLeaderboardEntry } from '../utils/leaderboardData.js';
+import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF } from '../utils/wellLitProofs.js';
+import { Badge } from './ui/Badge.jsx';
+import { Button } from './ui/Button.jsx';
+import { DOCS_URL, METHODOLOGY, NAV, REPO_URL, SUBMIT } from './layout/navigation';
 
-const roadmapItems = [
-        {
-            title: "Wide Expert Parallelism",
-            description: "Scaling Mixture-of-Experts (MoE) workloads across large multi-node GPU clusters dynamically.",
-            icon: Layers,
-            colorClass: "text-pink-400",
-            bgClass: "bg-pink-500/10",
-            borderClass: "border-pink-500/20",
-            badge: "MoE scale"
-        },
-        {
-            title: "Value Analysis (Cost/TCO)",
-            description: "Dynamic cost vs. performance optimization reports, estimating dollar savings per Chip hour.",
-            icon: TrendingUp,
-            colorClass: "text-cyan-400",
-            bgClass: "bg-cyan-500/10",
-            borderClass: "border-cyan-500/20",
-            badge: "Cost/TCO"
-        }
+const LEADERBOARD = 'model-leaderboard';
+const REPORT_FORMAT_URL = 'https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report';
+// MethodologyPage section that publishes the full sweeps behind each proof.
+const PROOFS_ANCHOR = 'paths';
+
+const hrefFor = (view, params = {}) => `?${new URLSearchParams({ view, ...params }).toString()}`;
+
+// Path titles, descriptions and badges come from the shared nav model, so a
+// renamed or re-badged path updates here without editing this file.
+const PATH_ITEMS = NAV.find((n) => n.id === 'paths')?.items || [];
+const pathItem = (view) => PATH_ITEMS.find((p) => p.view === view) || { label: view, view };
+
+// ---------- Well-lit paths, measured ----------
+// One card per llm-d well-lit path whose guide data supports a headline number
+// (src/utils/wellLitProofs.js). Each card also draws the sweep behind its
+// number so the figure is a chart, not a slogan.
+const PROOF_CARDS = [
+    {
+        path: 'inference-scheduling',
+        layer: 'Routing',
+        proof: ROUTING_PROOF,
+        chart: 'paired',
+        unit: 'p99 TTFT, lower is better',
+        axis: (p) => `${p.qps} QPS`,
+        legend: ['K8s Service', 'llm-d gateway'],
+    },
+    {
+        path: 'prefix-cache-offloading',
+        layer: 'KV cache',
+        proof: PREFIX_CACHE_PROOF,
+        chart: 'paired',
+        unit: 'Throughput by context length',
+        axis: (p) => `${p.size}`,
+        legend: ['HBM only', 'With offload'],
+    },
+    {
+        path: 'agentic-serving',
+        layer: 'Multi-turn',
+        proof: AGENTIC_PROOF,
+        chart: 'paired',
+        unit: 'Throughput by concurrency',
+        axis: (p) => `${p.concurrency}c`,
+        legend: ['K8s Service', 'Combined stack'],
+    },
+    {
+        path: 'pd-disaggregation',
+        layer: 'Serving',
+        proof: PD_PROOF,
+        chart: 'splits',
+        unit: 'Throughput by prefill : decode split',
+        axis: (p) => `${p.prefill}:${p.decode}`,
+        legend: ['Even split', 'Best split'],
+    },
 ];
 
-const PrismHome = ({ onNavigate }) => {
-    const [currentRoadmapIndex, setCurrentRoadmapIndex] = useState(0);
-    const [isHoveringRoadmap, setIsHoveringRoadmap] = useState(false);
+// What's next on the roadmap.
+const NEXT_UP = 'Wide expert parallelism';
 
-    useEffect(() => {
-        if (isHoveringRoadmap) return;
-        const timer = setInterval(() => {
-            setCurrentRoadmapIndex((prev) => (prev + 1) % roadmapItems.length);
-        }, 3500);
-        return () => clearInterval(timer);
-    }, [isHoveringRoadmap]);
+// "What brings you here?": one card per job, so every persona in
+// users/README.md finds its entry point without reading the rest of the page.
+const TOOLKIT = [
+    {
+        view: LEADERBOARD,
+        kicker: 'Leaderboard',
+        title: 'See the latest top-performing stacks',
+        body: 'Compare the freshest benchmark runs across models, accelerators and stack components, ranked at your target latency.',
+        icon: Trophy,
+    },
+    {
+        view: 'regressions-analysis',
+        kicker: 'Regressions',
+        title: 'Catch a regression',
+        body: 'Track nightly well-lit path runs against their history and spot the release that slipped.',
+        icon: Activity,
+    },
+    {
+        view: 'benchmark-browser',
+        kicker: 'Benchmark browser',
+        title: 'Validate an optimization',
+        body: 'Plot your runs against established baselines across hardware and configs, on any axis.',
+        icon: BarChart2,
+    },
+    {
+        view: SUBMIT.view,
+        kicker: 'Submit',
+        title: SUBMIT.label,
+        body: 'Upload a Benchmark Report v0.2, pass the schema checks, and get ranked after review.',
+        icon: UploadCloud,
+    },
+    {
+        view: 'workload-catalog',
+        kicker: 'Workload catalog',
+        title: 'Find a realistic workload',
+        body: 'Start from production-shaped traffic profiles instead of synthetic prompts.',
+        icon: Blocks,
+    },
+    {
+        view: 'schema-explorer',
+        kicker: 'Schema explorer',
+        title: 'Check the report format',
+        body: 'Browse every field of Benchmark Report v0.2 before you instrument a run.',
+        icon: FileCode,
+    },
+];
+
+// The non-leaderboard jobs, repeated under the hero CTAs for the personas
+// who aren't choosing a stack.
+const HERO_JOBS = TOOLKIT.filter((c) => ['regressions-analysis', 'benchmark-browser', SUBMIT.view].includes(c.view));
+
+// Tools without a card, read from the shared nav model so a new tool shows up
+// on Home without editing this file.
+const MORE_TOOLS = (NAV.find((n) => n.id === 'tools')?.items || []).filter(
+    (t) => !TOOLKIT.some((c) => c.view === t.view)
+);
+
+const STEPS = [
+    { n: '01', title: 'Run', body: 'Benchmark with inference-perf and real-world workloads from the catalog.' },
+    { n: '02', title: 'Validate', body: 'Reports are schema-checked against Benchmark Report v0.2, then peer-reviewed.' },
+    { n: '03', title: 'Compare', body: 'Verified runs rank on the leaderboard, and anyone can reproduce them from the recipe.' },
+];
+
+const AGENT_ROLES = [
+    { id: 'config-tuner', label: 'Config tuner' },
+    { id: 'llm-d-stack-operator', label: 'Stack operator' },
+    { id: 'llm-d-feature-developer', label: 'Feature developer' },
+    { id: 'benchmark-developer', label: 'Benchmark developer' },
+];
+
+const fmtDate = (iso) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// What the freshness pill may claim: only runs that passed review. Never the
+// illustrative seed recipes, never uploads still waiting for validation. The
+// inclusion rule matches buildLeaderboardDataset's for uploaded runs.
+function summarizeVerified(runs) {
+    const verified = (Array.isArray(runs) ? runs : [])
+        .filter((raw) => raw && (raw.tokens_per_sec || raw.tps || raw.ttft))
+        .map((raw) => ({ raw, run: normalizeLeaderboardEntry(raw) }))
+        .filter(({ run }) => run && !run.is_sample && run.verification_status === 'verified');
+    return {
+        count: verified.length,
+        models: new Set(verified.map(({ run }) => run.model_family)).size,
+        // Only a date the run itself carries; normalization would default to now.
+        updated: fmtDate(verified.map(({ raw }) => raw.created_at).filter(Boolean).sort().pop()),
+    };
+}
+
+function SectionHeader({ eyebrow, title, body }) {
+    return (
+        <div className="mb-8 max-w-2xl">
+            <p className="kicker text-accent-600">{eyebrow}</p>
+            <h2 className="mt-3 font-display text-3xl font-semibold tracking-display text-zinc-900 md:text-4xl">{title}</h2>
+            {body && <p className="mt-3 text-base leading-relaxed text-zinc-600">{body}</p>}
+        </div>
+    );
+}
+
+// Decorative "performance frontier" field: a fan of throughput/latency curves
+// rising to the right, echoing the Pareto charts users will find inside.
+function FrontierRays({ className, tone = 'text-accent-600', count = 16, points = true, aspect = 'xMaxYMin slice' }) {
+    return (
+        <svg
+            aria-hidden="true"
+            viewBox="0 0 1440 760"
+            preserveAspectRatio={aspect}
+            className={cn('pointer-events-none absolute inset-0 h-full w-full', tone, className)}
+        >
+            {Array.from({ length: count }, (_, i) => (
+                <path
+                    key={i}
+                    d={`M${520 + 34 * i} 760 C${640 + 34 * i} ${471 - 9 * i} ${850 + 34 * i} ${228 - 11 * i} 1440 ${198 - 15 * i}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeOpacity={0.06 + i * 0.012}
+                />
+            ))}
+            {points &&
+                [[1100, 250], [1190, 182], [1290, 129], [980, 330]].map(([cx, cy]) => (
+                    <circle key={cx} cx={cx} cy={cy} r="3.5" className="fill-white" stroke="currentColor" strokeOpacity="0.7" strokeWidth="1.5" />
+                ))}
+        </svg>
+    );
+}
+
+// ---------- Mini charts ----------
+// Plain SVG, no chart library: this file is in the entry chunk. Bars only,
+// labels are HTML underneath so nothing stretches with preserveAspectRatio.
+const CHART_H = 64;
+const GROUP_W = 48;
+const barH = (v, max) => Math.max(2, (v / max) * (CHART_H - 6));
+
+// Two bars per group: baseline in grey, llm-d in accent.
+function PairedBars({ groups }) {
+    const max = Math.max(...groups.flatMap((g) => [g.baseline, g.optimized]));
+    return (
+        <svg aria-hidden="true" viewBox={`0 0 ${groups.length * GROUP_W} ${CHART_H}`} preserveAspectRatio="none" className="h-16 w-full">
+            {groups.map((g, i) => {
+                const x = i * GROUP_W;
+                const hb = barH(g.baseline, max);
+                const ho = barH(g.optimized, max);
+                return (
+                    <g key={g.key}>
+                        <rect x={x + 10} y={CHART_H - hb} width={12} height={hb} rx="1.5" className="fill-zinc-200" />
+                        <rect x={x + 26} y={CHART_H - ho} width={12} height={ho} rx="1.5" className="fill-accent-500" />
+                    </g>
+                );
+            })}
+            <line x1="0" x2={groups.length * GROUP_W} y1={CHART_H - 0.5} y2={CHART_H - 0.5} className="stroke-zinc-200" />
+        </svg>
+    );
+}
+
+// One bar per sweep point; the reference and best points carry the colour.
+function SplitBars({ groups }) {
+    const max = Math.max(...groups.map((g) => g.value));
+    return (
+        <svg aria-hidden="true" viewBox={`0 0 ${groups.length * GROUP_W} ${CHART_H}`} preserveAspectRatio="none" className="h-16 w-full">
+            {groups.map((g, i) => {
+                const h = barH(g.value, max);
+                return (
+                    <rect
+                        key={g.key}
+                        x={i * GROUP_W + 14}
+                        y={CHART_H - h}
+                        width={20}
+                        height={h}
+                        rx="1.5"
+                        className={cn(g.isBest ? 'fill-accent-500' : g.isReference ? 'fill-zinc-400' : 'fill-zinc-200')}
+                    />
+                );
+            })}
+            <line x1="0" x2={groups.length * GROUP_W} y1={CHART_H - 0.5} y2={CHART_H - 0.5} className="stroke-zinc-200" />
+        </svg>
+    );
+}
+
+function ProofChart({ card }) {
+    const { proof } = card;
+    const groups =
+        card.chart === 'splits'
+            ? proof.points.map((p) => ({ key: p.split, label: card.axis(p), value: p.total, isBest: p.isBest, isReference: p.isReference }))
+            : proof.points.map((p) => ({ key: card.axis(p), label: card.axis(p), baseline: p.baseline, optimized: p.optimized }));
+    const Chart = card.chart === 'splits' ? SplitBars : PairedBars;
+    return (
+        <figure className="mt-auto pt-6">
+            <Chart groups={groups} />
+            <div className="mt-1.5 grid text-center text-xs tabular-nums text-zinc-600 font-medium" style={{ gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))` }}>
+                {groups.map((g) => (
+                    <span key={g.key} className="truncate">
+                        {g.label}
+                    </span>
+                ))}
+            </div>
+            <figcaption className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600">
+                <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className={cn('h-2 w-2 rounded-sm', card.chart === 'splits' ? 'bg-zinc-400' : 'bg-zinc-300')} />
+                    {card.legend[0]}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                    <span aria-hidden="true" className="h-2 w-2 rounded-sm bg-accent-500" />
+                    {card.legend[1]}
+                </span>
+                <span className="basis-full text-zinc-500">{card.unit}</span>
+            </figcaption>
+        </figure>
+    );
+}
+
+function ProofCard({ card, go }) {
+    const item = pathItem(card.path);
+    const { proof } = card;
+    return (
+        <li className="group relative flex min-w-0 flex-col rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-xs transition-colors hover:border-zinc-300 hover:shadow-sm">
+            <div className="flex items-center gap-2">
+                <p className="kicker text-zinc-600 font-semibold">{card.layer}</p>
+                {item.badge && <Badge tone="warning" size="xs">{item.badge}</Badge>}
+                <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-zinc-400 transition group-hover:text-accent-600 motion-safe:group-hover:translate-x-0.5" />
+            </div>
+            {/* Stretched link: the whole card opens the guide. */}
+            <a
+                href={hrefFor(item.view)}
+                onClick={(e) => go(e, item.view)}
+                className="mt-1 min-h-[2.75rem] text-base font-semibold leading-snug text-zinc-900 after:absolute after:inset-0 after:rounded-2xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-accent-500"
+            >
+                {item.label}
+            </a>
+            <p className="mt-4 flex items-baseline gap-1.5">
+                {proof.upTo && <span className="text-sm text-zinc-600">up to</span>}
+                <span className="display-title text-4xl tabular-nums text-zinc-900">{proof.metric}</span>
+            </p>
+            <p className="mt-2 text-sm font-medium text-zinc-800">{proof.claim}</p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-600">{proof.context}</p>
+            <ProofChart card={card} />
+        </li>
+    );
+}
+
+function ProofBand({ go }) {
+    const cards = PROOF_CARDS.filter((c) => c.proof);
+    return (
+        <div id="paths" className="mt-14 scroll-mt-20 text-left sm:mt-16">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-10">
+                <div className="max-w-2xl">
+                    <p className="kicker text-accent-600">Well-lit paths, measured</p>
+                    <p className="mt-2 text-sm leading-relaxed text-zinc-600">
+                        <a
+                            href={DOCS_URL}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition-colors hover:decoration-accent-400"
+                        >
+                            llm-d
+                        </a>{' '}
+                        is an open-source, Kubernetes-native stack for distributed LLM inference. Its well-lit paths are
+                        tested deployment recipes, one per layer, each benchmarked in its guide.
+                    </p>
+                </div>
+                <a
+                    href={`${hrefFor(METHODOLOGY.view)}#${PROOFS_ANCHOR}`}
+                    onClick={(e) => go(e, METHODOLOGY.view, { hash: PROOFS_ANCHOR })}
+                    className="group inline-flex shrink-0 items-center gap-1 text-sm font-medium text-zinc-700 transition-colors hover:text-accent-700"
+                >
+                    Where these numbers come from
+                    <ArrowRight className="h-3.5 w-3.5 text-zinc-400 transition group-hover:text-accent-600 motion-safe:group-hover:translate-x-0.5" />
+                </a>
+            </div>
+
+            {cards.length > 0 && (
+                <ul
+                    className={cn(
+                        'mt-6 grid gap-4',
+                        cards.length === 2 && 'sm:grid-cols-2',
+                        cards.length === 3 && 'md:grid-cols-3',
+                        cards.length >= 4 && 'sm:grid-cols-2 lg:grid-cols-4'
+                    )}
+                >
+                    {cards.map((card) => (
+                        <ProofCard key={card.path} card={card} go={go} />
+                    ))}
+                </ul>
+            )}
+
+            <p className="mt-4 text-xs leading-relaxed text-zinc-600">
+                Next on the roadmap: <span className="font-semibold text-zinc-800">{NEXT_UP}</span>.
+            </p>
+        </div>
+    );
+}
+
+const PrismHome = ({ onNavigate, submittedRuns }) => {
+    const verified = useMemo(() => summarizeVerified(submittedRuns), [submittedRuns]);
+
+    // In-app navigation for plain clicks; modified clicks (new tab / window)
+    // fall through to the href.
+    const go = (e, view, params) => {
+        if (e && (e.metaKey || e.ctrlKey || e.shiftKey)) return;
+        e?.preventDefault();
+        onNavigate?.(view, params);
+    };
+
+    // Freshness pill: what the community leaderboard holds right now. Until a
+    // verified run lands it invites the first one; sample entries never count.
+    const pill = verified.count
+        ? {
+              view: LEADERBOARD,
+              text: `${plural(verified.count, 'verified run')} across ${plural(verified.models, 'model')}`,
+              detail: verified.updated ? `updated ${verified.updated}` : null,
+          }
+        : { view: SUBMIT.view, text: 'The community leaderboard is open', detail: 'Submit the first verified run' };
 
     return (
-        <div className="min-h-screen bg-slate-950 font-sans text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
-            {/* Pulsing Vibrant Neon Glow Background Shapes */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
-            <div className="absolute top-1/3 -right-1/4 w-1/2 h-1/2 bg-purple-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
-            <div className="absolute bottom-0 -left-1/4 w-1/2 h-1/2 bg-emerald-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
+        <div className="surface-light min-h-full bg-theme-bg text-zinc-900 font-sans antialiased overflow-x-hidden">
+            {/* ============ HERO + WELL-LIT PATHS ============ */}
+            <section className="relative overflow-hidden">
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(rgb(24_24_27/0.08)_1px,transparent_1.2px)] bg-[size:22px_22px] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_0%,#000_25%,transparent_80%)]" />
+                <FrontierRays points={false} className="opacity-80 [mask-image:radial-gradient(ellipse_34%_58%_at_100%_0%,#000_15%,transparent_75%)]" />
+                <FrontierRays points={false} className="-scale-x-100 opacity-80 [mask-image:radial-gradient(ellipse_34%_58%_at_100%_0%,#000_15%,transparent_75%)]" />
 
-            <div className="max-w-6xl w-full z-10 flex flex-col items-center">
-                {/* Hero Header */}
-                <header className="mb-8 text-center relative pt-3 flex flex-col items-center">
-                    <div className="flex items-center justify-center mb-3 space-x-3">
-                        <a href="https://llm-d.ai" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
-                            <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d Logo" className="h-9 object-contain" />
+                <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-12 sm:px-6 sm:pt-16 md:pb-20">
+                    <div className="text-center">
+                        <a
+                            href={hrefFor(pill.view)}
+                            onClick={(e) => go(e, pill.view)}
+                            className="group inline-flex max-w-full items-center gap-2 rounded-full border border-zinc-200/90 bg-white py-1 pl-3 pr-2.5 text-xs font-medium text-zinc-700 shadow-xs transition-colors hover:border-zinc-300 hover:text-zinc-900"
+                        >
+                            <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-500" />
+                            <span className="truncate">
+                                {pill.text}
+                                {pill.detail && <span className="hidden font-medium text-zinc-600 sm:inline"> · {pill.detail}</span>}
+                            </span>
+                            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition group-hover:text-zinc-700 motion-safe:group-hover:translate-x-0.5" />
                         </a>
-                        <a href="https://github.com/llm-d/llm-d-prism" target="_blank" rel="noopener noreferrer" className="hover:opacity-80 transition-opacity">
-                            <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
-                                Prism
-                            </h1>
-                        </a>
-                    </div>
-                    <p className="text-lg text-slate-400 max-w-3xl leading-relaxed font-normal tracking-wide">
-                        Performance analysis for distributed inference systems and agentic workflows
-                    </p>
-                </header>
 
-                {/* Well-lit paths */}
-                <section className="mb-10 w-full max-w-6xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
-                    {/* Grid mesh backdrop decorative lines */}
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-                    
-                    <div className="relative p-5 md:p-6 z-10">
-                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-5">
-                            <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
-                                Well-lit paths
-                            </h2>
-                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-                                Live benchmarked serving configurations and architectural templates
-                            </p>
-                        </div>
-                        
-                        <div className="flex flex-row overflow-x-auto gap-4 pt-4 pb-5 px-2 w-full items-stretch scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950/20">
-                        {/* Path 1: Intelligent routing */}
-                        <div 
-                            onClick={() => onNavigate('inference-scheduling')}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(34,211,238,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-cyan-500/50 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
-                        >
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-cyan-400">
-                                        Intelligent routing
-                                    </h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Optimize request routing to maximize performance. Leverage GKE Inference Gateway and cache introspection to reduce tail latency.
-                                </p>
-                                
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">SLA compliance</span>
-                                            <span className="text-cyan-400 font-mono font-bold">98.5%</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Context scale</span>
-                                             <span className="text-cyan-400 font-mono font-bold">163k Tok</span>
-                                        </div>
-                                    </div>
-                                    {/* Monochromatic Preview Chart */}
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 border-b border-slate-800/40 pb-px">
-                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-1.5 rounded-t-sm opacity-35"></div>
-                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-3 rounded-t-sm opacity-55"></div>
-                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-4.5 rounded-t-sm opacity-85"></div>
-                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-3.5 rounded-t-sm opacity-70"></div>
-                                        <div className="w-full bg-gradient-to-t from-cyan-600 to-cyan-400 h-6 rounded-t-sm"></div>
-                                    </div>
-                                </div>
-                            </div>
- 
-                            <button className="w-full py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
+                        <h1 className="mx-auto mt-6 max-w-4xl font-display text-[40px] font-semibold leading-[1.04] tracking-display text-zinc-900 sm:text-6xl">
+                            Find the inference stack that wins on{' '}
+                            <span className="bg-gradient-to-r from-accent-700 via-accent-600 to-accent-500 bg-clip-text text-transparent">your</span>{' '}
+                            workload.
+                        </h1>
+
+                        <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-zinc-700 [text-wrap:balance] sm:text-xl">
+                            Prism ranks model, accelerator and serving-stack combinations on validated, reproducible runs,
+                            comparing throughput per chip, latency and cost.
+                        </p>
+
+                        <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
+                            <Button href={hrefFor(LEADERBOARD)} onClick={(e) => go(e, LEADERBOARD)} size="lg" className="group">
+                                Compare serving stacks
+                                <ArrowRight className="h-4 w-4 motion-safe:transition-transform group-hover:translate-x-0.5" />
+                            </Button>
+                            <Button
+                                href={hrefFor(METHODOLOGY.view)}
+                                onClick={(e) => go(e, METHODOLOGY.view)}
+                                size="lg"
+                                variant="secondary"
+                            >
+                                {METHODOLOGY.label}
+                            </Button>
                         </div>
 
-                        {/* Path 2: Prefix cache offloading */}
-                        <div
-                            onClick={() => onNavigate('prefix-cache-offloading')}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(16,185,129,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-emerald-500/50 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
-                        >
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-emerald-400">
-                                        Prefix cache offloading
-                                    </h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Offload KV cache to CPU memory to extend accelerator capacity limit. Evict and restore cache blocks on-demand.
-                                </p>
- 
-                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">Capacity wall</span>
-                                            <span className="text-emerald-400 font-mono font-bold">OOM Avoided</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Max prompt</span>
-                                             <span className="text-emerald-400 font-mono font-bold">32k Tok</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-center space-x-0.5 h-6 items-center">
-                                         <div className="w-8 h-4.5 bg-emerald-500/20 rounded border border-emerald-500/30 flex items-center justify-center text-[7px] font-bold text-emerald-400">HBM</div>
-                                         <div className="text-[8px] text-slate-650 font-mono">{"->"}</div>
-                                         <div className="w-8 h-4.5 bg-emerald-500/30 rounded border border-emerald-500/30 flex items-center justify-center text-[7px] font-bold text-emerald-400">CPU</div>
-                                         <div className="text-[8px] text-slate-650 font-mono">{"->"}</div>
-                                         <div className="w-8 h-4.5 bg-emerald-500/10 rounded border border-emerald-500/20 flex items-center justify-center text-[7px] font-bold text-emerald-400">Disk</div>
-                                     </div>
-                                </div>
-                            </div>
- 
-                            <button className="w-full py-1.5 bg-gradient-to-r from-emerald-500 to-cyan-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-emerald-400 hover:to-cyan-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Path 3: Agentic serving */}
-                        <div 
-                            onClick={() => onNavigate('agentic-serving')}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(168,85,247,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-purple-500/50 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
-                        >
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400">
-                                        Agentic serving
-                                    </h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Optimize multi-turn conversations using prefix-aware routing, KV-offloading, and queue depth load balancing.
-                                </p>
-                                
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">Workload</span>
-                                            <span className="text-purple-400 font-mono font-bold">Code Gen</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Num Turns</span>
-                                             <span className="text-purple-400 font-mono font-bold">230</span>
-                                        </div>
-                                    </div>
-                                    <div className="h-6 flex items-end justify-between space-x-0.5 px-0.5 relative border-b border-slate-800/40 pb-px">
-                                         <div className="w-1/6 bg-purple-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-purple-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-gradient-to-t from-cyan-600 to-cyan-400 h-4 rounded-t-sm relative opacity-90">
-                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-cyan-400 uppercase tracking-wide">Active</span>
-                                         </div>
-                                         <div className="w-1/6 bg-purple-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-1/6 bg-purple-500 h-1.5 rounded-t-sm opacity-20"></div>
-                                         <div className="w-2/6 bg-gradient-to-t from-purple-600 to-purple-400 h-4 rounded-t-sm opacity-90 relative">
-                                             <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[5px] font-mono font-bold text-purple-400 uppercase tracking-wide">Offload</span>
-                                         </div>
-                                    </div>
-                                </div>
-                            </div>
- 
-                            <button className="w-full py-1.5 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-purple-400 hover:to-indigo-500 shadow-[0_0_15px_rgba(168,85,247,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Path 4: PD disaggregated serving */}
-                        <div 
-                            onClick={() => onNavigate('pd-disaggregation')}
-                            className="group relative bg-slate-900/95 backdrop-blur-xl shadow-lg hover:shadow-2xl rounded-xl pt-6 px-4 pb-4 hover:-translate-y-1 hover:shadow-[0_0_30px_rgba(245,158,11,0.25)] transition-all duration-300 cursor-pointer flex flex-col justify-between border border-slate-800/80 hover:border-amber-500/50 w-[196px] shrink-0 min-h-[340px] overflow-hidden"
-                        >
-                            {/* Prototype Banner */}
-                            <div className="absolute top-0 left-0 right-0 bg-amber-500/10 text-amber-400/80 border-b border-amber-500/20 text-[9px] font-black tracking-wider uppercase text-center py-0.5 z-10">
-                                Prototype
-                            </div>
-
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-amber-400">
-                                        PD disaggregation
-                                    </h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Split prefill and decode phases to eliminate head-of-line blocking and optimize GPU resource utilization.
-                                </p>
-                                
-                                {/* Visual Preview / Metrics */}
-                                <div className="bg-slate-950/60 border border-slate-800/60 rounded-lg p-2.5 h-[92px] flex flex-col justify-between mb-3">
-                                    <div className="space-y-0.5">
-                                        <div className="flex justify-between text-[10px]">
-                                            <span className="text-slate-400">TTFT speedup</span>
-                                            <span className="text-amber-400 font-mono font-bold">4.2x faster</span>
-                                        </div>
-                                        <div className="flex justify-between text-[10px]">
-                                             <span className="text-slate-400">Decode Tput</span>
-                                             <span className="text-amber-400 font-mono font-bold">+85%</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-center space-x-1.5 h-6 items-center">
-                                         <div className="w-12 h-4.5 bg-amber-500/20 rounded border border-amber-500/30 flex items-center justify-center text-[7px] font-bold text-amber-400">Prefill (P)</div>
-                                         <div className="text-[8px] text-slate-650 font-mono">||</div>
-                                         <div className="w-12 h-4.5 bg-cyan-500/20 rounded border border-cyan-500/30 flex items-center justify-center text-[7px] font-bold text-cyan-400">Decode (D)</div>
-                                     </div>
-                                </div>
-                            </div>
- 
-                            <button className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-amber-400 hover:to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Divider */}
-                        <div className="w-px bg-slate-800/60 self-stretch my-4 shrink-0" />
-
-                        {/* Card 5: Consolidated Roadmap */}
-                        <div 
-                            onMouseEnter={() => setIsHoveringRoadmap(true)}
-                            onMouseLeave={() => setIsHoveringRoadmap(false)}
-                            className="group relative bg-gradient-to-br from-purple-950/20 via-slate-950/80 to-slate-950 backdrop-blur-xl border border-dashed border-purple-900/40 hover:border-purple-500/40 rounded-xl pt-6 px-4 pb-4 transition-all duration-300 flex flex-col justify-between w-[196px] shrink-0 min-h-[340px] overflow-hidden hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
-                        >
-                            <div>
-                                <div className="h-[40px] flex flex-col justify-start mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400">
-                                        Coming soon
-                                    </h3>
-                                </div>
-                                <p className="text-slate-400 text-xs leading-relaxed mb-3 h-[96px] overflow-hidden">
-                                    Upcoming performance optimizations and architectural templates on the Prism roadmap. Track MoE and cost analysis.
-                                </p>
-
-                                {/* Slideshow Item Container */}
-                                <div className="relative p-2 bg-slate-950/40 border border-slate-900/60 rounded-xl flex items-start gap-2.5 h-[92px] group/item transition-all duration-300">
-                                    {/* Left/Right manual controls inside the carousel */}
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setCurrentRoadmapIndex((prev) => (prev - 1 + roadmapItems.length) % roadmapItems.length);
-                                        }}
-                                        className="absolute left-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-slate-900 border border-slate-800/60 text-slate-450 hover:text-white hover:bg-slate-800 opacity-0 group-hover/item:opacity-100 transition-opacity z-10 cursor-pointer"
+                        <p className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-zinc-600 sm:gap-x-2">
+                            {HERO_JOBS.map((job, i) => (
+                                <React.Fragment key={job.view}>
+                                    {i > 0 && <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">·</span>}
+                                    <a
+                                        href={hrefFor(job.view)}
+                                        onClick={(e) => go(e, job.view)}
+                                        className="font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-accent-700 hover:decoration-accent-400"
                                     >
-                                        <ChevronLeft className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setCurrentRoadmapIndex((prev) => (prev + 1) % roadmapItems.length);
-                                        }}
-                                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-slate-900 border border-slate-800/60 text-slate-455 hover:text-white hover:bg-slate-800 opacity-0 group-hover/item:opacity-100 transition-opacity z-10 cursor-pointer"
-                                    >
-                                        <ChevronRight className="w-3.5 h-3.5" />
-                                    </button>
-
-                                    {/* Slide Item Content */}
-                                    {(() => {
-                                        const item = roadmapItems[currentRoadmapIndex];
-                                        return (
-                                            <div className="flex items-start gap-2.5 px-1.5 w-full animate-fadeIn">
-                                                <div className="flex-1 min-w-0 pr-1.5">
-                                                    <div className="flex items-center justify-between gap-1">
-                                                        <h4 className="text-xs font-bold text-slate-200 truncate">{item.title}</h4>
-                                                        <span className="text-[8px] font-mono text-slate-500 shrink-0">{currentRoadmapIndex + 1}/{roadmapItems.length}</span>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-400 leading-normal mt-1 line-clamp-3">{item.description}</p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-
-                                {/* Pagination indicator dots below the carousel */}
-                                <div className="flex justify-center gap-1.5 mt-2.5">
-                                    {roadmapItems.map((_, idx) => (
-                                        <button 
-                                            key={idx}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCurrentRoadmapIndex(idx);
-                                            }}
-                                            className="p-1 cursor-pointer flex items-center justify-center group"
-                                        >
-                                            <div
-                                                className={cn(
-                                                    'w-1.5 h-1.5 rounded-full transition-all duration-300',
-                                                    idx === currentRoadmapIndex ? 'bg-purple-400 w-3' : 'bg-slate-700 group-hover:bg-slate-550'
-                                                )}
-                                            />
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+                                        {job.title}
+                                    </a>
+                                </React.Fragment>
+                            ))}
+                        </p>
                     </div>
+
+                    <ProofBand go={go} />
                 </div>
             </section>
 
-                {/* Pillar 2: SOTA Performance & Community Leaderboard Showcase */}
-                <section className="mb-10 w-full max-w-6xl relative">
-                    {/* Ambient Glows */}
-                    <div className="absolute -top-6 -left-6 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-                    <div className="absolute -bottom-6 -right-6 w-72 h-72 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                    <div className="relative bg-gradient-to-br from-slate-900/90 via-slate-950/95 to-slate-950 border border-amber-500/30 hover:border-amber-400/50 rounded-2xl p-6 shadow-2xl backdrop-blur-xl transition-all group overflow-hidden">
-                        {/* Top Accent Line */}
-                        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-500 via-yellow-400 to-cyan-500" />
-
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                            {/* Left Col (5 cols): Live #1 SOTA Record Details */}
-                            <div className="lg:col-span-5 flex flex-col justify-between">
-                                <div className="flex items-center gap-2 mb-2.5">
-                                    <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-bold border border-amber-400/40">
-                                        <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                                        Community Benchmark Leaderboard
-                                    </span>
-                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-                                        Live SOTA
-                                    </span>
-                                </div>
-
-                                <h2 className="text-xl md:text-2xl font-black text-white tracking-tight mb-1">
-                                    Model Benchmark Rankings & SOTA Recipes
-                                </h2>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                                    Explore verified serving configurations, Pareto optimization frontiers, GCP accelerator pricing, and reproducible recipes.
-                                </p>
-
-                                {/* SOTA Spotlight Box */}
-                                <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl p-3.5 flex flex-col justify-between">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                        <div className="flex items-center gap-2">
-                                            <Crown className="w-4 h-4 text-amber-400 shrink-0" />
-                                            <span className="text-xs font-bold text-white truncate">Llama-3.1-70B-Instruct</span>
-                                        </div>
-                                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                                            👑 Grandmaster
+            {/* ============ TOOLKIT ============ */}
+            <section className="border-t border-zinc-200/80 bg-zinc-100/50">
+                <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 md:py-20">
+                    <SectionHeader
+                        eyebrow="Toolkit"
+                        title="What brings you to Prism?"
+                        body="Pick the job you're doing. Each card opens the right view."
+                    />
+                    <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                        {TOOLKIT.map((card) => {
+                            const Icon = card.icon;
+                            return (
+                                <li key={card.view}>
+                                    <a
+                                        href={hrefFor(card.view)}
+                                        onClick={(e) => go(e, card.view)}
+                                        className="group flex h-full flex-col rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-xs transition-colors hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 sm:p-6"
+                                    >
+                                        <span className="flex items-center justify-between">
+                                            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 text-zinc-600 transition-colors group-hover:border-accent-200 group-hover:bg-accent-50 group-hover:text-accent-600">
+                                                <Icon className="h-5 w-5" strokeWidth={1.75} />
+                                            </span>
+                                            <ArrowRight className="h-4 w-4 text-zinc-400 transition group-hover:text-accent-600 motion-safe:group-hover:translate-x-0.5" />
                                         </span>
-                                    </div>
-
-                                    <div className="text-[11px] text-slate-400 font-mono mb-2 flex items-center gap-2">
-                                        <span>8x NVIDIA H100 (80GB)</span>
-                                        <span>•</span>
-                                        <span className="text-cyan-400 font-semibold">vLLM + FlashInfer</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 font-mono text-xs">
-                                        <div>
-                                            <span className="text-[10px] text-slate-500 block">Throughput</span>
-                                            <span className="text-amber-300 font-bold text-sm">4,850 tok/s</span>
-                                        </div>
-                                        <div>
-                                            <span className="text-[10px] text-slate-500 block">TTFT Latency</span>
-                                            <span className="text-cyan-300 font-bold text-sm">24.2 ms</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Middle Col (4 cols): Performance & Efficiency Highlights */}
-                            <div className="lg:col-span-4 grid grid-cols-2 gap-3">
-                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Lowest Cost / 1M</span>
-                                    <div className="my-auto">
-                                        <div className="text-2xl font-black text-emerald-400 font-mono">$0.482</div>
-                                        <div className="text-[10px] text-slate-500 font-mono">Gemma 2 9B (L4 TP=4)</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Pareto SOTA</span>
-                                    <div className="my-auto">
-                                        <div className="text-2xl font-black text-amber-300 font-mono">8 Recipes</div>
-                                        <div className="text-[10px] text-slate-500 font-mono">Optimal frontier</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Best Value</span>
-                                    <div className="my-auto">
-                                        <div className="text-2xl font-black text-cyan-300 font-mono">2,074</div>
-                                        <div className="text-[10px] text-slate-500 font-mono">Tokens per Dollar ($)</div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between h-[115px]">
-                                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Validation</span>
-                                    <div className="my-auto">
-                                        <div className="text-2xl font-black text-purple-300 font-mono">100%</div>
-                                        <div className="text-[10px] text-slate-500 font-mono">Reproducible manifests</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Right Col (3 cols): Direct Launch Actions */}
-                            <div className="lg:col-span-3 flex flex-col justify-center gap-3 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60">
-                                <button
-                                    onClick={() => onNavigate('model-leaderboard')}
-                                    className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(245,158,11,0.35)] transform hover:scale-[1.02] transition-all cursor-pointer"
-                                >
-                                    <span>Launch Leaderboard</span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                    onClick={() => onNavigate('submit-benchmarks')}
-                                    className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white rounded-xl font-semibold text-xs border border-slate-700/80 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                                >
-                                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                                    <span>Publish Benchmark Recipe</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-                
-                {/* Section: Utility Suite */}
-                <section className="mb-10 w-full max-w-5xl bg-slate-900/15 border border-slate-900 rounded-2xl relative overflow-hidden backdrop-blur-xl shadow-2xl">
-                    {/* Grid mesh backdrop decorative lines */}
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b_1.5px,transparent_1.5px),linear-gradient(to_bottom,#1e293b_1.5px,transparent_1.5px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-25 pointer-events-none" />
-                    <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-                    
-                    <div className="relative p-5 md:p-6 z-10">
-                        <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-3.5 mb-5">
-                            <h2 className="text-2xl font-extrabold tracking-tight text-white mb-0.5">
-                                Utility suite
-                            </h2>
-                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-                                Access specialized tools for deeper analysis and schema browsing
-                            </p>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 w-full">
-                        {/* Card 1: Results Store */}
-                        <div 
-                            onClick={() => onNavigate('results-store')}
-                            className="bg-slate-900/60 shadow-xl border border-slate-800/80 hover:border-emerald-500/25 rounded-xl p-3.5 hover:shadow-[0_8px_30px_rgba(16,185,129,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-emerald-500/20 transition-all duration-300">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                    <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
-                                        <line x1="20" y1="42" x2="140" y2="42" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
-                                        
-                                        {/* Source Benchmark File (Local staging) */}
-                                        <rect x="22" y="10" width="28" height="24" rx="2.5" fill="rgba(16,185,129,0.08)" stroke="rgba(16,185,129,0.5)" strokeWidth="1.2" />
-                                        <line x1="28" y1="16" x2="44" y2="16" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" />
-                                        <line x1="28" y1="22" x2="38" y2="22" stroke="#059669" strokeWidth="1.5" strokeLinecap="round" />
-                                        <line x1="28" y1="28" x2="42" y2="28" stroke="rgba(16,185,129,0.4)" strokeWidth="1.2" strokeLinecap="round" />
-                                        
-                                        {/* Checkmark overlay showing validation success */}
-                                        <circle cx="50" cy="14" r="6" fill="#10b981" stroke="#022c22" strokeWidth="1.2" />
-                                        <path d="M47.5 14 L 49.5 16 L 53 12.5" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        
-                                        {/* Active transmission path */}
-                                        <path d="M60 22 H 95" stroke="#10b981" strokeWidth="1.5" strokeDasharray="3 3" />
-                                        <path d="M90 18 L 96 22 L 90 26" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                        
-                                        {/* Results Store Database (Solid pop) */}
-                                        <rect x="108" y="9" width="30" height="26" rx="2.5" fill="rgba(16,185,129,0.18)" stroke="#10b981" strokeWidth="1.5" />
-                                        <line x1="108" y1="17.5" x2="138" y2="17.5" stroke="#10b981" strokeWidth="1.2" />
-                                        <line x1="108" y1="26" x2="138" y2="26" stroke="#10b981" strokeWidth="1.2" />
-                                        <circle cx="114" cy="13.5" r="1.5" fill="#10b981" className="animate-pulse" />
-                                        <circle cx="114" cy="22" r="1.5" fill="#10b981" />
-                                        <circle cx="114" cy="30.5" r="1.5" fill="#10b981" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-emerald-400 select-none">Results store</h3>
-                                </div>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Stage, validate, and submit standardized benchmark report files and system execution benchmarks.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-emerald-400 hover:to-teal-500 shadow-[0_0_15px_rgba(16,185,129,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 2: Workload Catalog */}
-                        <div 
-                            onClick={() => onNavigate('workload-catalog')}
-                            className="bg-slate-900/60 shadow-xl border border-slate-800/80 hover:border-cyan-500/25 rounded-xl p-3.5 hover:shadow-[0_8px_30px_rgba(6,182,212,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-cyan-500/20 transition-all duration-300">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-cyan-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                    <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
-                                        <rect x="18" y="8" width="34" height="28" rx="3" fill="rgba(6,182,212,0.08)" stroke="rgba(6,182,212,0.45)" strokeWidth="1" />
-                                        <path d="M22 14 H 42" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" />
-                                        <path d="M26 20 H 46" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-                                        <path d="M22 26 H 38" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" />
-                                        
-                                        <rect x="63" y="8" width="34" height="28" rx="3" fill="rgba(6,182,212,0.18)" stroke="#06b6d4" strokeWidth="1.2" />
-                                        <path d="M68 13 H 88" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" />
-                                        <path d="M72 18 H 92" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-                                        <path d="M72 23 H 84" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" />
-                                        <path d="M68 28 H 78" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" />
-                                        <circle cx="91" cy="13" r="2" fill="#06b6d4" className="animate-pulse" />
-                                        <circle cx="91" cy="13" r="1.5" fill="#06b6d4" />
-
-                                        <rect x="108" y="8" width="34" height="28" rx="3" fill="rgba(6,182,212,0.08)" stroke="rgba(6,182,212,0.45)" strokeWidth="1" />
-                                        <path d="M112 13 H 138" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" />
-                                        <path d="M112 18 H 138" stroke="#3b82f6" strokeWidth="1.2" strokeLinecap="round" />
-                                        <path d="M112 24 H 124" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-cyan-400 select-none">Workload catalog</h3>
-                                </div>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Browse, import, and configure production-grade Inference Workloads for latency & throughput testing.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-cyan-400 hover:to-blue-500 shadow-[0_0_15px_rgba(34,211,238,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 3: Regressions & Analysis */}
-                        <div 
-                            onClick={() => onNavigate('regressions-analysis')}
-                            className="bg-slate-900/60 shadow-xl border border-slate-800/80 hover:border-rose-500/25 rounded-xl p-3.5 hover:shadow-[0_8px_30px_rgba(244,63,94,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-rose-500/20 transition-all duration-300">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-rose-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                    <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
-                                        <line x1="20" y1="20" x2="140" y2="20" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="3 2" />
-                                        <text x="22" y="16" fill="rgba(255,255,255,0.2)" fontSize="6" fontFamily="sans-serif">SLA Target</text>
-                                        <path d="M20 18 Q 45 15, 70 14 T 120 15 T 140 16" stroke="rgba(255,255,255,0.15)" strokeWidth="1.2" fill="none" />
-                                        <path d="M20 18 C 40 18, 55 16, 75 36 C 90 38, 115 36, 140 37" stroke="#f43f5e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                                        <circle cx="75" cy="36" r="3.5" fill="rgba(244,63,94,0.2)" stroke="#f43f5e" strokeWidth="1.5" className="animate-pulse" />
-                                        <line x1="18" y1="10" x2="18" y2="42" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                                        <line x1="18" y1="42" x2="142" y2="42" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-rose-455 select-none">Regressions & analysis</h3>
-                                </div>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Track system performance trends, compare nightly metrics, and auto-detect regressions on well-lit paths.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-gradient-to-r from-rose-500 to-red-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-rose-400 hover:to-red-500 shadow-[0_0_15px_rgba(244,63,94,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 4: Benchmark Browser */}
-                        <div 
-                            onClick={() => onNavigate('benchmark-browser')}
-                            className="bg-slate-900/60 shadow-xl border border-slate-800/80 hover:border-amber-500/25 rounded-xl p-3.5 hover:shadow-[0_8px_30px_rgba(245,158,11,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-amber-500/20 transition-all duration-300">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-amber-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                    <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
-                                        <path d="M25 40 Q 55 38, 65 24 T 95 10" stroke="#f59e0b" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-                                        <text x="98" y="13" fill="#f59e0b" fontSize="6" fontFamily="sans-serif">Config A</text>
-                                        <path d="M25 40 Q 75 39, 85 28 T 125 10" stroke="rgba(245,158,11,0.25)" strokeWidth="1.2" strokeDasharray="3 2" fill="none" strokeLinecap="round" />
-                                        <text x="128" y="13" fill="rgba(245,158,11,0.4)" fontSize="6" fontFamily="sans-serif">Config B</text>
-                                        <path d="M78 21 L 95 21" stroke="#f59e0b" strokeWidth="1" strokeDasharray="1 1" />
-                                        <path d="M91 18 L 95 21 L 91 24" stroke="#f59e0b" strokeWidth="1" fill="none" />
-                                        <text x="80" y="30" fill="#f59e0b" fontSize="5" fontFamily="monospace">Latency gap</text>
-                                        <line x1="22" y1="8" x2="22" y2="40" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                                        <line x1="22" y1="40" x2="142" y2="40" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-amber-400 select-none">Benchmark browser</h3>
-                                </div>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Search, filter, and compare benchmark results interactively across hardware and framework configs.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-amber-400 hover:to-orange-500 shadow-[0_0_15px_rgba(245,158,11,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-
-                        {/* Card 5: Schema Explorer */}
-                        <div 
-                            onClick={() => onNavigate('schema-explorer')}
-                            className="bg-slate-900/60 shadow-xl border border-slate-800/80 hover:border-purple-500/25 rounded-xl p-3.5 hover:shadow-[0_8px_30px_rgba(168,85,247,0.06)] hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col justify-between h-full group"
-                        >
-                            <div>
-                                {/* Mini Visualization */}
-                                <div className="relative h-20 w-full mb-2 bg-slate-950/60 rounded-xl border border-slate-900 overflow-hidden flex items-center justify-center group-hover:border-purple-500/20 transition-all duration-300">
-                                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:8px_8px] opacity-50" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-purple-500/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                    <svg className="w-full h-full p-2.5 relative z-10" viewBox="0 0 160 50" fill="none">
-                                        <text x="18" y="15" fill="#a855f7" fontSize="7.5" fontFamily="monospace" fontWeight="bold">"format":</text>
-                                        <text x="64" y="15" fill="#f472b6" fontSize="7.5" fontFamily="monospace" fontWeight="bold">"brv02",</text>
-                                        <text x="18" y="26" fill="#a855f7" fontSize="7.5" fontFamily="monospace" fontWeight="bold">"hardware":</text>
-                                        <text x="76" y="26" fill="#e9d5ff" fontSize="7.5" fontFamily="monospace" fontWeight="bold">{"{"}</text>
-                                        <text x="28" y="37" fill="#a855f7" fontSize="7.5" fontFamily="monospace" fontWeight="bold">"name":</text>
-                                        <text x="64" y="37" fill="#f472b6" fontSize="7.5" fontFamily="monospace" fontWeight="bold">"nvidia-h100"</text>
-                                        <text x="18" y="45" fill="#e9d5ff" fontSize="7.5" fontFamily="monospace" fontWeight="bold">{"}"}</text>
-                                        <circle cx="132" cy="25" r="10.5" fill="rgba(168,85,247,0.25)" stroke="#a855f7" strokeWidth="1.5" />
-                                        <path d="M128 25 L 131 28 L 137 22" stroke="#e9d5ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                </div>
-                                <div className="flex items-center mb-2">
-                                    <h3 className="text-sm font-bold text-slate-200 tracking-wide transition-colors group-hover:text-purple-400 select-none">Schema explorer</h3>
-                                </div>
-                                <p className="text-xs text-slate-400 leading-relaxed mb-2">Browse standard schema structures, validation rules, and metric definitions for benchmark reports.</p>
-                            </div>
-                            <button className="w-full py-1.5 bg-gradient-to-r from-purple-500 to-violet-600 text-white rounded-lg font-medium text-[10px] flex items-center justify-center hover:from-purple-400 hover:to-violet-500 shadow-[0_0_15px_rgba(168,85,247,0.2)] transform group-hover:scale-[1.02] transition-all cursor-pointer mt-auto">
-                                Launch <ArrowRight className="ml-1 h-3 w-3" />
-                            </button>
-                        </div>
-                    </div>
+                                        <span className="kicker mt-5 text-zinc-600 font-semibold">{card.kicker}</span>
+                                        <span className="mt-1.5 text-base font-semibold tracking-tight text-zinc-900 sm:text-lg">{card.title}</span>
+                                        <span className="mt-1.5 text-sm leading-relaxed text-zinc-600">{card.body}</span>
+                                    </a>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                    {MORE_TOOLS.length > 0 && (
+                        <p id="tools" className="mt-6 scroll-mt-20 text-sm text-zinc-600">
+                            Also in the toolkit:{' '}
+                            {MORE_TOOLS.map((t, i) => (
+                                <React.Fragment key={t.view}>
+                                    {i > 0 && ', '}
+                                    <a
+                                        href={hrefFor(t.view)}
+                                        onClick={(e) => go(e, t.view)}
+                                        className="font-medium text-zinc-800 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-700 hover:decoration-accent-400"
+                                    >
+                                        {t.label}
+                                    </a>
+                                    {t.desc && <span className="text-zinc-600"> ({t.desc.toLowerCase()})</span>}
+                                </React.Fragment>
+                            ))}
+                            .
+                        </p>
+                    )}
                 </div>
             </section>
-                
 
-                {/* Section: How it works */}
-                <section className="mb-10 w-full max-w-5xl">
-                     <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2 text-center">
-                          How it works: the full benchmark lifecycle
-                     </h2>
-                     <p className="text-xs text-slate-450 text-center mb-6 max-w-2xl mx-auto">
-                          Designed for human insight and agent automation. Standardizing the end-to-end lifecycle from routing optimization to high-fidelity reproduction.
-                     </p>
-                     
-                     <div className="flex flex-col md:flex-row gap-4 justify-between items-center relative mb-4">
-                          
-                          {/* Ambient glowing background in center */}
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+            {/* ============ HOW IT WORKS ============ */}
+            <section className="surface-keep relative overflow-hidden bg-zinc-950 text-white">
+                <FrontierRays tone="text-white" points={false} aspect="none" className="opacity-60 [mask-image:linear-gradient(90deg,transparent_35%,#000_85%)]" />
+                <div className="pointer-events-none absolute -bottom-40 left-1/3 h-[380px] w-[640px] rounded-full bg-accent-500/15 blur-[120px]" />
+                <div className="relative mx-auto grid max-w-6xl gap-14 px-4 py-20 sm:px-6 md:py-24 lg:grid-cols-[0.9fr_1.1fr]">
+                    <div>
+                        <p className="kicker text-accent-400">How it works</p>
+                        <h2 className="mt-3 font-display text-3xl font-semibold tracking-display md:text-4xl">Every number has a run behind it.</h2>
+                        <p className="mt-4 max-w-md text-base leading-relaxed text-zinc-300">
+                            One validated pipeline powers the UI and agent workflows, so people and their agents work from
+                            the same source of truth.
+                        </p>
+                        <div className="mt-8 flex flex-wrap gap-3">
+                            <Button href={hrefFor(SUBMIT.view)} onClick={(e) => go(e, SUBMIT.view)} variant="inverse" size="md">
+                                <UploadCloud className="h-4 w-4" /> {SUBMIT.label}
+                            </Button>
+                            <Button href={REPORT_FORMAT_URL} target="_blank" rel="noopener noreferrer" variant="inverseOutline" size="md">
+                                Report format <ArrowUpRight className="h-4 w-4" />
+                            </Button>
+                        </div>
 
-                          {/* Left Column: Roles & Actions */}
-                          <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center md:items-end">
-                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-cyan-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
-                              
-                              {/* Feature Developer */}
-                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                  <div className="mb-2">
-                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Feature developer</h3>
-                                  </div>
-                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Isolate component and system benchmarks.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Evaluate performance with established baselines.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Format results for publication and reproduction.</span>
-                                      </div>
-                                  </div>
-                              </div>
-
-                              {/* Benchmark Developer */}
-                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-cyan-500/30 transition-all group">
-                                  <div className="mb-2">
-                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Benchmark developer</h3>
-                                  </div>
-                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Publish reproducible workloads to the open catalog.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Configure cloud infrastructure for distributed testing.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-cyan-400">•</span>
-                                          <span>Validate benchmark results for accuracy and correctness.</span>
-                                      </div>
-                                  </div>
-                              </div>
-
-                          </div>
-
-                          {/* Center Column: Core Pipeline */}
-                          <div className="w-full md:w-1/3 relative border-2 border-dashed border-slate-700 rounded-2xl p-4 bg-slate-900/50 backdrop-blur-xl flex flex-col items-center space-y-2 hover:border-blue-500/30 transition-all">
-                              
-                              {/* Column Label */}
-                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-purple-400/90 uppercase tracking-widest mb-1.5 font-mono">Central pipeline</div>
-
-                              {/* Prism */}
-                              <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 border border-purple-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-purple-500/50 transition-all">
-                                  <h3 className="text-base font-bold text-purple-400 mb-1">Prism</h3>
-                                  <p className="text-xs text-slate-400 leading-normal">Visualize and compare metrics across benchmarks.</p>
-                              </div>
-
-                              {/* Llm-d Results Store */}
-                              <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-xl p-3 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-blue-500/50 transition-all">
-                                  <h3 className="text-base font-bold text-blue-400 mb-1">llm-d results store</h3>
-                                  <p className="text-xs text-slate-400 leading-normal">Unified repository for schema-validated benchmark results.</p>
-                              </div>
-
-                              {/* Standard Benchmark Format / Report */}
-                              <a 
-                                  href="https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                              >
-                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
-                                      Standard benchmark report
-                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                  </h3>
-                                  <p className="text-xs text-slate-400 leading-normal">Unified JSON schema guarantees data interoperability.</p>
-                              </a>
-
-                              {/* Test Harness */}
-                              <a 
-                                  href="https://github.com/kubernetes-sigs/inference-perf/"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                              >
-                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
-                                      Test harness
-                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                  </h3>
-                                  <p className="text-xs text-slate-400 leading-normal">Stress distributed systems with agentic serving workloads.</p>
-                              </a>
-
-                              {/* Real World Workload Catalog */}
-                              <a 
-                                  href="https://github.com/kubernetes-sigs/inference-perf/tree/main/workload-catalog"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/30 rounded-xl p-2 w-full max-w-[320px] h-[90px] flex flex-col items-center justify-center text-center group hover:border-cyan-500/50 transition-all cursor-pointer"
-                              >
-                                  <h3 className="text-base font-bold text-cyan-400 mb-1 flex items-center justify-center gap-1">
-                                      Real world workload catalog
-                                      <Link className="h-3 w-3 text-cyan-400 group-hover:scale-110 transition-transform" />
-                                  </h3>
-                                  <p className="text-xs text-slate-400 leading-normal">Access standardized workloads for evaluation.</p>
-                              </a>
-
-                          </div>
-
-                          {/* Right Column: Roles & Actions */}
-                          <div className="w-full md:w-1/3 space-y-3 flex flex-col items-center lg:items-start">
-                              <div className="w-full max-w-[320px] text-center text-[11px] font-bold text-purple-400/90 uppercase tracking-widest mb-3 font-mono">User & agent roles</div>
-                              
-                              {/* Solutions Architect */}
-                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                  <div className="mb-2">
-                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Solutions architect</h3>
-                                  </div>
-                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Analyze features for optimal architectural fit.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Architect full stack distributed inference solutions.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Fork and run new custom benchmarks dynamically.</span>
-                                      </div>
-                                  </div>
-                              </div>
-
-                              {/* Stack Operator */}
-                              <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-xl p-3 w-full max-w-[320px] hover:border-purple-500/30 transition-all group">
-                                  <div className="mb-2">
-                                      <h3 className="text-base font-bold text-slate-200 tracking-wide">Stack operator</h3>
-                                  </div>
-                                  <div className="space-y-1 text-slate-400 text-xs leading-relaxed">
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Compare price vs performance of serving stacks.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Select optimal configurations for production use.</span>
-                                      </div>
-                                      <div className="flex items-start gap-1">
-                                          <span className="text-purple-400">•</span>
-                                          <span>Reproduce benchmarks to validate performance gain.</span>
-                                      </div>
-                                  </div>
-                              </div>
-
-                          </div>
-                      </div>
-                 </section>
-
-                {/* Secondary Actions / Footer */}
-                <div className="flex space-x-4 mb-8">
-                    <a 
-                        href="https://llm-d.ai/" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="px-5 py-2.5 bg-slate-900/50 hover:bg-slate-850 text-slate-400 border border-slate-800 rounded font-mono text-[10px] uppercase tracking-widest transition-all"
-                    >
-                        llm-d.ai documentation
-                    </a>
+                        {/* Agent-ready */}
+                        <div className="mt-10 max-w-md rounded-2xl border border-white/10 p-5">
+                            <div className="flex items-center gap-2 text-sm font-semibold">
+                                <Bot className="h-4 w-4 text-accent-400" /> Use Prism from your agent
+                            </div>
+                            <p className="mt-1.5 text-sm text-zinc-300">
+                                Each role ships as a <code className="font-mono text-zinc-200">SKILL.md</code> your coding agent can load.
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                                {AGENT_ROLES.map((r) => (
+                                    <Button
+                                        key={r.id}
+                                        href={`${REPO_URL}/tree/main/users/${r.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        variant="inverseOutline"
+                                        size="xs"
+                                        className="text-zinc-200"
+                                    >
+                                        {r.label} <ArrowUpRight className="h-3 w-3 text-zinc-400" />
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                    <ol className="grid gap-px self-start overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-3 lg:grid-cols-1">
+                        {STEPS.map((s) => (
+                            <li key={s.n} className="flex gap-5 bg-zinc-950 p-6">
+                                <span className="pt-0.5 font-mono text-sm text-accent-400">{s.n}</span>
+                                <div>
+                                    <h3 className="text-base font-semibold">{s.title}</h3>
+                                    <p className="mt-1.5 text-sm leading-relaxed text-zinc-300">{s.body}</p>
+                                </div>
+                            </li>
+                        ))}
+                    </ol>
                 </div>
-            </div>
+            </section>
         </div>
     );
 };

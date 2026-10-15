@@ -22,9 +22,8 @@ import { cn } from '../../utils/cn';
 import { getSourceTag, getSourceType, getSourceTypeStyle, formatOriginLabel, getSubmissionStatusDetails, getBenchmarkKey } from '../../utils/dashboardHelpers';
 import yaml from 'js-yaml';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth';
-import { validateBenchmark } from '../../utils/benchmarkValidator';
+import { buildStagedBundle } from '../../utils/stagedBundle';
 import { encodeShareLink, isValidUuid } from '../../utils/shareLinkEncoder';
-import { v4 as uuidv4 } from 'uuid';
 
 const getCleanModelName = (name) => {
     if (!name) return '';
@@ -50,9 +49,9 @@ const getCardStatusAccent = (isBrv02, runId, submissionsMap, gcsStatus = null) =
 
     if (status === 'unlisted') {
         return {
-            borderClass: 'border-cyan-500/30 dark:border-cyan-500/20 hover:border-cyan-400/50',
-            bgClass: 'bg-cyan-500/[0.02]',
-            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-cyan-500 z-10" />
+            borderClass: 'border-accent-600/30 dark:border-accent-600/20 hover:border-accent-700/50',
+            bgClass: 'bg-accent-600/[0.02]',
+            accentBar: <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-accent-600 z-10" />
         };
     }
     
@@ -396,74 +395,7 @@ export const UnifiedDataTable = (props) => {
         setShowToast(true);
     }, [canShare, shareableUuids]);
 
-    const buildBundleForRun = React.useCallback((run) => {
-        const stageFiles = run.stages.map(stage => {
-            const content = typeof stage.rawReport === 'object' 
-                ? JSON.stringify(stage.rawReport) 
-                : (stage.rawReport || '');
-            
-            const validation = validateBenchmark(content, stage.filename);
-            
-            return {
-                file: { 
-                    name: stage.filename, 
-                    webkitRelativePath: `${run.runId}/${stage.filename}` 
-                },
-                content,
-                validation
-            };
-        });
-
-        const metadataFiles = {
-            run_metadata: run.run_metadata ? {
-                file: { name: 'run_metadata.json' },
-                content: JSON.stringify(run.run_metadata),
-                parsed: run.run_metadata
-            } : null,
-            config: run.config ? {
-                file: { name: 'config.json' },
-                content: JSON.stringify(run.config),
-                parsed: run.config
-            } : null
-        };
-
-        const bundleValidation = {
-            format: 'brv02',
-            errors: [],
-            warnings: [],
-            dcoChecked: true
-        };
-
-        return {
-            id: Math.random().toString(36).substring(7),
-            dirKey: run.runId,
-            name: run.runLabel,
-            stageFiles,
-            metadataFiles,
-            payload: {
-                runId: run.runId,
-                format: 'brv02',
-                model_name: run.model_name || run.stages[0]?.scenario?.model || 'Unknown Model',
-                hardware: { 
-                    hardware_name: run.hardware?.hardware_name || run.stages[0]?.scenario?.hardware || 'Unknown Hardware',
-                    accelerator_count: run.hardware?.accelerator_count ?? null
-                },
-                run_metadata: run.run_metadata || null,
-                entries: run.stages.map(stage => ({
-                    run_id: stage.run_id || uuidv4(),
-                    filename: stage.filename,
-                    raw_report: stage.rawReport,
-                    stage: stage.stageIndex,
-                    runUid: stage.runUid
-                })),
-                well_lit_path: run.wellLitPath
-            },
-            validation: bundleValidation,
-            isExpanded: true,
-            isSkipped: false,
-            targetDashboards: run.targetDashboards || ['performance-browser']
-        };
-    }, []);
+    const buildBundleForRun = React.useCallback((run) => buildStagedBundle(run), []);
 
     const handlePublishSelected = () => {
         if (selectedStagedRuns.length === 0) return;
@@ -1228,14 +1160,14 @@ export const UnifiedDataTable = (props) => {
                 return {
                     icon: <FileText className="w-8 h-8" />,
                     themeColor: 'cyan',
-                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
-                    radialGlow: 'bg-cyan-500/10',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-accent-600/10 border-accent-600/30 text-accent-700',
+                    radialGlow: 'bg-accent-600/10',
                     title: 'No submitted benchmarks found',
                     description: "You have not submitted any benchmark runs to the Results store yet. Staged and submitted benchmarks will appear here.",
                     action: (
                         <button
                             onClick={() => onOpenSubmitDialog && onOpenSubmitDialog('submit-review')}
-                            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-accent-400 hover:bg-accent-600 text-white font-semibold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
                         >
                             Publish to Results store
                         </button>
@@ -1245,14 +1177,14 @@ export const UnifiedDataTable = (props) => {
                 return {
                     icon: <FileText className="w-8 h-8" />,
                     themeColor: 'cyan',
-                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
-                    radialGlow: 'bg-cyan-500/10',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-accent-600/10 border-accent-600/30 text-accent-700',
+                    radialGlow: 'bg-accent-600/10',
                     title: 'No staged submissions found',
                     description: "You have not staged any local benchmark runs yet. Benchmark runs staged for local review will appear here.",
                     action: (
                         <button
                             onClick={() => onOpenSubmitDialog && onOpenSubmitDialog('stage-locally')}
-                            className="px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
+                            className="px-5 py-2.5 bg-accent-400 hover:bg-accent-600 text-white font-semibold text-xs uppercase tracking-wider rounded-xl shadow-md transition-all cursor-pointer mb-2"
                         >
                             Stage locally
                         </button>
@@ -1361,8 +1293,8 @@ export const UnifiedDataTable = (props) => {
                     return {
                         icon: <FileText className="w-8 h-8" />,
                         themeColor: 'cyan',
-                        glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
-                        radialGlow: 'bg-cyan-500/10',
+                        glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-accent-600/10 border-accent-600/30 text-accent-700',
+                        radialGlow: 'bg-accent-600/10',
                         title: 'No benchmarks found',
                         description: "The Results store is currently empty. You can stage your runs locally or publish them to the Results store using the buttons above.",
                         action: null
@@ -1371,8 +1303,8 @@ export const UnifiedDataTable = (props) => {
                 return {
                     icon: <Search className="w-8 h-8" />,
                     themeColor: 'cyan',
-                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-cyan-500/10 border-cyan-500/30 text-cyan-400',
-                    radialGlow: 'bg-cyan-500/10',
+                    glowClass: 'shadow-[0_0_30px_rgba(34,211,238,0.2)] bg-accent-600/10 border-accent-600/30 text-accent-700',
+                    radialGlow: 'bg-accent-600/10',
                     title: 'No benchmarks match active filters',
                     description: "No records match your combination of text search and active filters. Adjust your search parameters or start fresh.",
                     action: (
@@ -1395,14 +1327,14 @@ export const UnifiedDataTable = (props) => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 py-2.5 border border-transparent border-b-slate-200 dark:border-b-slate-800/60 select-none min-h-[52px]">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <Database size={15} className="text-cyan-400" />
-                            <span className="text-sm font-bold text-slate-700 dark:text-slate-350">
+                            <Database size={15} className="text-accent-700" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
                                 {filteredStats.length} Matching Runs
                             </span>
                             {kpiFilter && (
                                 <span className={cn(
-                                    'text-[9px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full border flex items-center gap-1.5 transition-all select-none',
-                                    kpiFilter === 'my-submissions' ? 'bg-cyan-550/10 text-cyan-400 border-cyan-550/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' :
+                                    'label-caps px-2 py-0.5 rounded-full border flex items-center gap-1.5 transition-all select-none',
+                                    kpiFilter === 'my-submissions' ? 'bg-accent-600/10 text-accent-700 border-accent-600/20 shadow-[0_0_10px_rgba(6,182,212,0.15)]' :
                                     kpiFilter === 'verified' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' :
                                     kpiFilter === 'action' ? 'bg-red-500/10 text-red-400 border-red-500/25' :
                                     kpiFilter === 'staged' ? 'bg-amber-500/10 text-amber-400 border-amber-500/25' :
@@ -1433,7 +1365,7 @@ export const UnifiedDataTable = (props) => {
                                     <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Show selected only</span>
                                     <button
                                         onClick={() => setShowSelectedOnly(!showSelectedOnly)}
-                                        className={cn('w-9 h-5 rounded-full relative transition-colors shadow-inner cursor-pointer', showSelectedOnly ? 'bg-cyan-500' : 'bg-slate-950 border border-slate-800')}
+                                        className={cn('w-9 h-5 rounded-full relative transition-colors shadow-inner cursor-pointer', showSelectedOnly ? 'bg-accent-600' : 'bg-slate-950 border border-slate-800')}
                                     >
                                         <div className={cn('absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200', showSelectedOnly ? 'translate-x-4.5 left-0.5' : 'translate-x-0 left-0.5')} />
                                     </button>
@@ -1469,14 +1401,14 @@ export const UnifiedDataTable = (props) => {
                 </div>
             ) : (
                 /* Selected State: Highlighted context toolbar with primary actions */
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 py-2.5 rounded-2xl bg-cyan-950/15 border border-cyan-500/25 animate-in fade-in slide-in-from-top-1.5 duration-200 select-none shadow-md min-h-[52px]">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-4 py-2.5 rounded-2xl bg-accent-50/15 border border-accent-600/25 animate-in fade-in slide-in-from-top-1.5 duration-200 select-none shadow-md min-h-[52px]">
                     <div className="flex items-center gap-3">
-                        <div className="text-xs font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-0.5 rounded-lg">
+                        <div className="text-xs font-bold text-accent-700 bg-accent-600/10 border border-accent-600/30 px-2.5 py-0.5 rounded-lg">
                             {selectedBenchmarks.size} Selected
                         </div>
                         <button
                             onClick={clearSelected}
-                            className="text-xs text-slate-455 hover:text-slate-200 transition-colors underline cursor-pointer font-medium"
+                            className="text-xs text-slate-400 hover:text-slate-200 transition-colors underline cursor-pointer font-medium"
                         >
                             Unselect all
                         </button>
@@ -1518,7 +1450,7 @@ export const UnifiedDataTable = (props) => {
                         {/* Compare Selected Button */}
                         <button
                             onClick={() => sortedStats.length > 0 && setShowComparisonDrawer(true)}
-                            className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
+                            className="px-4 py-1.5 text-xs font-semibold rounded-xl bg-accent-600 hover:bg-accent-700 text-slate-950 shadow-[0_0_15px_rgba(34,211,238,0.4)] flex items-center gap-1.5 transition-all duration-300 hover:scale-105 cursor-pointer"
                         >
                             {hasPromotableSelected ? `Compare & Promote (${selectedBenchmarks.size})` : `Compare & Inspect (${selectedBenchmarks.size})`}
                         </button>
@@ -1579,10 +1511,10 @@ export const UnifiedDataTable = (props) => {
                                         {/* Card 1: Cloud Store */}
                                         <div 
                                             onClick={() => setShowDataPanel && setShowDataPanel(true)}
-                                            className="group bg-slate-950/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-2xl p-6 hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col items-start text-left relative overflow-hidden shadow-lg hover:shadow-[0_0_30px_rgba(34,211,238,0.15)]"
+                                            className="group bg-slate-950/80 border border-slate-800/80 hover:border-accent-600/50 rounded-2xl p-6 hover:-translate-y-1.5 transition-all duration-300 cursor-pointer flex flex-col items-start text-left relative overflow-hidden shadow-lg hover:shadow-[0_0_30px_rgba(34,211,238,0.15)]"
                                         >
-                                            <div className="absolute top-0 right-0 w-20 h-20 bg-cyan-500/5 rounded-full blur-xl group-hover:bg-cyan-500/15 transition-colors" />
-                                            <h4 className="text-base font-bold text-white group-hover:text-cyan-400 transition-colors mb-1.5">
+                                            <div className="absolute top-0 right-0 w-20 h-20 bg-accent-600/5 rounded-full blur-xl group-hover:bg-accent-600/15 transition-colors" />
+                                            <h4 className="text-base font-bold text-white group-hover:text-accent-700 transition-colors mb-1.5">
                                                 Connect Cloud Store
                                             </h4>
                                             <p className="text-xs text-slate-400 leading-relaxed">
@@ -1634,7 +1566,7 @@ export const UnifiedDataTable = (props) => {
                         return (
                         <div key={groupKey} className="flex flex-col gap-2">
                             {groupBy !== 'None' && (
-                                <div className="sticky top-0 z-10 bg-slate-150 dark:bg-slate-900 py-1.5 px-3 rounded text-xs font-bold text-slate-550 dark:text-slate-400 uppercase tracking-wider border-y border-slate-200 dark:border-slate-800/60 flex items-center gap-3">
+                                <div className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-900 py-1.5 px-3 rounded text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-y border-slate-200 dark:border-slate-800/60 flex items-center gap-3">
                                     <div 
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -1742,7 +1674,7 @@ export const UnifiedDataTable = (props) => {
                     onClose={() => setViewingPayloadRun(null)}
                     title={
                         <span className="flex items-center gap-2">
-                            <Code2 className="w-5 h-5 text-cyan-400" />
+                            <Code2 className="w-5 h-5 text-accent-700" />
                             Raw Manifest Payload (YAML): {viewingPayloadRun.benchmarkKey || viewingPayloadRun.model || 'Configuration'}
                         </span>
                     }
@@ -1760,7 +1692,7 @@ export const UnifiedDataTable = (props) => {
                                     alert('Failed to copy manifest');
                                 }
                             }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-lg transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-accent-700 bg-accent-600/10 hover:bg-accent-600/20 border border-accent-600/30 rounded-lg transition-colors cursor-pointer"
                         >
                             <Copy className="w-3.5 h-3.5" /> Copy YAML
                         </button>
@@ -1795,12 +1727,12 @@ export const UnifiedDataTable = (props) => {
                     'fixed top-20 right-4 h-[calc(100vh-6rem)] w-full sm:w-[864px] xl:w-[1030px] bg-slate-950/95 border border-slate-900 shadow-2xl z-[99999] flex flex-col rounded-3xl overflow-hidden p-6 transform transition-transform duration-300 pointer-events-auto',
                     showComparisonDrawer ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'
                 )}>
-                        <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+                        <div className="absolute top-0 right-0 w-80 h-80 bg-accent-600/10 rounded-full blur-3xl pointer-events-none" />
                         
                         <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-900 flex-shrink-0">
                             <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-cyan-400">
+                                    <span className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-accent-700">
                                         {hasPromotableSelected 
                                             ? `Compare & Promote (${selectedBenchmarks.size} Runs)` 
                                             : `Compare & Inspect (${selectedBenchmarks.size} Runs)`}
@@ -1872,10 +1804,10 @@ export const UnifiedDataTable = (props) => {
                             <div className="space-y-4 pt-2 pb-6">
                                 <div className="flex items-center justify-between border-b border-slate-900 pb-2 select-none">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs font-black uppercase tracking-wider text-cyan-400/90">
+                                        <span className="text-xs font-semibold uppercase tracking-wider text-accent-700/90">
                                             Selected Benchmark Runs
                                         </span>
-                                        <span className="text-[10px] text-slate-500">
+                                        <span className="text-tiny text-slate-500">
                                             ({modelStats.filter(s => selectedBenchmarks.has(s.benchmarkKey)).length})
                                         </span>
                                     </div>
@@ -1891,7 +1823,7 @@ export const UnifiedDataTable = (props) => {
                                             <span>Share Link</span>
                                         </Button>
                                         {!canShare && shareForbiddenReason && (
-                                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-350 text-xs font-medium rounded-xl opacity-0 invisible group-hover/share-link:opacity-100 group-hover/share-link:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                            <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-300 text-xs font-medium rounded-xl opacity-0 invisible group-hover/share-link:opacity-100 group-hover/share-link:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal animate-in fade-in slide-in-from-bottom-2 duration-150">
                                                 {shareForbiddenReason}
                                             </div>
                                         )}
@@ -1952,12 +1884,12 @@ export const UnifiedDataTable = (props) => {
                                     <div className="relative group/tooltip inline-block">
                                         <button
                                             disabled
-                                            className="px-4 py-2 bg-slate-800 text-slate-500 text-xs font-bold uppercase tracking-wider rounded-xl border border-slate-700/50 cursor-not-allowed flex items-center gap-1.5 opacity-60"
+                                            className="px-4 py-2 bg-slate-800 text-slate-500 text-xs font-semibold uppercase tracking-wider rounded-xl border border-slate-700/50 cursor-not-allowed flex items-center gap-1.5 opacity-60"
                                         >
                                             <Send size={12} />
                                             Publish Selected ({selectedStagedRuns.length})
                                         </button>
-                                        <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-350 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal animate-in fade-in slide-in-from-bottom-2 duration-150">
+                                        <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-300 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal animate-in fade-in slide-in-from-bottom-2 duration-150">
                                             You are not in the Results Store closed-beta. Check back later once the feature is released.
                                         </div>
                                     </div>
@@ -1965,7 +1897,7 @@ export const UnifiedDataTable = (props) => {
                                     <button
                                         id="drawer-publish-selected-btn"
                                         onClick={handlePublishSelected}
-                                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all hover:scale-[1.02] cursor-pointer flex items-center gap-1.5"
+                                        className="px-4 py-2 bg-gradient-to-r from-accent-400 to-blue-700 hover:from-accent-600 hover:to-blue-600 text-white text-xs font-semibold uppercase tracking-wider rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.15)] transition-all hover:scale-[1.02] cursor-pointer flex items-center gap-1.5"
                                     >
                                         <Send size={12} />
                                         Publish Selected ({selectedStagedRuns.length})
@@ -1986,8 +1918,8 @@ export const UnifiedDataTable = (props) => {
                 document.body
             )}
             {showToast && createPortal(
-                <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[10000] bg-cyan-950/90 border border-cyan-500/40 text-cyan-200 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200 flex items-center gap-2">
-                    <Check size={14} className="text-cyan-400" />
+                <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[10000] bg-accent-50/90 border border-accent-600/40 text-accent-900 px-4 py-2 rounded-xl text-xs font-semibold shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200 flex items-center gap-2">
+                    <Check size={14} className="text-accent-700" />
                     <span>{toastMessage}</span>
                 </div>,
                 document.body
@@ -2038,7 +1970,7 @@ export const UnifiedDataTable = (props) => {
                     <button
                         id="bottom-compare-publish-btn"
                         onClick={() => setShowComparisonDrawer(true)}
-                        className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-semibold rounded-xl shadow-md transition-all duration-200 cursor-pointer hover:scale-105"
+                        className="px-4 py-2 bg-accent-600 hover:bg-accent-700 text-slate-950 text-xs font-semibold rounded-xl shadow-md transition-all duration-200 cursor-pointer hover:scale-105"
                     >
                         {hasPromotableSelected ? 'Compare & Promote' : 'Compare & Inspect'}
                     </button>
@@ -2187,7 +2119,7 @@ const BenchmarkRow = React.memo(({
                                                     className={cn(
                                                         "p-2.5 rounded-xl border transition-all cursor-pointer flex-shrink-0 select-none shadow-sm",
                                                         !isHiddenOnGraph
-                                                            ? "bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                                                            ? "bg-accent-600/10 hover:bg-accent-600/20 border-accent-600/30 text-accent-700"
                                                             : "bg-slate-900/60 hover:bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-400 opacity-60"
                                                     )}
                                                     title={!isHiddenOnGraph ? "Hide line from graph plot" : "Show line on graph plot"}
@@ -2201,7 +2133,7 @@ const BenchmarkRow = React.memo(({
                                                     'flex-1 flex flex-col bg-white dark:bg-slate-900 border rounded-lg transition-colors duration-150 shadow-sm relative',
                                                 cardBorderClass,
                                                 cardBgClass,
-                                                isBaseline && 'ring-2 ring-cyan-400/50'
+                                                isBaseline && 'ring-2 ring-accent-700/50'
                                             )}
                                         >
                                             {!readOnly && statusAccent.accentBar}
@@ -2317,7 +2249,7 @@ const BenchmarkRow = React.memo(({
                                                                 specs.push(
                                                                     <span key="maxTput" className="inline-flex items-center gap-1">
                                                                         <span className="text-slate-400 dark:text-slate-500 font-normal">Max Tput:</span>
-                                                                        <span className="font-bold text-green-600 dark:text-green-400">{stat.maxTput.toFixed(0)} <span className="text-[10px] font-normal opacity-70">tok/s</span></span>
+                                                                        <span className="font-bold text-green-600 dark:text-green-400">{stat.maxTput.toFixed(0)} <span className="text-tiny font-normal opacity-70">tok/s</span></span>
                                                                     </span>
                                                                 );
                                                             }
@@ -2482,7 +2414,7 @@ const BenchmarkRow = React.memo(({
                                                                                                      }
                                                                                                  }}
                                                                                                  title="Edit staged benchmark metadata"
-                                                                                                 className="p-1 text-slate-300 dark:text-slate-600 hover:text-cyan-400 transition-colors flex-shrink-0 cursor-pointer whitespace-nowrap"
+                                                                                                 className="p-1 text-slate-300 dark:text-slate-600 hover:text-accent-700 transition-colors flex-shrink-0 cursor-pointer whitespace-nowrap"
                                                                                              >
                                                                                                  <Pencil size={12} />
                                                                                              </button>
@@ -2496,10 +2428,10 @@ const BenchmarkRow = React.memo(({
                                                                                                    onSoloOrInvertGraphVisibility(stat.benchmarkKey);
                                                                                                }}
                                                                                                className={cn(
-                                                                                                   "opacity-0 group-hover/benchmark-row:opacity-100 transition-opacity duration-150 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md border select-none cursor-pointer flex-shrink-0 ml-1.5 shadow-sm",
+                                                                                                   "label-caps opacity-0 group-hover/benchmark-row:opacity-100 transition-opacity duration-150 px-2 py-0.5 rounded-md border select-none cursor-pointer flex-shrink-0 ml-1.5 shadow-sm",
                                                                                                    isOnlyThisVisibleOnGraph
                                                                                                        ? "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400 hover:text-amber-300"
-                                                                                                       : "bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-400 hover:text-cyan-300"
+                                                                                                       : "bg-accent-600/10 hover:bg-accent-600/20 border-accent-600/30 text-accent-700 hover:text-accent-800"
                                                                                                )}
                                                                                                title={isOnlyThisVisibleOnGraph ? "Show all other selected benchmarks on graph" : "Show only this benchmark on graph"}
                                                                                            >
@@ -2519,11 +2451,11 @@ const BenchmarkRow = React.memo(({
                                                                                                     <div className="relative group/tooltip inline-block">
                                                                                                         <button
                                                                                                             disabled
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-500 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-not-allowed select-none flex items-center gap-1 opacity-60 whitespace-nowrap"
+                                                                                                            className="label-caps px-2.5 py-1 rounded-xl border border-slate-800 bg-slate-900/40 text-slate-500 transition-colors cursor-not-allowed select-none flex items-center gap-1 opacity-60 whitespace-nowrap"
                                                                                                         >
                                                                                                             <Send className="w-2.5 h-2.5" /> Submit for Review
                                                                                                         </button>
-                                                                                                        <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-350 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
+                                                                                                        <div className="absolute right-0 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-300 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
                                                                                                             You are not in the Results Store closed-beta. Check back later once the feature is released.
                                                                                                         </div>
                                                                                                     </div>
@@ -2538,7 +2470,7 @@ const BenchmarkRow = React.memo(({
                                                                                                         }}
                                                                                                         disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                         title="Submit this benchmark to staging GCS bucket for automated format checks"
-                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                        className="label-caps px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                     >
                                                                                                         <Send className="w-2.5 h-2.5" /> Submit for Review
                                                                                                     </button>
@@ -2566,7 +2498,7 @@ const BenchmarkRow = React.memo(({
                                                                                                                 }}
                                                                                                                 disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                                 title="Promote unlisted benchmark to the admin review queue"
-                                                                                                                className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                                className="label-caps px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                             >
                                                                                                                 <Play className="w-2.5 h-2.5 fill-current" /> Promote to Review
                                                                                                             </button>
@@ -2585,7 +2517,7 @@ const BenchmarkRow = React.memo(({
                                                                                                                 }}
                                                                                                                 disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                                 title="Permanently delete this unlisted benchmark off GCS storage"
-                                                                                                                className="px-2.5 py-1 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                                className="label-caps px-2.5 py-1 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                             >
                                                                                                                 <Trash2 className="w-2.5 h-2.5" /> Delete
                                                                                                             </button>
@@ -2606,7 +2538,7 @@ const BenchmarkRow = React.memo(({
                                                                                                         }}
                                                                                                         disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                         title="Promote benchmark to the admin review queue"
-                                                                                                        className="px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                        className="label-caps px-2.5 py-1 rounded-xl border border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                     >
                                                                                                         <Play className="w-2.5 h-2.5 fill-current" /> Promote to Review
                                                                                                     </button>
@@ -2626,7 +2558,7 @@ const BenchmarkRow = React.memo(({
                                                                                                             }}
                                                                                                             disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                             title="Approve this run and publish it to the global Results store"
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-455 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                            className="label-caps px-2.5 py-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-455 transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                         >
                                                                                                             <Check className="w-2.5 h-2.5 stroke-[3]" /> Approve
                                                                                                         </button>
@@ -2638,7 +2570,7 @@ const BenchmarkRow = React.memo(({
                                                                                                             }}
                                                                                                             disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                             title="Reject compliance or request changes with custom feedback"
-                                                                                                            className="px-2.5 py-1 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                            className="label-caps px-2.5 py-1 rounded-xl border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 transition-colors cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                         >
                                                                                                             <X className="w-2.5 h-2.5" /> Reject
                                                                                                         </button>
@@ -2665,7 +2597,7 @@ const BenchmarkRow = React.memo(({
                                                                                                                 }}
                                                                                                                 disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                                 title="Resubmit this run for automated verification after corrections"
-                                                                                                                className="px-2.5 py-1 rounded-xl border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                                className="label-caps px-2.5 py-1 rounded-xl border border-purple-500/25 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-purple-400 transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                             >
                                                                                                                 <RotateCcw className="w-2.5 h-2.5" /> Resubmit
                                                                                                             </button>
@@ -2684,7 +2616,7 @@ const BenchmarkRow = React.memo(({
                                                                                                                 }}
                                                                                                                 disabled={isLoadingSubmissions || isLocalActionPending}
                                                                                                                 title="Permanently delete this rejected benchmark from cloud storage"
-                                                                                                                className="px-2.5 py-1 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
+                                                                                                                className="label-caps px-2.5 py-1 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-red-400 transition-all cursor-pointer select-none flex items-center gap-1 whitespace-nowrap"
                                                                                                             >
                                                                                                                 <Trash2 className="w-2.5 h-2.5" /> Delete
                                                                                                             </button>
@@ -2697,7 +2629,7 @@ const BenchmarkRow = React.memo(({
                                                                                     </div>
                                                                                     {rejectingRunId === runId && (
                                                                                         <div onClick={e => e.stopPropagation()} className="p-2.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/60 rounded-lg shadow-inner w-64 flex flex-col gap-2 mt-1 z-30">
-                                                                                            <div className="text-xs font-bold text-red-500 dark:text-red-400 uppercase tracking-wider">Reason for Rejecting Run</div>
+                                                                                            <div className="text-xs font-semibold text-red-500 dark:text-red-400 uppercase tracking-wider">Reason for Rejecting Run</div>
                                                                                             <Textarea
                                                                                                 autoFocus
                                                                                                 value={rejectionFeedback}
@@ -2709,7 +2641,7 @@ const BenchmarkRow = React.memo(({
                                                                                                 <Button
                                                                                                     variant="ghost"
                                                                                                     size="xs"
-                                                                                                    className="uppercase font-bold"
+                                                                                                    className="uppercase font-semibold"
                                                                                                     onClick={() => setRejectingRunId(null)}
                                                                                                 >
                                                                                                     Cancel
@@ -2717,7 +2649,7 @@ const BenchmarkRow = React.memo(({
                                                                                                 <Button
                                                                                                     variant="danger"
                                                                                                     size="xs"
-                                                                                                    className="uppercase font-bold"
+                                                                                                    className="uppercase font-semibold"
                                                                                                     onClick={() => {
                                                                                                         handleActionClick(async () => {
                                                                                                             if (rejectionFeedback.trim() && updateSubmissionStatus) {
@@ -2753,7 +2685,7 @@ const BenchmarkRow = React.memo(({
                                                                                             <Badge tone="info" size="xs" className="cursor-help">
                                                                                                 Community
                                                                                             </Badge>
-                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/community-row-tooltip:opacity-100 group-hover/community-row-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
+                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-tiny text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/community-row-tooltip:opacity-100 group-hover/community-row-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
                                                                                                 Contains community-submitted benchmarks stored in the official Prism Cloud bucket.
                                                                                             </div>
                                                                                         </div>
@@ -2786,7 +2718,7 @@ const BenchmarkRow = React.memo(({
                                                                                     return (
                                                                                         <div className="relative group/status-tooltip inline-flex items-center">
                                                                                             <StatusChip status={chipStatus} label={chipLabel} className="cursor-help" />
-                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/status-tooltip:opacity-100 group-hover/status-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
+                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-tiny text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/status-tooltip:opacity-100 group-hover/status-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
                                                                                                 {tooltipText}
                                                                                             </div>
                                                                                         </div>
@@ -2797,7 +2729,7 @@ const BenchmarkRow = React.memo(({
                                                                                             <Badge tone="success" size="xs" className="cursor-help">
                                                                                                 Official
                                                                                             </Badge>
-                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/status-tooltip:opacity-100 group-hover/status-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
+                                                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-tiny text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/status-tooltip:opacity-100 group-hover/status-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
                                                                                                 Official baseline benchmark run verified by Results Store admins.
                                                                                             </div>
                                                                                         </div>
@@ -2824,10 +2756,10 @@ const BenchmarkRow = React.memo(({
                                                                                 const tooltipText = getSourceTooltipText(sourceStr);
                                                                                 return (
                                                                                     <div className="relative group/source-type-tooltip inline-flex items-center">
-                                                                                        <span className={cn('text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border whitespace-nowrap cursor-help', style.bg, style.text, style.border)}>
+                                                                                        <span className={cn('label-caps px-1.5 py-0.5 rounded border whitespace-nowrap cursor-help', style.bg, style.text, style.border)}>
                                                                                             {type}
                                                                                         </span>
-                                                                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-[10px] text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/source-type-tooltip:opacity-100 group-hover/source-type-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
+                                                                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2.5 py-1.5 bg-slate-900 border border-slate-800 text-tiny text-slate-300 font-medium rounded-lg opacity-0 invisible group-hover/source-type-tooltip:opacity-100 group-hover/source-type-tooltip:visible transition-all duration-150 shadow-2xl z-[9999] w-48 pointer-events-none leading-relaxed text-center normal-case tracking-normal">
                                                                                             {tooltipText}
                                                                                         </div>
                                                                                     </div>
@@ -2842,9 +2774,9 @@ const BenchmarkRow = React.memo(({
                                                                             return (
                                                                                 <div 
                                                                                     onClick={e => e.stopPropagation()}
-                                                                                    className="mt-2 text-[11px] bg-red-500/10 text-red-300 border border-red-500/20 rounded-xl p-3 max-w-3xl italic leading-relaxed flex items-start gap-2 shadow-sm font-sans"
+                                                                                    className="mt-2 text-micro bg-red-500/10 text-red-300 border border-red-500/20 rounded-xl p-3 max-w-3xl italic leading-relaxed flex items-start gap-2 shadow-sm font-sans"
                                                                                 >
-                                                                                    <span className="font-extrabold uppercase text-[9px] not-italic tracking-wider bg-red-500/20 px-1.5 py-0.5 rounded text-red-450 shrink-0 mt-0.5 whitespace-nowrap">
+                                                                                    <span className="label-caps not-italic bg-red-500/20 px-1.5 py-0.5 rounded text-red-450 shrink-0 mt-0.5 whitespace-nowrap">
                                                                                         Changes Requested:
                                                                                     </span>
                                                                                     <span>"{sub.feedback}"</span>
@@ -2888,7 +2820,7 @@ const BenchmarkRow = React.memo(({
                                                              <div className="flex-1 p-2 bg-slate-100 dark:bg-slate-800/40 rounded border border-slate-200 dark:border-slate-700/80 font-sans flex flex-wrap gap-x-6 gap-y-2.5 text-xs text-slate-600 dark:text-slate-400">
                                                              <div className="flex items-center gap-1.5">
                                                                  <span className="font-semibold text-slate-700 dark:text-slate-300">Run UUID:</span>
-                                                                 <span className="font-mono bg-slate-200 dark:bg-slate-800/50 px-1.5 py-0.5 rounded text-[11px] select-all">{benchmarkData[0]?.run_id}</span>
+                                                                 <span className="font-mono bg-slate-200 dark:bg-slate-800/50 px-1.5 py-0.5 rounded text-micro select-all">{benchmarkData[0]?.run_id}</span>
                                                              </div>
                                                              <div className="flex items-center gap-1.5">
                                                                  <span className="font-semibold text-slate-700 dark:text-slate-300">Submitted:</span>
@@ -2917,7 +2849,7 @@ const BenchmarkRow = React.memo(({
                                                                  {(() => {
                                                                      const details = getSubmissionStatusDetails(benchmarkData[0]?.source_info?.submission_state);
                                                                      return (
-                                                                         <span className={cn('px-1.5 py-0.5 rounded border text-[11px] font-bold whitespace-nowrap', details.bg, details.text, details.border)}>
+                                                                         <span className={cn('px-1.5 py-0.5 rounded border text-micro font-bold whitespace-nowrap', details.bg, details.text, details.border)}>
                                                                              {details.label}
                                                                          </span>
                                                                      );
@@ -2951,7 +2883,7 @@ const BenchmarkRow = React.memo(({
 
                                                      <div className="overflow-x-auto rounded border border-slate-200 dark:border-slate-700">
                                                           <table className="w-full text-left text-slate-600 dark:text-slate-300 text-xs bg-white dark:bg-slate-800">
-                                                              <thead className="bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-100 uppercase text-[10px] font-medium border-b border-slate-200 dark:border-slate-700">
+                                                              <thead className="bg-slate-100 dark:bg-slate-700/50 text-slate-700 dark:text-slate-100 uppercase text-tiny font-semibold border-b border-slate-200 dark:border-slate-700">
                                                                   <tr>
                                                                       {isBrv02 && <th className="px-3 py-2 w-12 text-center">Stage</th>}
                                                                       <th className="px-4 py-2">{isBrv02 ? 'QPS' : 'QPS'}</th>
@@ -2986,19 +2918,19 @@ const BenchmarkRow = React.memo(({
                                                                               <td className="px-2 py-2">{d.metrics?.input_tput?.toFixed(0) || '-'}</td>
                                                                               <td className="px-2 py-2">{d.metrics?.output_tput?.toFixed(0) || d.throughput?.toFixed(0) || '-'}</td>
                                                                               <td className="px-2 py-2 font-medium">{d.metrics?.total_tput?.toFixed(0) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.metrics?.ntpot?.toFixed(2) || d.ntpot?.toFixed(2) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.metrics?.tpot?.toFixed(2) || d.time_per_output_token?.toFixed(2) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.metrics?.itl?.toFixed(2) || d.itl?.toFixed(2) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.metrics?.ttft?.mean?.toFixed(2) || d.ttft?.mean?.toFixed(2) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{((d.metrics?.e2e_latency || d.latency?.mean) / 1000)?.toFixed(2) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px] text-slate-500">
+                                                                              <td className="px-2 py-2 text-tiny">{d.metrics?.ntpot?.toFixed(2) || d.ntpot?.toFixed(2) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{d.metrics?.tpot?.toFixed(2) || d.time_per_output_token?.toFixed(2) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{d.metrics?.itl?.toFixed(2) || d.itl?.toFixed(2) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{d.metrics?.ttft?.mean?.toFixed(2) || d.ttft?.mean?.toFixed(2) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{((d.metrics?.e2e_latency || d.latency?.mean) / 1000)?.toFixed(2) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny text-slate-500">
                                                                                   {d.metrics?.cost?.explicit_input > 0 ? `$${d.metrics.cost.explicit_input.toFixed(4)}` : '-'}
                                                                               </td>
-                                                                              <td className="px-2 py-2 text-[10px] text-slate-500">
+                                                                              <td className="px-2 py-2 text-tiny text-slate-500">
                                                                                   {d.metrics?.cost?.explicit_output > 0 ? `$${d.metrics.cost.explicit_output.toFixed(4)}` : '-'}
                                                                               </td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.isl?.toFixed(0) || d.workload?.input_tokens?.toFixed(0) || '-'}</td>
-                                                                              <td className="px-2 py-2 text-[10px]">{d.osl?.toFixed(0) || d.workload?.output_tokens?.toFixed(0) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{d.isl?.toFixed(0) || d.workload?.input_tokens?.toFixed(0) || '-'}</td>
+                                                                              <td className="px-2 py-2 text-tiny">{d.osl?.toFixed(0) || d.workload?.output_tokens?.toFixed(0) || '-'}</td>
                                                                               <td className="px-2 py-2 text-center">
                                                                                   <button
                                                                                       disabled={!d.rawReport}

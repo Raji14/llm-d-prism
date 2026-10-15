@@ -15,21 +15,31 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-// The section eyebrow used across well-lit path dashboards
-// ("OVERVIEW", "BENCHMARK SCENARIO", "PRIMARY OUTCOMES", ...).
-// Tones follow the established semantic mapping (see skills/style.md):
-// overview/hero = cyan, scenario = sky, outcomes = emerald, roadmap = slate.
+// Editorial section kicker used across Prism 2.0 dashboards. Typography comes
+// from the `kicker` utility (src/index.css); color from the accent token.
+// Tones are semantic: `accent` (default) or `muted`. Legacy hue names map to
+// `accent` so older call sites keep working.
 const TONES = {
-    cyan: 'text-cyan-600 dark:text-cyan-400',
-    sky: 'text-sky-600 dark:text-sky-400/90',
-    emerald: 'text-emerald-600 dark:text-emerald-400/90',
-    violet: 'text-violet-600 dark:text-violet-400/90',
-    slate: 'text-slate-500',
+    accent: 'text-accent-600',
+    muted: 'text-zinc-600',
+    // legacy aliases
+    cyan: 'text-accent-600',
+    sky: 'text-accent-600',
+    emerald: 'text-accent-600',
+    violet: 'text-accent-600',
+    orange: 'text-accent-600',
+    slate: 'text-zinc-600',
 };
 
-export function SectionLabel({ tone = 'cyan', className, children }) {
+export function SectionLabel({ tone = 'accent', className, children }) {
     return (
-        <div className={cn('text-[10px] font-extrabold uppercase tracking-widest mb-2', TONES[tone], className)}>
+        <div
+            className={cn(
+                'kicker surface-light mb-2',
+                TONES[tone] || TONES.accent,
+                className
+            )}
+        >
             {children}
         </div>
     );

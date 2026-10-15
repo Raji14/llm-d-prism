@@ -328,9 +328,9 @@ export const getSourceTypeStyle = (type) => {
             };
         case 'Cloud':
             return {
-                bg: 'bg-cyan-100 dark:bg-cyan-950/40',
-                text: 'text-cyan-800 dark:text-cyan-400',
-                border: 'border-cyan-200 dark:border-cyan-900/30'
+                bg: 'bg-accent-950 dark:bg-accent-50/40',
+                text: 'text-accent-200 dark:text-accent-700',
+                border: 'border-accent-900 dark:border-accent-100/30'
             };
         case 'Built-in':
         default:
@@ -360,9 +360,9 @@ export const getSubmissionStatusDetails = (state) => {
         case 'unlisted':
             return {
                 label: 'Unlisted',
-                bg: 'bg-cyan-50 dark:bg-cyan-950/20',
-                text: 'text-cyan-700 dark:text-cyan-400',
-                border: 'border-cyan-200 dark:border-cyan-900/50'
+                bg: 'bg-accent-950 dark:bg-accent-50/20',
+                text: 'text-accent-300 dark:text-accent-700',
+                border: 'border-accent-900 dark:border-accent-100/50'
             };
         case 'submitted_pending_review':
             return {

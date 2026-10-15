@@ -1,0 +1,44 @@
+name: Leaderboard Run Challenge or Flag
+description: Flag a discrepancy or submit a reproduction challenge for a leaderboard entry.
+title: "[Leaderboard Challenge]: "
+labels: ["leaderboard", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Leaderboard Run Challenge or Discrepancy Report
+
+        Use this form to flag a suspicious number, parity mismatch, or reproduction discrepancy on the Prism Leaderboard.
+
+  - type: input
+    id: recipe
+    attributes:
+      label: Recipe ID & name
+      description: Identifier and title of the leaderboard entry being challenged.
+      placeholder: "e.g., recipe-llama3-70b-h100-llmd"
+    validations:
+      required: true
+
+  - type: input
+    id: claim
+    attributes:
+      label: Reported configuration & metrics
+      description: Summary of the model, hardware, stack, and reported metrics on the board.
+    validations:
+      required: false
+
+  - type: textarea
+    id: discrepancy
+    attributes:
+      label: What looks wrong or failed to reproduce?
+      description: Describe the roofline violation, harness mismatch, or reproduction delta you observed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Reproduction environment & logs (optional)
+      description: Share your hardware, container image, inference-perf config, or Benchmark Report v0.2 snippet.
+    validations:
+      required: false

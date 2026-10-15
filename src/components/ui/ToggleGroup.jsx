@@ -15,14 +15,17 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-// Segmented control for metric/mode selectors (e.g. TTFT | TPOT | E2E).
-// options: [{ value, label, disabled? }]
-export function ToggleGroup({ options, value, onChange, size = 'sm', fullWidth = false, className }) {
+// Segmented pill control for metric/mode selectors (e.g. TTFT | TPOT | E2E).
+// Name the group with aria-label, or aria-labelledby when a visible label sits
+// next to it: two unnamed groups side by side sound the same to a screen reader.
+export function ToggleGroup({ options, value, onChange, size = 'sm', fullWidth = false, className, 'aria-label': ariaLabel, 'aria-labelledby': ariaLabelledBy }) {
     return (
         <div
             role="group"
+            aria-label={ariaLabel}
+            aria-labelledby={ariaLabelledBy}
             className={cn(
-                'inline-flex items-center rounded-lg border border-theme-border bg-slate-100 dark:bg-slate-900 p-0.5 gap-0.5',
+                'surface-light inline-flex items-center rounded-full border border-zinc-200 bg-white p-0.5 gap-0.5',
                 fullWidth && 'flex w-full',
                 className
             )}
@@ -37,12 +40,12 @@ export function ToggleGroup({ options, value, onChange, size = 'sm', fullWidth =
                         aria-pressed={isActive}
                         onClick={() => onChange(opt.value)}
                         className={cn(
-                            'rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50',
-                            size === 'xs' ? 'px-2 py-0.5 text-[10px]' : 'px-3 py-1 text-xs',
+                            'rounded-full font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
+                            size === 'xs' ? 'px-2.5 py-0.5 text-micro' : 'px-3 py-1 text-xs',
                             fullWidth && 'flex-1',
                             isActive
-                                ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200',
+                                ? 'bg-accent-600 text-white shadow-xs'
+                                : 'text-zinc-700 hover:text-zinc-900',
                             opt.disabled && 'opacity-40 pointer-events-none'
                         )}
                     >

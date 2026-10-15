@@ -38,14 +38,14 @@ export function StatCard({ icon, title, value, details, onClick, active = false,
                 <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-lg mt-1 shrink-0">{icon}</div>
             )}
             <div className="flex-1 min-w-0">
-                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mb-1">{title}</p>
+                <p className="text-zinc-600 dark:text-zinc-400 text-sm font-medium mb-1">{title}</p>
                 <h3 className="text-2xl font-bold text-theme-text mb-2">{value}</h3>
                 {details && (
                     <div className="space-y-1">
                         {details.map((detail, idx) => (
-                            <div key={idx} className="text-xs text-slate-500 dark:text-slate-400 flex justify-between gap-4">
+                            <div key={idx} className="text-xs text-zinc-600 dark:text-zinc-400 flex justify-between gap-4">
                                 <span>{detail.label}:</span>
-                                <span className="font-mono text-slate-800 dark:text-slate-200">{detail.value}</span>
+                                <span className="font-mono text-zinc-800 dark:text-zinc-200">{detail.value}</span>
                             </div>
                         ))}
                     </div>

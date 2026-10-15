@@ -14,69 +14,140 @@
  */
 
 @import "tailwindcss";
+@import "./theme/palette.generated.css";
 
 @theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: 'Bricolage Grotesque', 'Geist', ui-sans-serif, system-ui, sans-serif;
+
+  /* ---- Brand accent (single source of truth) ----------------------------
+     Prism's accent is the llm-d brand plum (#7f317f, sampled from the llm-d
+     logotype). All accent usage in src/ goes through `accent-*` utilities
+     (text-accent-600, bg-accent-50, border-accent-200, ...). To re-skin the
+     accent, change ONLY this ramp. The ramp is defined on :root (not remapped
+     by the light/dark engine) so it renders identically in `.surface-light`
+     and legacy dark-first subtrees.
+       600 on white  = 7.9:1   (kickers, links, icons)
+       500 on white  = 4.6:1   (decorative strokes, dots)
+       400 on zinc-950 = 7.0:1 (accent text on dark bands)                 */
+  --color-accent-50:  #fbf5fb;
+  --color-accent-100: #f6e9f6;
+  --color-accent-200: #ecd3ec;
+  --color-accent-300: #ddb0dd;
+  --color-accent-400: #c583c5;
+  --color-accent-500: #a657a6;
+  --color-accent-600: #7f317f;
+  --color-accent-700: #6b276b;
+  --color-accent-800: #582158;
+  --color-accent-900: #491d49;
+  --color-accent-950: #2d0b2d;
+
   --color-theme-bg: var(--bg-primary);
   --color-theme-card: var(--bg-card);
   --color-theme-border: var(--border-color);
   --color-theme-text: var(--text-primary);
   --color-theme-muted: var(--text-muted);
+
+  /* ---- Micro typography scale ------------------------------------------
+     Only two sizes below text-xs are allowed: `text-micro` (11px) for
+     kickers / metadata and `text-tiny` (10px) for table headers, chips and
+     axis-adjacent labels. Nothing smaller — 8–9px fails legibility.        */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+  --text-tiny: 0.625rem;
+  --text-tiny--line-height: 0.875rem;
+
+  /* Letter-spacing tokens: `tracking-kicker` for uppercase labels,
+     `tracking-display` for Bricolage display titles and KPI numbers.        */
+  --tracking-kicker: 0.14em;
+  --tracking-display: -0.03em;
+}
+
+/* Composite typography utilities — use these instead of re-typing the stack. */
+@utility kicker {
+  font-size: var(--text-micro);
+  line-height: var(--text-micro--line-height);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-kicker);
+}
+@utility label-caps {
+  font-size: var(--text-tiny);
+  line-height: var(--text-tiny--line-height);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+@utility display-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: var(--tracking-display);
 }
 
 @variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
-    --bg-primary: #f8fafc;
-    --bg-secondary: #ffffff;
+    --bg-primary: #f6f7f9;
+    --bg-secondary: #eff1f4;
     --bg-card: #ffffff;
-    --border-color: #e2e8f0;
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
-    
-    --brand-accent: #059669;
-    --brand-accent-hover: #047857;
-    --brand-accent-bg: rgba(16, 185, 129, 0.1);
-    
-    --chart-grid: #cbd5e1;
-    --chart-axis: #475569;
-  }
+    --border-color: #e2e4e8;
+    --text-primary: #18181b;
+    --text-secondary: #3f3f46;
+    --text-muted: #52525b;
 
-  .dark {
-    --bg-primary: #020617;
-    --bg-secondary: #0f172a;
-    --bg-card: #090d16;
-    --border-color: #1e293b;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --text-muted: #64748b;
-    
-    --brand-accent: #34d399;
-    --brand-accent-hover: #10b981;
-    --brand-accent-bg: rgba(52, 211, 153, 0.15);
-    
-    --chart-grid: #1e293b;
-    --chart-axis: #64748b;
+    --brand-accent: var(--color-accent-600);
+    --brand-accent-hover: var(--color-accent-700);
+    --brand-accent-bg: var(--color-accent-50);
+
+    --chart-grid: #e2e4e8;
+    --chart-axis: #52525b;
   }
 
   body {
     background-color: var(--bg-primary);
     color: var(--text-primary);
-    transition: background-color 0.3s ease, color 0.3s ease;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, pre, kbd, samp, .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
   button, a, select, [role="button"] {
     cursor: pointer !important;
   }
-  
-  .recharts-dot, 
+
+  .recharts-dot,
   .recharts-active-dot,
   .recharts-symbols,
   .recharts-layer,
   .recharts-scatter-symbol {
     cursor: pointer !important;
   }
+}
+
+/* Prism 2.0 unified design system overrides: strip legacy polka-dot grids,
+   floating neon blur blobs, and heavy drop shadows across all inner views. */
+[class*="radial-gradient(#334155"] {
+  background-image: none !important;
+}
+
+main div.blur-3xl.animate-pulse,
+main div.blur-2xl.pointer-events-none {
+  display: none !important;
+}
+
+main > div {
+  flex-shrink: 0;
+}
+
+main .shadow-2xl,
+main .shadow-xl {
+  box-shadow: 0 1px 2px rgba(24, 24, 27, 0.04), 0 12px 32px -16px rgba(24, 24, 27, 0.07) !important;
 }
 
 /* Hide scrollbar for Chrome, Safari and Opera */
@@ -86,6 +157,6 @@
 
 /* Hide scrollbar for IE, Edge and Firefox */
 .no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

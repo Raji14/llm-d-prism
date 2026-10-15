@@ -199,6 +199,16 @@ export const useDashboardData = (initialState, dashboardState) => {
     const [selectedSources, setSelectedSources] = useState(() => {
         return new Set(['local', 'llm-d-results:google_drive', 'llmd_drive']);
     });
+    // Sources an admin switched off in Results store → Sources → "Show in
+    // Browse". Kept apart from selectedSources, which every sync re-fills with
+    // each source it loads (that would undo the choice), and saved with the
+    // registered sources so it survives a reload. Only the Results store reads it.
+    const [hiddenSources, setHiddenSources] = useState(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('prism_saved_sources') || '{}');
+            return new Set(Array.isArray(saved.hiddenSources) ? saved.hiddenSources : []);
+        } catch { return new Set(); }
+    });
     const [bucketConfigs, setBucketConfigs] = useState(() => {
         try {
             const saved = JSON.parse(localStorage.getItem('prism_saved_sources') || '{}');
@@ -268,10 +278,11 @@ export const useDashboardData = (initialState, dashboardState) => {
             buckets: cleanBuckets,
             awsBuckets: cleanAws,
             giqProjects: apiConfigs.map(c => typeof c === 'string' ? c : c.projectId),
-            qualityScoresEnabled: selectedSources.has('quality_scores')
+            qualityScoresEnabled: selectedSources.has('quality_scores'),
+            hiddenSources: [...hiddenSources]
         };
         localStorage.setItem('prism_saved_sources', JSON.stringify(toSave));
-    }, [bucketConfigs, awsBucketConfigs, apiConfigs, selectedSources]);
+    }, [bucketConfigs, awsBucketConfigs, apiConfigs, selectedSources, hiddenSources]);
 
     const removeToast = useCallback((id) => {
         setToasts(prev => prev.filter(t => t.id !== id));
@@ -665,6 +676,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                                     alias: effectiveAlias,
                                     rawResponse: r.rawResponse,
                                     loading: false,
+                                    error: null,
+                                    lastSyncedAt: r.profile?.loadedAt || new Date().toISOString(),
                                     type: r.type,
                                     bucketName: r.id
                                 };
@@ -674,6 +687,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                                     alias: effectiveAlias,
                                     rawResponse: r.rawResponse,
                                     loading: false,
+                                    error: null,
+                                    lastSyncedAt: r.profile?.loadedAt || new Date().toISOString(),
                                     type: r.type,
                                     bucketName: r.id
                                 });
@@ -899,6 +914,15 @@ export const useDashboardData = (initialState, dashboardState) => {
         }
     };
 
+    // Forget a removed source's Show in Browse choice, so registering it again
+    // starts out shown instead of silently hidden.
+    const forgetHidden = (sourceKey) => setHiddenSources(prev => {
+        if (!prev.has(sourceKey)) return prev;
+        const next = new Set(prev);
+        next.delete(sourceKey);
+        return next;
+    });
+
     const removeGCSBucket = (bucketName) => {
         const cleanTarget = getCanonicalBucketName(bucketName);
         const newConfigs = bucketConfigs.filter(b => getCanonicalBucketName(b) !== cleanTarget);
@@ -908,6 +932,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         const newSources = new Set(selectedSources);
         newSources.delete(sourceKey);
         setSelectedSources(newSources);
+        forgetHidden(sourceKey);
         setAvailableSources(prev => {
             const n = new Set(prev);
             n.delete(sourceKey);
@@ -927,6 +952,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         const newSources = new Set(selectedSources);
         newSources.delete(sourceKey);
         setSelectedSources(newSources);
+        forgetHidden(sourceKey);
         setAvailableSources(prev => {
             const n = new Set(prev);
             n.delete(sourceKey);
@@ -946,6 +972,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         const newSources = new Set(selectedSources);
         newSources.delete(sourceKey);
         setSelectedSources(newSources);
+        forgetHidden(sourceKey);
         setAvailableSources(prev => {
             const n = new Set(prev);
             n.delete(sourceKey);
@@ -982,7 +1009,6 @@ export const useDashboardData = (initialState, dashboardState) => {
             // Note: llm-d-benchmarks.json is now loaded via fetchArchivedData as part of the LLM-D Results Store integration.
 
             if (results.length === 0) {
-                console.warn("No local data found (checked /data.json and /data/llm-d-benchmarks.json)");
                 return [];
             }
 
@@ -1327,6 +1353,8 @@ export const useDashboardData = (initialState, dashboardState) => {
         setLoadingTasks(initialTasks);
 
         const failedSources = [];
+        // What Sync now reports back: each source that synced or failed, and why.
+        const syncReport = { synced: [], failed: [] };
 
         try {
             // 1. Fetch Local Data
@@ -1371,6 +1399,7 @@ export const useDashboardData = (initialState, dashboardState) => {
                 }
             } catch (e) {
                 console.warn("Failed to load archived data", e);
+                syncReport.failed.push({ key: 'llm-d-results:google_drive', name: 'Drive archive', error: e.message || 'Failed to load' });
             }
 
 
@@ -1398,6 +1427,9 @@ export const useDashboardData = (initialState, dashboardState) => {
                     if (res.profile.error) {
                         failedSources.push(res.bucketName);
                     }
+                    const reportName = (typeof res.config === 'object' && res.config?.alias) || res.bucketName;
+                    if (res.profile.error) syncReport.failed.push({ key: `gcs:${res.bucketName}`, name: reportName, error: res.profile.error });
+                    else syncReport.synced.push({ key: `gcs:${res.bucketName}`, name: reportName });
 
                     const normalizedEntries = (res.entries || []).map(e => {
                         const hw = normalizeHardware(e.hardware);
@@ -1452,6 +1484,8 @@ export const useDashboardData = (initialState, dashboardState) => {
                     if (apiData.profile.error) {
                         failedSources.push(`GIQ:${projectId}`);
                     }
+                    if (apiData.profile.error || apiData.entries.length === 0) syncReport.failed.push({ key: `giq:${projectId}`, name: `GIQ ${projectId}`, error: apiData.profile.error || 'No data found' });
+                    else syncReport.synced.push({ key: `giq:${projectId}`, name: `GIQ ${projectId}` });
 
                     apiProfiles.push({
                         bucketName: projectId,
@@ -1476,6 +1510,7 @@ export const useDashboardData = (initialState, dashboardState) => {
                 } catch (e) {
                     console.warn(`Failed to fetch for project ${projectId}`, e);
                     failedSources.push(`GIQ:${projectId}`);
+                    syncReport.failed.push({ key: `giq:${projectId}`, name: `GIQ ${projectId}`, error: e.message || 'Failed to connect' });
                     apiProfiles.push({
                         bucketName: projectId,
                         files: [],
@@ -1531,10 +1566,12 @@ export const useDashboardData = (initialState, dashboardState) => {
                 const updated = [...prev];
                 [...newProfiles, ...apiProfiles].forEach(newProf => {
                     const idx = updated.findIndex(p => p.bucketName === newProf.bucketName && p.type === newProf.type);
+                    // loadedAt is stamped on failures too; only a clean load counts as a sync.
+                    const lastSyncedAt = newProf.error ? (idx !== -1 ? updated[idx].lastSyncedAt : undefined) : newProf.loadedAt;
                     if (idx !== -1) {
-                        updated[idx] = { ...updated[idx], ...newProf };
+                        updated[idx] = { ...updated[idx], ...newProf, lastSyncedAt };
                     } else {
-                        updated.push(newProf);
+                        updated.push({ ...newProf, lastSyncedAt });
                     }
                 });
                 return updated;
@@ -1561,9 +1598,11 @@ export const useDashboardData = (initialState, dashboardState) => {
             if (failedSources.length > 0) {
                 setGcsError(`Connection issue with: ${failedSources.join(', ')}`);
             }
+            return syncReport;
         } catch (e) {
             console.error("loadAllData Error:", e);
             setGcsError(`Load failed: ${e.message}`);
+            return { ...syncReport, failed: [...syncReport.failed, { key: null, name: 'Sync', error: e.message }] };
         } finally {
             setLoading(false);
             setGcsLoading(false);
@@ -2321,7 +2360,14 @@ export const useDashboardData = (initialState, dashboardState) => {
         }
     }, [accessToken, brv02Runs, addToast, mapStateToStatus]);
 
-    const updateSubmissionStatus = useCallback(async (runId, status, feedback = '') => {
+    // Resolves true only once the server has confirmed the change, false
+    // otherwise, so callers show success after a 2xx and nothing else. It never
+    // throws (ManageBenchmarks and the classic view call it bare) and always
+    // toasts failures itself. `options.quiet` skips the generic success toast
+    // for callers that say something more specific; the 4th argument is
+    // otherwise unused (some callers pass extra strings, hence the type check).
+    const updateSubmissionStatus = useCallback(async (runId, status, feedback = '', options = {}) => {
+        const quiet = options !== null && typeof options === 'object' && options.quiet === true;
         setIsLoadingSubmissions(true);
         try {
             const reviewer = user?.username || 'user'; // simple local fallback
@@ -2343,21 +2389,22 @@ export const useDashboardData = (initialState, dashboardState) => {
             });
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const data = await res.json();
-            if (data.success) {
-                if (addToast) {
-                    const friendlyStatus = 
-                        status === 'submitted_pending_processing' ? 'submitted' :
-                        status === 'submitted_pending_review' ? 'submitted for review' :
-                        status === 'public' ? 'published' : status;
-                    addToast(`Run has been ${friendlyStatus} successfully.`, 'success');
-                }
-                await loadSubmissions();
+            if (!data.success) throw new Error(data.error || 'the server didn’t confirm the change');
+            if (addToast && !quiet) {
+                const friendlyStatus = 
+                    status === 'submitted_pending_processing' ? 'submitted' :
+                    status === 'submitted_pending_review' ? 'submitted for review' :
+                    status === 'public' ? 'published' : status;
+                addToast(`Run has been ${friendlyStatus} successfully.`, 'success');
             }
+            await loadSubmissions();
+            return true;
         } catch (err) {
             console.error('[Status Update Error]', err);
             if (addToast) {
                 addToast(`Failed to update status for run ${runId}: ${err.message}`, 'error');
             }
+            return false;
         } finally {
             setIsLoadingSubmissions(false);
         }
@@ -2500,6 +2547,7 @@ export const useDashboardData = (initialState, dashboardState) => {
         qualityMetrics, setQualityMetrics,
         availableSources, setAvailableSources,
         selectedSources, setSelectedSources,
+        hiddenSources, setHiddenSources,
         bucketConfigs, setBucketConfigs,
         apiConfigs, setApiConfigs,
         gcsProfiles, setGcsProfiles,

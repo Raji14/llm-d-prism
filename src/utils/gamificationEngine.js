@@ -45,9 +45,9 @@ export const TIER_CONFIG = {
         name: 'Contender',
         shortName: 'C',
         icon: 'Zap',
-        badgeBg: 'bg-gradient-to-r from-cyan-500/20 via-blue-500/20 to-sky-600/30',
-        badgeBorder: 'border-cyan-400/50',
-        badgeText: 'text-cyan-300',
+        badgeBg: 'bg-gradient-to-r from-accent-600/20 via-blue-500/20 to-sky-600/30',
+        badgeBorder: 'border-accent-700/50',
+        badgeText: 'text-accent-800',
         badgeGlow: 'shadow-[0_0_12px_rgba(6,182,212,0.3)]',
         colorHex: '#06b6d4',
         description: 'Top 10 verified benchmark recipe submission',
@@ -78,8 +78,9 @@ export const SOTA_MILESTONE_TRACKS = [
         category: 'Throughput & Latency',
         description: 'Deliver the highest verified throughput on Llama-3.1-70B while keeping TTFT P50 under 35ms.',
         criteria: (entry) => {
-            const isLlama70B = (entry.model_name || '').toLowerCase().includes('70b') || (entry.model_family || '').toLowerCase().includes('llama');
-            const isTargetHw = (entry.hardware_summary || '').toLowerCase().includes('h100') || (entry.hardware_summary || '').toLowerCase().includes('l4');
+            if (!entry) return false;
+            const isLlama70B = String(entry.model_name || '').toLowerCase().includes('70b') || String(entry.model_family || '').toLowerCase().includes('llama');
+            const isTargetHw = String(entry.hardware_summary || '').toLowerCase().includes('h100') || String(entry.hardware_summary || '').toLowerCase().includes('l4');
             const hasHighThroughput = (entry.tokens_per_sec || 0) >= 3500;
             const hasLowTtft = (entry.ttft_p50 || 999) <= 35;
             return isLlama70B && isTargetHw && hasHighThroughput && hasLowTtft;
@@ -93,6 +94,7 @@ export const SOTA_MILESTONE_TRACKS = [
         category: 'Cost Efficiency',
         description: 'Achieve > 100,000 output tokens per dollar using GCP L4 or TPU v5e/v6e with quantization.',
         criteria: (entry) => {
+            if (!entry) return false;
             const tokensPerDollar = entry.cost_analysis?.tokens_per_dollar || entry.tokens_per_dollar || 0;
             return tokensPerDollar >= 100000;
         }
@@ -105,6 +107,7 @@ export const SOTA_MILESTONE_TRACKS = [
         category: 'Optimization Recipe',
         description: 'Demonstrate prefix caching hit rate > 80% resulting in > 2x aggregate throughput speedup.',
         criteria: (entry) => {
+            if (!entry) return false;
             const hitRate = entry.prefix_cache_hit_rate || entry.metrics?.prefix_cache_hit_rate_pct || 0;
             const tps = entry.tokens_per_sec || 0;
             return hitRate >= 80 && tps >= 2500;
@@ -118,6 +121,7 @@ export const SOTA_MILESTONE_TRACKS = [
         category: 'Latency',
         description: 'Achieve sub-20ms Inter-Token Latency (ITL P50) on 70B+ class model at concurrency >= 16.',
         criteria: (entry) => {
+            if (!entry) return false;
             const itl = entry.itl_p50 || entry.metrics?.itl_ms?.p50 || 999;
             const conc = entry.workload?.concurrency || entry.concurrency || 1;
             return itl <= 20 && conc >= 16;

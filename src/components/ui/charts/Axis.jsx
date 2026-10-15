@@ -40,7 +40,7 @@ export const ChartXAxis = ({ label, ...props }) => {
     return (
         <XAxis
             stroke={t.axis}
-            tick={{ fill: t.tick, fontSize: 10, fontFamily: 'monospace' }}
+            tick={{ fill: t.tick, fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-mono), monospace' }}
             tickLine={{ stroke: t.grid }}
             axisLine={{ stroke: t.grid }}
             label={label && { value: label, position: 'bottom', offset: 0, style: labelStyle(t) }}
@@ -55,7 +55,7 @@ export const ChartYAxis = ({ label, ...props }) => {
     return (
         <YAxis
             stroke={t.axis}
-            tick={{ fill: t.tick, fontSize: 10, fontFamily: 'monospace' }}
+            tick={{ fill: t.tick, fontSize: 11, fontWeight: 500, fontFamily: 'var(--font-mono), monospace' }}
             tickLine={{ stroke: t.grid }}
             axisLine={{ stroke: t.grid }}
             label={

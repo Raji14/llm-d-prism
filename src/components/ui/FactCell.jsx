@@ -20,8 +20,8 @@ import { cn } from '../../utils/cn';
 export function FactCell({ label, value, title, className }) {
     return (
         <div className={cn('min-w-0', className)}>
-            <span className="block text-[10px] text-slate-500 font-semibold mb-0.5 truncate">{label}</span>
-            <span className="font-mono font-bold text-white truncate block" title={title}>{value}</span>
+            <span className="block text-tiny text-zinc-600 dark:text-zinc-400 font-semibold mb-0.5 truncate">{label}</span>
+            <span className="font-mono font-bold text-zinc-900 dark:text-white truncate block" title={title}>{value}</span>
         </div>
     );
 }

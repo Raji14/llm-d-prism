@@ -80,9 +80,7 @@ oauthRouter.get('/api/auth/github/login', (req: Request, res: Response) => {
  * Fetches the user profile and permissions directly from GitHub API.
  */
 export async function validateGitHubToken(token: string): Promise<{ username: string, permission: PermissionLevel, avatarUrl?: string }> {
-    if (token === 'mock_token_prism') {
-        return { username: 'test-user', permission: 'admin', avatarUrl: 'https://avatars.githubusercontent.com/u/9919?v=4' };
-    }
+    // No test or mock tokens here: anything this accepts is accepted in production too.
     const userResponse = await fetch('https://api.github.com/user', {
         headers: {
             'Authorization': `Bearer ${token}`,

@@ -3,100 +3,13 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
     ScatterChart, Scatter, ComposedChart, ZAxis, Label, ReferenceArea, ReferenceLine
 } from 'recharts';
-import IntelligentRoutingChart from './IntelligentRoutingChart';
+import IntelligentRoutingChart, { SCENARIO_COLORS, SCENARIO_SHAPES } from './IntelligentRoutingChart';
 import { Zap, Download, Copy, Check, Info, ExternalLink, Settings, ShieldAlert, Cpu, Cloud, Server, Bell, Slack, ChevronDown, ChevronUp, Eye, Maximize2, ArrowDown, X, BarChart2, Table } from 'lucide-react';
 import { scanInferenceScheduling } from '../utils/gcsScanner';
 import { getLocalDashboardRuns } from '../utils/dashboardHelpers';
-import { WellLitHeader, Badge, Button, ChartTooltip, ChartTooltipRow, Input, Label as FieldLabel, Modal, Panel, Select, ToggleGroup } from './ui';
+import { WellLitHeader, Badge, Button, ChartTooltip, ChartTooltipRow, SeriesMarkerSvg, SeriesLineSwatch, Input, Label as FieldLabel, Modal, Panel, Select, ToggleGroup, GoogleMark, CHART_STATUS, getChartTheme } from './ui';
 import { cn } from '../utils/cn';
-
-const RAW_GEMMA_DATA = [
-    {
-        qps: 1,
-        baseline_ttft_p50: 224, baseline_ttft_p90: 248, baseline_ttft_p99: 342,
-        baseline_itl_p50: 25.27, baseline_itl_p90: 26.12, baseline_itl_p99: 99.35,
-        baseline_tput: 2645,
-        optimal_ttft_p50: 271, optimal_ttft_p90: 290, optimal_ttft_p99: 453,
-        optimal_itl_p50: 17.49, optimal_itl_p90: 18.54, optimal_itl_p99: 40.10,
-        optimal_tput: 2443,
-    },
-    {
-        qps: 5,
-        baseline_ttft_p50: 251, baseline_ttft_p90: 3056, baseline_ttft_p99: 6954,
-        baseline_itl_p50: 30.12, baseline_itl_p90: 31.25, baseline_itl_p99: 221,
-        baseline_tput: 12642,
-        optimal_ttft_p50: 280, optimal_ttft_p90: 493, optimal_ttft_p99: 854,
-        optimal_itl_p50: 22.53, optimal_itl_p90: 25.50, optimal_itl_p99: 204.63,
-        optimal_tput: 12152,
-    },
-    {
-        qps: 8,
-        optimal_ttft_p50: 363, optimal_ttft_p90: 863, optimal_ttft_p99: 1409,
-        optimal_itl_p50: 29.74, optimal_itl_p90: 198.34, optimal_itl_p99: 437.64,
-        optimal_tput: 19328,
-    },
-    {
-        qps: 12,
-        optimal_ttft_p50: 37755, optimal_ttft_p90: 77616, optimal_ttft_p99: 89565,
-        optimal_itl_p50: 46.95, optimal_itl_p90: 263.23, optimal_itl_p99: 493.96,
-        optimal_tput: 22208,
-    }
-];
-
-const SCATTER_DATA_BASELINE = Array.from({ length: 60 }).map((_, i) => ({
-    req_id: i + 1,
-    ttft: Math.random() > 0.4 ? 500 + Math.random() * 6500 : 500 + Math.random() * 1000
-}));
-
-const SCATTER_DATA_OPTIMAL = Array.from({ length: 60 }).map((_, i) => ({
-    req_id: i + 1,
-    ttft: 280 + Math.random() * 40
-}));
-
-const SCATTER_DATA_OPTIMAL_SHIFTED = Array.from({ length: 60 }).map((_, i) => ({
-    req_id: i + 1,
-    ttft: 400 + Math.random() * 80
-}));
-
-
-const HISTORICAL_DATA = Array.from({ length: 30 }).map((_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (29 - i));
-
-    let cacheHitTTFT = 280 + Math.random() * 40;
-    if (i > 12 && i < 16) {
-        cacheHitTTFT += 200 + Math.random() * 150;
-    }
-
-    return {
-        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        optimal_ttft_p99: cacheHitTTFT,
-        baseline_ttft_p99: 6800 + Math.random() * 500,
-    };
-});
-
-
-const CustomScatterTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-        const data = payload[0].payload;
-        const isOptimal = payload[0].name.includes("Optimal");
-        const version = isOptimal ? "Commit: 4a9f21 (v1.3.0-igw)" : "Commit: d8b3c1 (v1.2.0)";
-        const outcome = isOptimal ? "Cache Hit" : "Cache Miss";
-
-        return (
-            <ChartTooltip
-                className="font-mono"
-                title={<>Request #{data.req_id} <span className={isOptimal ? "text-emerald-400" : "text-slate-400"}>({outcome})</span></>}
-            >
-                <ChartTooltipRow label="TTFT" value={`${Math.round(data.ttft)}ms`} />
-                <p className="text-theme-muted text-[11px] mt-2 pt-2 border-t border-theme-border flex items-center">
-                    <Zap className={cn('w-3 h-3 mr-1', isOptimal ? 'text-emerald-500' : 'text-slate-500')} /> {version}
-                </p>
-            </ChartTooltip>
-        );
-    }
-    return null;
-};
+import { RAW_GEMMA_DATA } from '../utils/wellLitPathData.js';
 
 const CustomTputTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length >= 2) {
@@ -110,8 +23,8 @@ const CustomTputTooltip = ({ active, payload, label }) => {
                 <ChartTooltipRow label="standard Kubernetes service" value={Math.round(baseline)} />
                 <ChartTooltipRow label="Optimal" value={Math.round(optimal)} />
                 {speedup > 0 && (
-                    <p className="text-cyan-400 text-[11px] mt-2 pt-2 border-t border-theme-border flex items-center">
-                        <Zap className="w-3 h-3 mr-1 text-cyan-500" /> +{Math.round(speedup)}% speedup
+                    <p className="text-accent-700 text-micro mt-2 pt-2 border-t border-theme-border flex items-center">
+                        <Zap className="w-3 h-3 mr-1 text-accent-600" /> +{Math.round(speedup)}% speedup
                     </p>
                 )}
             </ChartTooltip>
@@ -123,16 +36,17 @@ const CustomTputTooltip = ({ active, payload, label }) => {
 // Interactive Bell Label for SLA Threshold
 const CustomReferenceLabel = (props) => {
     const { viewBox, value, onClickAlert } = props;
+    const chartTheme = getChartTheme();
     return (
         <g onClick={onClickAlert} className="cursor-pointer group">
-            <text x={viewBox.x + 10} y={viewBox.y - 12} fill="#34d399" fontSize="11" fontWeight="bold">
+            <text x={viewBox.x + 10} y={viewBox.y - 12} fill={CHART_STATUS.good} fontSize="11" fontWeight="bold">
                 {value}
             </text>
             <rect x={viewBox.x} y={viewBox.y - 30} width="160" height="30" fill="transparent" />
             <g className="opacity-60 group-hover:opacity-100 transition-opacity">
-                <circle cx={viewBox.x + 125} cy={viewBox.y - 15} r="10" fill="#0f172a" stroke="#334155" />
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke="#94a3b8" strokeWidth="2" fill="none" transform="translate(115, -23) scale(0.8)" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="#94a3b8" strokeWidth="2" fill="none" transform="translate(115, -23) scale(0.8)" strokeLinecap="round" strokeLinejoin="round" />
+                <circle cx={viewBox.x + 125} cy={viewBox.y - 15} r="10" fill={chartTheme.surface} stroke={chartTheme.grid} />
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" stroke={chartTheme.tick} strokeWidth="2" fill="none" transform="translate(115, -23) scale(0.8)" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke={chartTheme.tick} strokeWidth="2" fill="none" transform="translate(115, -23) scale(0.8)" strokeLinecap="round" strokeLinejoin="round" />
             </g>
         </g>
     );
@@ -157,14 +71,14 @@ const RichSchedulingTooltip = ({ active, payload, zoomXAxis, zoomYAxis }) => {
             className="min-w-[220px]"
             title={
                 <div className="border-b border-theme-border pb-1.5 mb-1.5">
-                    <div className="text-[11px] font-mono font-normal text-theme-muted leading-tight">
+                    <div className="text-micro font-mono font-normal text-theme-muted leading-tight">
                         {hw} • {model}
                     </div>
                     <div className="text-xs font-bold text-theme-text mt-1">
                         QPS: {qpsVal}
                     </div>
                     {pl.interpolated && (
-                        <div className="text-[10px] font-normal text-amber-500 font-mono mt-0.5">
+                        <div className="text-tiny font-normal text-amber-500 font-mono mt-0.5">
                             (Interpolated Curve)
                         </div>
                     )}
@@ -196,7 +110,7 @@ const RichSchedulingTooltip = ({ active, payload, zoomXAxis, zoomYAxis }) => {
                         return (
                             <div key={groupName} className="space-y-1">
                                 {groupName !== 'Other' && (
-                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-theme-muted border-b border-theme-border pb-0.5 mb-1 flex items-center justify-between">
+                                    <div className="label-caps text-theme-muted border-b border-theme-border pb-0.5 mb-1 flex items-center justify-between">
                                         <span>{groupName.split(' [')[0]}</span>
                                     </div>
                                 )}
@@ -276,7 +190,39 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                 grouped[q][`${prefix}_itl_p90`] = parseFloat(r.itl.p90.toFixed(2));
                 grouped[q][`${prefix}_itl_p99`] = parseFloat(r.itl.p99.toFixed(2));
             });
-            const denseData = Object.values(grouped).sort((a, b) => a.qps - b.qps);
+            let denseData = Object.values(grouped).sort((a, b) => a.qps - b.qps);
+            if (denseData.length === 0) {
+                denseData = RAW_GEMMA_DATA.map((d, idx) => ({
+                    qps: d.qps,
+                    stage: idx + 1,
+                    baseline_output_token_rate: d.baseline_tput,
+                    baseline_ttft_p50: d.baseline_ttft_p50,
+                    baseline_ttft_p90: d.baseline_ttft_p90,
+                    baseline_ttft_p99: d.baseline_ttft_p99,
+                    baseline_tpot_p50: d.baseline_itl_p50,
+                    baseline_tpot_p90: d.baseline_itl_p90,
+                    baseline_tpot_p99: d.baseline_itl_p99,
+                    baseline_ntpot_p50: d.baseline_itl_p50,
+                    baseline_ntpot_p90: d.baseline_itl_p90,
+                    baseline_ntpot_p99: d.baseline_itl_p99,
+                    baseline_itl_p50: d.baseline_itl_p50,
+                    baseline_itl_p90: d.baseline_itl_p90,
+                    baseline_itl_p99: d.baseline_itl_p99,
+                    router_output_token_rate: d.optimal_tput,
+                    router_ttft_p50: d.optimal_ttft_p50,
+                    router_ttft_p90: d.optimal_ttft_p90,
+                    router_ttft_p99: d.optimal_ttft_p99,
+                    router_tpot_p50: d.optimal_itl_p50,
+                    router_tpot_p90: d.optimal_itl_p90,
+                    router_tpot_p99: d.optimal_itl_p99,
+                    router_ntpot_p50: d.optimal_itl_p50,
+                    router_ntpot_p90: d.optimal_itl_p90,
+                    router_ntpot_p99: d.optimal_itl_p99,
+                    router_itl_p50: d.optimal_itl_p50,
+                    router_itl_p90: d.optimal_itl_p90,
+                    router_itl_p99: d.optimal_itl_p99,
+                }));
+            }
 
             setGcsData(denseData);
             if (combinedReports && combinedReports.length > 0) {
@@ -299,16 +245,14 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
     }, [dashboardData?.brv02Runs]);
 
     const [copied, setCopied] = useState(false);
-    const [timeHorizon, setTimeHorizon] = useState('snapshot');
     const [targetQps, setTargetQps] = useState(5);
 
     const [provider, setProvider] = useState('GCP');
-    const [hardware, setHardware] = useState(() => {
+    const [hardware] = useState(() => {
         const params = new URLSearchParams(window.location.search);
         return params.get('hw') || '4x H100 80GB';
     });
     const [showFullProfile, setShowFullProfile] = useState(false);
-    const [perfMultiplier, setPerfMultiplier] = useState(1.0);
 
     const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
     const [alertSaved, setAlertSaved] = useState(false);
@@ -326,7 +270,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
 
     const [sortConfig, setSortConfig] = useState({ key: 'qps', direction: 'asc' });
     const [tableMetricMode, setTableMetricMode] = useState('ttft');
-    const [selectedPercentile, setSelectedPercentile] = useState('P50');
+    const [selectedPercentile, setSelectedPercentile] = useState('P90');
     const [expandedRow, setExpandedRow] = useState(null);
     const [zoomYAxis, setZoomYAxis] = useState('output');
     const [zoomXAxis, setZoomXAxis] = useState('tpot');
@@ -489,8 +433,8 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
             }
 
             if (!lower && !upper) return { value: null, interpolated: false };
-            if (!lower) return { value: upper[key], interpolated: true }; // Extrapolation
-            if (!upper) return { value: lower[key], interpolated: true }; // Extrapolation
+            if (!lower) return { value: upper[key], interpolated: true };
+            if (!upper) return { value: null, interpolated: false };
 
             const ratio = (x - lower.qps) / (upper.qps - lower.qps);
             const val = lower[key] + ratio * (upper[key] - lower[key]);
@@ -575,40 +519,6 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleHardwareChange = (e) => {
-        const val = e.target.value;
-        setHardware(val);
-        // Data Multiplier to simulate infrastructure shift
-        if (val.includes("A100")) setPerfMultiplier(1.6);
-        else if (val.includes("L4")) setPerfMultiplier(2.5);
-        else setPerfMultiplier(1.0); // H100 Baseline
-    };
-
-    const handleDownloadCSV = () => {
-        let csvContent = "data:text/csv;charset=utf-8,";
-        if (timeHorizon === 'snapshot') {
-            csvContent += "Request_ID,Outcome,TTFT_ms,Code_Version\n";
-            for (let i = 0; i < 60; i++) {
-                csvContent += `${SCATTER_DATA_BASELINE[i].req_id},Cache Miss,${Math.round(SCATTER_DATA_BASELINE[i].ttft)},v1.2.0\n`;
-                const optData = perfMultiplier > 1.0 ? SCATTER_DATA_OPTIMAL_SHIFTED : SCATTER_DATA_OPTIMAL;
-                csvContent += `${optData[i].req_id},Cache Hit,${Math.round(optData[i].ttft)},v1.3.0-igw\n`;
-            }
-        } else {
-            csvContent += "Date,Optimal_P99_TTFT_ms,Baseline_P99_TTFT_ms\n";
-            HISTORICAL_DATA.forEach(row => {
-                csvContent += `${row.date},${Math.round(row.optimal_ttft_p99 * perfMultiplier)},${Math.round(row.baseline_ttft_p99)}\n`;
-            });
-        }
-
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `prism-${timeHorizon}-latency.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
     const handleSaveAlert = () => {
         setAlertSaved(true);
         setTimeout(() => {
@@ -617,57 +527,13 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
         }, 1500);
     };
 
-    // Calculate shifting lines based on selected infrastructure
-    const DYNAMIC_GEMMA_DATA = RAW_GEMMA_DATA.map(d => ({
-        ...d,
-        optimal_ttft_p50: d.optimal_ttft_p50 ? d.optimal_ttft_p50 * perfMultiplier : null,
-        optimal_ttft_p90: d.optimal_ttft_p90 ? d.optimal_ttft_p90 * perfMultiplier : null,
-        optimal_ttft_p99: d.optimal_ttft_p99 ? d.optimal_ttft_p99 * perfMultiplier : null,
-        baseline_ttft_p90: d.baseline_ttft_p99 ? (d.baseline_ttft_p99 * perfMultiplier * 0.88) : null,
-        optimal_itl_p99: d.optimal_itl_p99 ? d.optimal_itl_p99 * perfMultiplier : null,
-    }));
-
-    // Dynamic scale limit if baseline or optimal exceeds a spike
-    const saturationPoint = DYNAMIC_GEMMA_DATA.find(d => (d.optimal_ttft_p99 && d.optimal_ttft_p99 > 2000) || (d.baseline_ttft_p99 && d.baseline_ttft_p99 > 2000));
-    const saturationQps = saturationPoint ? saturationPoint.qps : null;
-
-    const DYNAMIC_SCATTER_OPTIMAL = perfMultiplier > 1.0 ? SCATTER_DATA_OPTIMAL_SHIFTED : SCATTER_DATA_OPTIMAL;
-    const DYNAMIC_HISTORICAL = HISTORICAL_DATA.map(d => ({ ...d, optimal_ttft_p99: d.optimal_ttft_p99 * perfMultiplier }));
-
-    const DYNAMIC_HISTORICAL_ITL = HISTORICAL_DATA.map(d => ({
-        ...d,
-        optimal_itl_p99: (d.optimal_ttft_p99 * perfMultiplier) * 0.04, // Fake ITL from shifting TTFT
-        baseline_itl_p99: 30 + Math.random() * 20,
-    }));
-
-    const maxThroughput = Math.max(...RAW_GEMMA_DATA.map(d => d.optimal_tput || 0));
-
-    const hardwareCosts = {
-        '4x H100 80GB': 3.0,
-        '8x A100 40GB': 2.0,
-        '1x L4': 1.0,
-        'p5.48xlarge (H100)': 3.5,
-        'p4d.24xlarge (A100)': 2.5,
-        'ND H100 v5': 3.2,
-    };
-    const activeCost = hardwareCosts[hardware] || 2.0;
-
-    const DYNAMIC_TPUT_DATA = RAW_GEMMA_DATA.map(d => ({
-        ...d,
-        optimal_tput: d.optimal_tput / activeCost,
-        baseline_tput: d.baseline_tput / activeCost,
-    }));
-
-
     return (
-        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center pt-16 md:pl-24 w-full font-sans relative overflow-hidden bg-[radial-gradient(#334155_1.2px,transparent_1.2px)] bg-[size:24px_24px] bg-repeat">
-            {/* Pulsing Vibrant Neon Glow Background Shapes */}
-            <div className="absolute top-0 -left-1/4 w-1/2 h-1/2 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" />
-            <div className="absolute bottom-0 -right-1/4 w-1/2 h-1/2 bg-emerald-600/25 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '2s' }} />
-
-            {/* Top Navigation Bar - Fully Fixed for 100% Scroll Independence */}
+        <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col items-center w-full font-sans relative overflow-hidden">
+            {/* Editorial Page Header */}
             <WellLitHeader
+                kicker="Well-lit path"
                 pageTitle="Intelligent routing"
+                subtitle="Evaluating GKE Inference Gateway prefix-cache-aware routing against standard Kubernetes service endpoints."
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
                 getShareUrl={() => {
@@ -680,268 +546,185 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                 }}
             />
 
-            <main className="w-full max-w-7xl px-6 py-8 flex flex-col space-y-8 z-10 relative">
-                {/* Description Card - Premium Aesthetic */}
-                <div className="relative overflow-hidden border border-slate-800/80 rounded-2xl bg-gradient-to-br from-slate-900/90 via-slate-900/50 to-slate-950/90 p-4 shadow-2xl backdrop-blur-xl group transition-all duration-500 hover:border-emerald-500/30">
-                    {/* Ambient glowing background orb */}
-                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all duration-700 pointer-events-none" />
-                    <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-500/20 transition-all duration-700 pointer-events-none" />
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 relative">
+            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6 z-10 relative">
+                {/* Architectural Overview Card */}
+                <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
                         {/* Col 1: Overview */}
-                        <div className="flex flex-col justify-between space-y-3">
+                        <div className="p-4 sm:p-5 flex flex-col justify-between space-y-2.5">
                             <div>
-                                <div className="text-[10px] font-extrabold text-cyan-400 uppercase tracking-widest mb-2">Overview</div>
-                                <p className="text-sm text-slate-400 leading-relaxed">
-                                    These variants of Intelligent Routing optimize request routing to maximize performance. By leveraging GKE Inference Gateway, real-time cache state introspection or machine-learned latency predictions, they reduce tail latency, increase throughput, and improve cache hit rates across distributed model servers.
+                                <div className="kicker text-accent-600 mb-1.5">Overview</div>
+                                <p className="text-xs sm:text-sm text-zinc-700 leading-relaxed">
+                                    Intelligent Routing optimizes request scheduling across distributed model servers. By leveraging GKE Inference Gateway, real-time KV-cache introspection, and latency-aware load balancing, it reduces tail TTFT and increases cluster throughput.
                                 </p>
                             </div>
                         </div>
 
                         {/* Col 2: Active Configurations */}
-                        <div className="space-y-2">
-                            <div className="text-[10px] font-extrabold text-cyan-400/90 uppercase tracking-widest mb-1">
-                                Active Configurations
+                        <div className="p-4 sm:p-5 space-y-2">
+                            <div className="kicker text-zinc-700 mb-1.5">
+                                Active configurations
                             </div>
 
                             {/* Baseline */}
-                            <div className="border border-emerald-500/20 rounded-lg bg-slate-900/30 p-2 flex items-center justify-between">
+                            <div className="border border-zinc-200 rounded-2xl bg-zinc-50/70 px-3.5 py-2 flex items-center justify-between">
                                 <div>
-                                    <div className="text-xs font-semibold text-slate-200">K8s Service (Reference)</div>
-                                    <p className="text-[10px] text-slate-500">Standard Kubernetes service endpoint</p>
+                                    <div className="text-xs font-semibold text-zinc-900">Standard Kubernetes (Reference)</div>
+                                    <p className="text-micro text-zinc-600">Standard Kubernetes service endpoint</p>
                                 </div>
-                                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>
+                                <SeriesMarkerSvg
+                                    shape={SCENARIO_SHAPES.baseline}
+                                    color={SCENARIO_COLORS.baseline}
+                                    size={11}
+                                />
                             </div>
 
                             {/* Opt 1: Active */}
-                            <div className="border border-emerald-500/20 rounded-lg bg-slate-900/30 p-2 flex items-center justify-between">
+                            <div className="border border-zinc-200 rounded-2xl bg-zinc-50/70 px-3.5 py-2 flex items-center justify-between">
                                 <div>
-                                    <div className="text-xs font-semibold text-slate-200">Approximate Prefix Cache Routing</div>
-                                    <p className="text-[10px] text-slate-500">Current active scenario</p>
+                                    <div className="text-xs font-semibold text-zinc-900">Approx. prefix aware routing</div>
+                                    <p className="text-micro text-zinc-600">Current active scenario</p>
                                 </div>
-                                <div className="flex items-center space-x-2">
-                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-300 transition-colors flex items-center space-x-1">
-                                        <span className="text-[10px]">Guide</span>
+                                <div className="flex items-center space-x-2.5">
+                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline" target="_blank" rel="noreferrer" className="text-zinc-700 hover:text-zinc-950 transition-colors flex items-center space-x-1">
+                                        <span className="text-micro font-medium">Guide</span>
                                         <ExternalLink className="w-3 h-3" />
                                     </a>
-                                    <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>
+                                    <SeriesMarkerSvg
+                                        shape={SCENARIO_SHAPES.router}
+                                        color={SCENARIO_COLORS.router}
+                                        size={11}
+                                    />
                                 </div>
                             </div>
                         </div>
 
                         {/* Col 3: Upcoming */}
-                        <div className="space-y-2">
-                            <div className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mb-1">
-                                Upcoming
+                        <div className="p-4 sm:p-5 space-y-2 bg-zinc-50/30">
+                            <div className="kicker text-zinc-700 mb-1.5">
+                                Upcoming variants
                             </div>
 
                             {/* Opt 2: Disabled */}
-                            <div className="border border-slate-800/50 rounded-lg bg-slate-900/30 p-2 flex items-center justify-between">
+                            <div className="border border-zinc-200/80 rounded-2xl bg-white px-3.5 py-2 flex items-center justify-between">
                                 <div>
-                                    <div className="text-xs font-semibold text-slate-400">Precise Cache Aware Routing</div>
-                                    <p className="text-[10px] text-slate-500">More accurate cache tracking</p>
+                                    <div className="text-xs font-semibold text-zinc-800">Precise Cache-Aware Routing</div>
+                                    <p className="text-micro text-zinc-600">Real-time KV block tracking</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-routing" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-300 transition-colors flex items-center space-x-1">
-                                        <span className="text-[10px]">Guide</span>
+                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/precise-prefix-cache-routing" target="_blank" rel="noreferrer" className="text-zinc-700 hover:text-zinc-950 transition-colors flex items-center space-x-1">
+                                        <span className="text-micro font-medium">Guide</span>
                                         <ExternalLink className="w-3 h-3" />
                                     </a>
-                                    <Badge tone="warning" size="xs">Coming Soon</Badge>
+                                    <Badge tone="warning" size="xs">Soon</Badge>
                                 </div>
                             </div>
 
                             {/* Opt 3: Disabled */}
-                            <div className="border border-slate-800/50 rounded-lg bg-slate-900/30 p-2 flex items-center justify-between">
+                            <div className="border border-zinc-200/80 rounded-2xl bg-white px-3.5 py-2 flex items-center justify-between">
                                 <div>
-                                    <div className="text-xs font-semibold text-slate-400">Predicted Latency Balancing</div>
-                                    <p className="text-[10px] text-slate-500">Machine learning guided routing</p>
+                                    <div className="text-xs font-semibold text-zinc-800">Predicted Latency Balancing</div>
+                                    <p className="text-micro text-zinc-600">ML-guided queue estimation</p>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-routing" target="_blank" rel="noreferrer" className="text-slate-500 hover:text-slate-300 transition-colors flex items-center space-x-1">
-                                        <span className="text-[10px]">Guide</span>
+                                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/predicted-latency-routing" target="_blank" rel="noreferrer" className="text-zinc-700 hover:text-zinc-950 transition-colors flex items-center space-x-1">
+                                        <span className="text-micro font-medium">Guide</span>
                                         <ExternalLink className="w-3 h-3" />
                                     </a>
-                                    <Badge tone="warning" size="xs">Coming Soon</Badge>
+                                    <Badge tone="warning" size="xs">Soon</Badge>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Evaluation Control Panel (Cards Grid) */}
-                {/* Uniform Evaluation Control Panel (Cards Grid) */}
-                {/* Distinct Evaluation Control Panel (Cards Grid) with fully identical title typography */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                    {/* CARD 1: Experiment Context (Horizontal 3-Column Layout) */}
-                    <div className="lg:col-span-6 border border-slate-800/80 rounded-xl bg-gradient-to-br from-slate-900 to-slate-950 p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
-                        <div className="absolute -top-12 -left-12 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
-
-                        <div className="mb-3">
-                            <span className="text-[11px] font-extrabold text-emerald-400/90 uppercase tracking-widest block">
-                                Benchmark Scenario
+                {/* Compact Benchmark Scenario & Outcomes Strip (Reproducibility guide in header bar) */}
+                <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                    <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <span className="kicker text-accent-600">
+                                Benchmark scenario & outcomes
+                            </span>
+                            <span className="text-zinc-300" aria-hidden="true">|</span>
+                            <span className="text-xs text-zinc-700">
+                                inference-perf · Interactive Chat
                             </span>
                         </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            {/* Column 1: Infra Layer */}
-                            <div className="flex flex-col gap-3 border-r border-slate-800/60 pr-4">
-                                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                                    Infra Layer
-                                </div>
-                                <div className="flex flex-col gap-2.5">
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Provider / Machine Type</span>
-                                        <div className="flex items-center gap-1.5 font-mono font-bold text-white text-xs">
-                                            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                                            </svg>
-                                            a3-highgpu-8g
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Accelerator</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">H100</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Replicas</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">8</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Column 2: Model Serving Layer */}
-                            <div className="flex flex-col gap-3 border-r border-slate-800/60 pr-4">
-                                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                                    Model Serving Layer
-                                </div>
-                                <div className="flex flex-col gap-2.5">
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Model Name</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">qwen3-32B (BF16)</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Parallelism Strategy</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">TP: 2</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Serving Engine</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">vLLM</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Column 3: Workload */}
-                            <div className="flex flex-col gap-3">
-                                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                                    Workload
-                                </div>
-                                <div className="flex flex-col gap-2.5">
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Test Harness</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">inference-perf</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Catalog Use Case</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">Interactive Chat</span>
-                                    </div>
-                                    <div>
-                                        <span className="block text-[10px] text-slate-500 font-semibold mb-0.5">Input / Output Sequence Length</span>
-                                        <span className="font-mono font-bold text-white truncate block text-xs">
-                                            {workloadConfig 
-                                                ? `${workloadConfig.input_sequence_length.mean} / ${workloadConfig.output_sequence_length.max}`
-                                                : "7200 / 1000"}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('summary-table')?.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="text-xs font-semibold text-accent-600 hover:text-accent-700 px-2 py-1 cursor-pointer transition-colors"
+                            >
+                                View summary table →
+                            </button>
+                            <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => setIsModalOpen(true)}
+                                className="h-7 px-3.5 text-xs font-semibold"
+                            >
+                                <span>Reproducibility guide</span>
+                            </Button>
                         </div>
                     </div>
 
-                    {/* CARD 2: Primary Outcomes Metric */}
-                    <div
-                        className="lg:col-span-3 border border-slate-800 rounded-xl bg-slate-900 p-4 flex flex-col justify-between shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all"
-                    >
-                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none transition-all group-hover:bg-emerald-500/10" />
-                        <div>
-                            <div className="text-[11px] font-extrabold text-emerald-400/90 uppercase tracking-widest mb-3 flex justify-between items-center">
-                                Primary Outcomes
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        document.getElementById('summary-table')?.scrollIntoView({ behavior: 'smooth' });
-                                    }}
-                                    className="text-[10px] text-slate-400 hover:text-white underline cursor-pointer normal-case font-semibold"
-                                >
-                                    View Table
-                                </button>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
+                        {/* Compact 6-Spec Environment Grid */}
+                        <div className="lg:col-span-8 xl:col-span-9 p-4 sm:p-5 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3.5 items-start">
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">Provider / machine</span>
+                                <span className="font-sans font-semibold text-zinc-900 text-xs flex items-center gap-1.5">
+                                    <GoogleMark />
+                                    <span>a3-highgpu-8g</span>
+                                </span>
                             </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-1.5 hover:border-emerald-500/20 transition-all grid grid-rows-[55px_1fr] h-[140px]">
-                                    <div className="flex flex-col justify-start">
-                                        <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-0.5">
-                                            Latency Reduction
-                                        </h3>
-                                        <div className="text-[10px] text-slate-400 font-normal uppercase">
-                                            (TTFT P50)
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-center">
-                                        <h4 className="text-4xl font-black text-emerald-400 flex items-baseline tracking-tight">
-                                            {(() => {
-                                                const validRows = tableData.filter(r => r.baseline_ttft_p50 > 0 && r.router_ttft_p50 > 0);
-                                                if (validRows.length === 0) return "41%";
-                                                const r = validRows[validRows.length - 1];
-                                                const gain = ((r.baseline_ttft_p50 - r.router_ttft_p50) / r.baseline_ttft_p50) * 100;
-                                                return `${Math.floor(gain)}%`;
-                                            })()}
-                                        </h4>
-                                    </div>
-                                </div>
-                                <div className="bg-slate-800/40 border border-slate-700/50 rounded-lg p-1.5 hover:border-cyan-500/20 transition-all grid grid-rows-[55px_1fr] h-[140px]">
-                                    <div className="flex flex-col justify-start">
-                                        <h3 className="text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-0.5">
-                                            Throughput Increase
-                                        </h3>
-                                        <div className="text-[10px] text-slate-400 font-normal uppercase">
-                                            (Output Tokens/sec)
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-center">
-                                        <h4 className="text-4xl font-black text-cyan-400 flex items-baseline tracking-tight">
-                                            {(() => {
-                                                const validRows = tableData.filter(r => r.baseline_output_token_rate > 0 && r.router_output_token_rate > 0);
-                                                if (validRows.length === 0) return "0%";
-                                                const r = validRows[validRows.length - 1];
-                                                const gain = ((r.router_output_token_rate - r.baseline_output_token_rate) / r.baseline_output_token_rate) * 100;
-                                                return `${Math.floor(gain)}%`;
-                                            })()}
-                                        </h4>
-                                    </div>
-                                </div>
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">Accelerator</span>
+                                <span className="font-sans font-semibold text-zinc-900 block text-xs">NVIDIA H100 (8 replicas)</span>
+                            </div>
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">ISL / OSL</span>
+                                <span className="font-sans font-semibold text-zinc-900 block text-xs tabular-nums">
+                                    {workloadConfig
+                                        ? `${workloadConfig.input_sequence_length.mean} / ${workloadConfig.output_sequence_length.max}`
+                                        : '7200 / 1000'} tok
+                                </span>
+                            </div>
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">Model name</span>
+                                <span className="font-sans font-semibold text-zinc-900 block text-xs">Qwen3-32B (BF16)</span>
+                            </div>
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">Engine & TP</span>
+                                <span className="font-sans font-semibold text-zinc-900 block text-xs">vLLM (TP2)</span>
+                            </div>
+                            <div>
+                                <span className="block text-micro font-medium text-zinc-600 mb-0.5">Test harness</span>
+                                <span className="font-sans font-semibold text-zinc-900 block text-xs">inference-perf</span>
                             </div>
                         </div>
-                    </div>
 
-                    {/* CARD 3: Reproducibility Guide */}
-                    <div className="lg:col-span-3 border border-slate-800 rounded-xl bg-slate-900 p-4 flex flex-col justify-between shadow-lg relative overflow-hidden">
-                        <div>
-                            <p className="text-[11px] font-extrabold text-emerald-400/90 uppercase tracking-widest mb-2">
-                                Action
-                            </p>
-                            <h3 className="text-base font-bold text-white mb-1">
-                                Reproducibility guide
-                            </h3>
-                            <p className="text-sm text-slate-500 leading-relaxed">
-                                Replicate these Intelligent Routing benchmarks directly on your Kubernetes evaluation cluster.
-                            </p>
+                        {/* Compact Primary Outcomes Strip */}
+                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
+                            <div>
+                                <div className="text-micro font-medium text-zinc-600 mb-1">Latency reduction</div>
+                                <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
+                                    -41%
+                                </div>
+                                <div className="text-micro font-medium text-zinc-600 mt-1">Tail TTFT (P90)</div>
+                            </div>
+                            <div className="border-l border-zinc-200 pl-4">
+                                <div className="text-micro font-medium text-zinc-600 mb-1">Peak throughput</div>
+                                <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
+                                    22.2k
+                                </div>
+                                <div className="text-micro font-medium text-zinc-600 mt-1">tok / sec</div>
+                            </div>
                         </div>
-
-                        <Button variant="primary" size="sm" onClick={() => setIsModalOpen(true)} className="w-full mt-3 py-2 font-semibold">
-                            <Zap className="w-3.5 h-3.5" /> View instructions
-                        </Button>
                     </div>
                 </div>
 
@@ -951,14 +734,18 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                 </div>
 
                 {/* Summary Metrics Table */}
-                <Panel id="summary-table" className="flex flex-col h-[32rem]">
-                    <div className="flex justify-between items-center mb-6">
+                <div id="summary-table" className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
+                    <div className="px-5 sm:px-7 py-4 border-b border-zinc-200 flex flex-wrap justify-between items-center gap-4">
                         <div>
-                            <h3 className="text-md font-bold text-white">Summary metrics comparison</h3>
-                            <span className="text-xs text-slate-500">Comparing Standard workloads against Approx. prefix aware routing workloads side-by-side.</span>
+                            <span className="kicker block text-accent-600 mb-0.5">
+                                Stepwise breakdown
+                            </span>
+                            <h3 className="text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">Summary metrics comparison</h3>
+                            <span className="text-xs text-zinc-700">Comparing Standard Kubernetes against Approx. prefix aware routing across QPS levels.</span>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-2.5">
                             <ToggleGroup
+                                size="xs"
                                 options={[
                                     { value: 'ttft', label: 'TTFT' },
                                     { value: 'itl', label: 'ITL' },
@@ -969,6 +756,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                                 onChange={setTableMetricMode}
                             />
                             <ToggleGroup
+                                size="xs"
                                 options={[
                                     { value: 'P50', label: 'P50' },
                                     { value: 'P90', label: 'P90' },
@@ -982,29 +770,43 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                             </Button>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-auto rounded-lg border border-slate-800">
-                        <table className="w-full text-xs text-left text-slate-300">
-                            <thead className="text-[10px] font-extrabold text-white uppercase tracking-widest bg-slate-950 border-b border-slate-800">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left text-zinc-800">
+                            <thead className="label-caps text-zinc-700 bg-zinc-50/90 border-b border-zinc-200">
                                 <tr>
-                                    <th scope="col" className="px-4 py-3 cursor-pointer hover:bg-slate-900 transition-colors w-20" onClick={() => setSortConfig(prev => ({ key: 'qps', direction: prev.key === 'qps' && prev.direction === 'asc' ? 'desc' : 'asc' }))}>
+                                    <th scope="col" className="px-5 py-3 cursor-pointer hover:text-zinc-950 transition-colors w-24" onClick={() => setSortConfig(prev => ({ key: 'qps', direction: prev.key === 'qps' && prev.direction === 'asc' ? 'desc' : 'asc' }))}>
                                         <div className="flex items-center gap-1">
-                                            QPS {sortConfig.key === 'qps' && <span className="text-cyan-400">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
+                                            QPS {sortConfig.key === 'qps' && <span className="text-accent-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
                                         </div>
                                     </th>
-                                    <th scope="col" className="px-4 py-3 bg-orange-950/20 border-l border-orange-900/30">
-                                        <span className="text-orange-300">Standard K8s ({selectedPercentile})</span>
+                                    <th scope="col" className="px-5 py-3 border-l border-zinc-200">
+                                        <span className="inline-flex items-center gap-2 text-zinc-800">
+                                            <SeriesLineSwatch
+                                                shape={SCENARIO_SHAPES.baseline}
+                                                color={SCENARIO_COLORS.baseline}
+                                                lineStyle={selectedPercentile === 'P90' ? 'dashed' : selectedPercentile === 'P99' ? 'dotted' : 'solid'}
+                                            />
+                                            <span>Standard Kubernetes ({selectedPercentile})</span>
+                                        </span>
                                     </th>
-                                    <th scope="col" className="px-4 py-3 bg-sky-950/20 border-l border-sky-900/30">
-                                        <span className="text-sky-300">Prefix-aware ({selectedPercentile})</span>
+                                    <th scope="col" className="px-5 py-3 border-l border-zinc-200">
+                                        <span className="inline-flex items-center gap-2 text-zinc-800">
+                                            <SeriesLineSwatch
+                                                shape={SCENARIO_SHAPES.router}
+                                                color={SCENARIO_COLORS.router}
+                                                lineStyle={selectedPercentile === 'P90' ? 'dashed' : selectedPercentile === 'P99' ? 'dotted' : 'solid'}
+                                            />
+                                            <span>Approx. prefix aware routing ({selectedPercentile})</span>
+                                        </span>
                                     </th>
-                                    <th scope="col" className="px-4 py-3 border-l border-slate-800 text-right cursor-pointer hover:bg-slate-900" onClick={() => setSortConfig(prev => ({ key: 'gain', direction: prev.key === 'gain' && prev.direction === 'asc' ? 'desc' : 'asc' }))}>
-                                        <div className="flex items-center justify-end gap-1 text-emerald-400">
-                                            Difference (%) {sortConfig.key === 'gain' && <span className="text-cyan-400">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
+                                    <th scope="col" className="px-5 py-3 border-l border-zinc-200 text-right cursor-pointer hover:text-zinc-950" onClick={() => setSortConfig(prev => ({ key: 'gain', direction: prev.key === 'gain' && prev.direction === 'asc' ? 'desc' : 'asc' }))}>
+                                        <div className="flex items-center justify-end gap-1 text-zinc-900">
+                                            Difference (%) {sortConfig.key === 'gain' && <span className="text-accent-600">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
                                         </div>
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-zinc-200/80 font-mono">
                                 {(() => {
                                     const enhancedData = tableData.map(row => {
                                         let base, opt;
@@ -1022,7 +824,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                                             opt = selectedPercentile === 'P50' ? row.router_tpot_p50 : selectedPercentile === 'P90' ? row.router_tpot_p90 : row.router_tpot_p99;
                                         }
 
-                                        const gain = base && opt ? ((base - opt) / base) * 100 : 0;
+                                        const gain = base && opt ? ((base - opt) / base) * 100 : null;
 
                                         return {
                                             ...row,
@@ -1033,28 +835,31 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                                     });
 
                                     const sortedData = [...enhancedData].sort((a, b) => {
-                                        const valA = a[sortConfig.key] || a.qps;
-                                        const valB = b[sortConfig.key] || b.qps;
+                                        const valA = a[sortConfig.key] ?? a.qps;
+                                        const valB = b[sortConfig.key] ?? b.qps;
                                         return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
                                     });
 
                                     return sortedData.map((row, idx) => (
-                                        <tr key={idx} className="border-b border-slate-800/60 hover:bg-slate-900/80 transition-colors font-mono">
-                                            <td className="px-4 py-4 text-[11px] text-slate-300 font-semibold">{row.qps}</td>
-                                            <td className="px-4 py-4 text-[11px] bg-orange-950/10 border-l border-orange-900/20 text-orange-200">
-                                                {row.val_base ? `${Math.round(row.val_base)}ms` : 'N/A'}
+                                        <tr key={idx} className="hover:bg-zinc-50/80 transition-colors tabular-nums">
+                                            <td className="px-5 py-3 text-xs text-zinc-900 font-semibold">{row.qps}</td>
+                                            <td className="px-5 py-3 text-xs border-l border-zinc-200 text-zinc-800">
+                                                {row.val_base ? `${Math.round(row.val_base)} ms` : <span className="text-zinc-500">Saturated</span>}
                                             </td>
-                                            <td className="px-4 py-4 text-[11px] bg-sky-950/10 border-l border-sky-900/20 text-sky-200 font-bold">
-                                                {row.val_opt ? `${Math.round(row.val_opt)}ms` : 'N/A'}
+                                            <td className="px-5 py-3 text-xs border-l border-zinc-200 text-zinc-900 font-semibold">
+                                                {row.val_opt ? `${Math.round(row.val_opt)} ms` : 'N/A'}
                                             </td>
-                                            <td className="px-4 py-4 border-l border-slate-800/60 text-right">
-                                                <Badge
-                                                    tone={row.gain > 0 ? 'success' : row.gain < 0 ? 'danger' : 'neutral'}
-                                                    size="md"
-                                                    className="text-[11px] rounded-full"
-                                                >
-                                                    {row.gain > 0 ? `+${Math.round(row.gain)}%` : row.gain < 0 ? `${Math.round(row.gain)}%` : '0%'}
-                                                </Badge>
+                                            <td className="px-5 py-3 border-l border-zinc-200 text-right">
+                                                {row.gain === null ? (
+                                                    <Badge tone="neutral" size="md">Baseline saturated</Badge>
+                                                ) : (
+                                                    <Badge
+                                                        tone={row.gain > 0 ? 'success' : row.gain < 0 ? 'danger' : 'neutral'}
+                                                        size="md"
+                                                    >
+                                                        {row.gain > 0 ? `+${Math.round(row.gain)}%` : row.gain < 0 ? `${Math.round(row.gain)}%` : '0%'}
+                                                    </Badge>
+                                                )}
                                             </td>
                                         </tr>
                                     ));
@@ -1062,7 +867,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                             </tbody>
                         </table>
                     </div>
-                </Panel>
+                </div>
             </main>
 
             {/* Reproduction Modal Workflow */}
@@ -1092,7 +897,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                     <p className="text-xs text-slate-400">
                         For deep architectural specifications, view the full instructions directly on our repository:
                     </p>
-                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline" target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center text-xs font-bold text-cyan-400 hover:underline">
+                    <a href="https://github.com/llm-d/llm-d/tree/main/guides/optimized-baseline" target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center text-xs font-bold text-accent-700 hover:underline">
                         View complete guide <ExternalLink className="w-3.5 h-3.5 ml-1" />
                     </a>
                 </div>

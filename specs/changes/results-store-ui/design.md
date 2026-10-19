@@ -178,15 +178,17 @@ Watch {
 ```ts
 Report {
   id, clientId?, instance, owner, name, slug, description?, createdAt, updatedAt;
-  visibility: 'private'|'unlisted'|'public';                  // default 'unlisted'
+  visibility: 'private'|'unlisted'|'public';                  // default 'private'; Share sets 'unlisted'
   curveIds: uuid[];
   priceAt: 1000|2000|5000|'peak';                              // TTFT limit in ms
   prices: { [accelType: string]: number|null };                // $ per chip-hour overrides
 }
 ```
 
-- `slug` is unique per owner, generated from the name, editable. The public URL is `/?view=results-store&report=<owner>/<slug>` now and `/u/<owner>/<slug>` once the SPA route from the on-demand dashboards spec exists. The client already computes this slug.
-- A report's read response includes each curve the reader can see and a stub `{ id, visible: false }` for the rest, so a public report that includes a private draft degrades to "1 result isn't visible to you" rather than an error.
+- `slug` is unique per owner, generated from the name, editable. The shareable URL is `/?view=results-store&report=<owner>/<slug>` now and `/u/<owner>/<slug>` once the SPA route from the on-demand dashboards spec exists. The client already computes this slug.
+- **Private until shared.** A new report is `private`: only the owner can open its URL. The report's **Share** action does two things in one request: `PATCH { visibility: 'unlisted' }` and copy the link. `unlisted` reports open for anyone with the link and never appear in lists. The owner can set it back to `private` from the same control (the link then stops working for others). `public` (listed) is reserved for a later "publish" feature and isn't exposed in the UI in this phase.
+- The typed-in `prices` are the one thing a report can leak (a customer's negotiated rate), which is why the default is `private` rather than `unlisted`. The ReportView header states who can open it (*Only you* / *Anyone with the link*), so a URL copied from the address bar instead of via Share is explained, not silently broken.
+- A report's read response includes each curve the reader can see and a stub `{ id, visible: false }` for the rest, so a shared report that includes a private draft degrades to "1 result isn't visible to you" rather than an error.
 - Prices are overrides only; list prices come from `pricingEngine` at render time and aren't stored, so a GCP price change isn't frozen into old reports.
 
 ### 4.6 `source`
@@ -229,8 +231,8 @@ All routes follow the existing conventions: `X-Prism-Github-Token` for auth, rol
 | `GET /api/watches` · `POST /api/watches` | user | Own watches; admins may pass `all=true`. |
 | `PATCH /api/watches/:id` · `DELETE /api/watches/:id` | owner | Rename, change threshold/`atConc`, write `lastStatus`. |
 | `GET /api/reports?own=true` · `POST /api/reports` | user | `slug` collision → `409 slug_taken`. |
-| `GET /api/reports/:owner/:slug` | any | Per visibility; includes resolvable curves (§4.5). |
-| `PATCH /api/reports/:id` · `DELETE /api/reports/:id` | owner | |
+| `GET /api/reports/:owner/:slug` | any | `404` unless owner, or `visibility ∈ {unlisted, public}`; includes resolvable curves (§4.5). |
+| `PATCH /api/reports/:id` · `DELETE /api/reports/:id` | owner | `visibility` changes are logged with `by` and time. |
 
 ### 5.3 Sources
 
@@ -246,7 +248,7 @@ All routes follow the existing conventions: `X-Prism-Github-Token` for auth, rol
 
 `WorkspaceProvider` keeps its public API (`createCurve`, `togglePoint`, `markOfficial`, `review`, `createWatch`, `setReportPrice`, …). Internally each mutation becomes optimistic local state + a request; on `409` it reloads and re-applies, on other errors it reverts and toasts. Reads happen once per tab on mount plus after each mutation; there is no live sync between tabs in this phase (the `If-Match` guard covers correctness).
 
-The three share links resolve through these routes: `?curve=<id>` → `GET /api/curves/:id`; `?compare=…,c:<id>` → one `GET` per curve; `?report=<owner>/<slug>` → `GET /api/reports/:owner/:slug`. The "Results live in the browser that saved them" notice in `CompareView` goes away.
+The three share links resolve through these routes: `?curve=<id>` → `GET /api/curves/:id`; `?compare=…,c:<id>` → one `GET` per curve; `?report=<owner>/<slug>` → `GET /api/reports/:owner/:slug` (a `404` for a non-owner means the report is still private; the page says so). The "Results live in the browser that saved them" notice in `CompareView` goes away.
 
 ---
 
@@ -279,7 +281,7 @@ sequenceDiagram
 - `ReviewDetail` gains the payload and manifest links the submit page already promises reviewers, read from the curve's `submissionRunIds` via `GET /api/results/:runId`.
 
 > [!IMPORTANT]
-> This is a product decision as much as an engineering one: *the Result is what gets reviewed; approving it publishes its runs.* It resolves the "submitted isn't what the reviewer sees" gap from the persona review and needs sign-off before Phase 1 starts.
+> **Decided (2026-10-19):** *the Result is what gets reviewed; approving it publishes its runs.* It resolves the "submitted isn't what the reviewer sees" gap from the persona review. The alternative (runs must be `public` before a Result can be submitted) was rejected as worse for authors.
 
 ### 6.2 Roles
 
@@ -322,7 +324,7 @@ Signed-out users keep working locally as today; the migration dialog appears whe
 | Phase | Scope | Exit criteria |
 | :--- | :--- | :--- |
 | **0 (done)** | Local workspace; UI contract fixed | UI spec, UX brief, SSR checks green |
-| **1** | `curves` + `reports` API, migration dialog, Result-centred review, `?report=` links, `PRISM_INSTANCE` | A Result submitted on staging is approved by a second account and its runs turn `public`; a report link opens in a private window |
+| **1** | `curves` + `reports` API, migration dialog, Result-centred review, `?report=` links, `PRISM_INSTANCE` | A Result submitted on staging is approved by a second account and its runs turn `public`; a report link opens in a private window only after Share, and stops opening when set back to private |
 | **2** | `watches` + `sources` registry API; admin-shared hide/show; `sync` health | Two admins see the same source list; a watch created in one browser shows in another |
 | **3** | Server-side source index and watch evaluation; notifications; `metric: {kind, stat}` | Out of scope here; ties to the *Regressions Analysis* roadmap item (§9) |
 
@@ -348,8 +350,8 @@ Each phase is behind a server flag (`RESULTS_WORKSPACE_API=1`); with the flag of
 
 ## 10. Open questions
 
-1. **Approve-publishes-runs (§6.1).** Confirm with the results-api owners that an admin approving a Result may flip its runs to `public` without a separate run review. Alternative: require runs to be `public` before a Result can be submitted (simpler server, worse author flow).
-2. **Default report visibility.** `unlisted` (anyone with the link) is proposed because sharing is the point of a report. `private` by default would add a "publish" step.
+1. ~~**Approve-publishes-runs (§6.1).**~~ Decided: approving a Result publishes its runs (see §6.1).
+2. ~~**Who can open a new report?**~~ Decided (2026-10-19): `private` until shared; **Share** sets `unlisted` and copies the link in one action (see §4.5). Chosen over `unlisted`-from-creation because typed-in prices may be a customer's negotiated rate.
 3. **Sources: instance-wide vs org-scoped.** Proposed instance-wide, admin-managed. If teams need private pipeline buckets, that's a different feature (per-team sources with GCS IAM), not a flag on this one.
 4. **Internal instance, second pair of eyes.** `draft → official` by any `user` with no review is the current UI. Should `official` on the internal instance require an admin, or a second person? Cheap to change in the state table.
 5. **Retention.** Drafts never submitted: keep forever, or expire after N months with a warning in *My work*?

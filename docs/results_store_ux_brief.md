@@ -137,7 +137,7 @@ Three rules hold it together:
 *What you see:* A list on the left, the open item on the right.
 A **Watch** shows a line of percentage change per nightly batch, a dashed threshold line, and a table of batches with a status badge (`OK`, `Regression`, `Baseline batch`).
 A **Report** shows the overlaid curves, a **Price at** choice (TTFT ≤ 1 s, 2 s, 5 s, or peak), one price box per accelerator type, and the cost table: output, $/chip-hour, $ per million output tokens, tokens per dollar.
-*What you can do:* Click a flagged batch to open the run. Override a price. **Download CSV** or **Copy as Markdown**.
+*What you can do:* Click a flagged batch to open the run. Override a price. **Download CSV** or **Copy as Markdown**. Once reports live on the server: **Share** makes the report openable by anyone with the link and copies it, in one click; until then only you can open it.
 *Design note:* Price boxes start filled in with the GCP list price (and say so), or with your own Leaderboard rate if you set one. An empty price box used to mean an empty cost table. Now the table is useful on first open.
 
 ### Review queue (public instance, reviewers)
@@ -218,6 +218,7 @@ Each journey is written as what the person does, then what "done" looks like.
 | Reviewers see the **chart against published results first** | The fastest way to spot a bad submission is its shape next to known-good curves. | Metadata is below the fold. |
 | Single-point runs show **tiles**, not a one-dot chart | A chart with one point tells you nothing. Tiles with the statistic named tell you four things. | Visual inconsistency between single- and multi-point runs. |
 | The **classic view** stays behind `?classic=1` | Some server-side flows (status of uploaded items) still live there. | Two UIs for a while. |
+| A new report is **private until you share it**; Share makes it link-openable and copies the link in one click | The only thing a report can leak is a price you typed in, which may be a customer's negotiated rate. Sharing still costs one click. | A URL copied from the address bar won't open for others; the page says why. |
 
 ---
 

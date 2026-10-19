@@ -159,7 +159,7 @@ Uses a two-column layout: a left `<aside aria-label="Saved watches and reports">
 - **Batch History Table**: Columns for `Date`, `Runs` (clickable to open the batch in `RunDetail` or `CompareView`), `Output`, `Baseline`, `Change` (signed `%`), and `Status` (`Baseline batch`, `Flagged`, `OK`).
 
 #### 3.4.2 Report View (`ReportView`)
-- **Header**: Kicker `Report`, `<h2>` title, description, **ExportActions** (`Download CSV`, `Copy as Markdown`), and **Delete**.
+- **Header**: Kicker `Report`, `<h2>` title, description, a visibility line (*Only you can open this report* / *Anyone with the link can open this report*), **Share** (sets the report to link-openable and copies the link in one action; a second control sets it back to private), **ExportActions** (`Download CSV`, `Copy as Markdown`), and **Delete**. *(Share and the visibility line arrive with the server-side records; see [design.md §4.5](design.md).)*
 - **Fairness Notice**: Warns automatically if the Results in the report use different models or workloads.
 - **Overlay Chart (`CurveChart`)**: Plots all Results in the report with `TTFT | TPOT | ITL | E2E`, `Mean | P50 | P99`, `Output | Total`, and `Per chip` controls.
 - **Cost & Sizing Panel (`Cost at …`)**:

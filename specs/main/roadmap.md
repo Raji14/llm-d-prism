@@ -20,7 +20,7 @@ Focus is on stabilizing core features, publishing the Results Store UI, ensuring
     *   **Description**: Combining the backend ingestion API with a new submission UI.
     *   **Status**: Active Development / Engineering Design
     *   **Next Steps**: Publish UI to prod with an AllowList of approvers. Implement GCS-backed ingestion API, validation checks, and IAM allowlist.
-    *   **Spec/Ref**: [Backend Ingestion API README](completed/results-api/README.md)
+    *   **Spec/Ref**: [Backend Ingestion API README](completed/results-api/README.md) · [UI spec](../changes/results-store-ui/ui_spec.md) · [UX brief](../../docs/results_store_ux_brief.md) · [Server-side Results/Watches/Reports/Sources design](../changes/results-store-ui/design.md)
 
 2.  **llm-d Results Store Scalability**
     *   **Description**: Scaling the database and adding advanced features to support the launch.

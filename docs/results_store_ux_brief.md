@@ -227,7 +227,7 @@ We'd rather list these than let people find them.
 
 1. **Everything you make stays in this browser.** Results, Watches, Reports and registered Sources are saved locally. A teammate can't open your report, a reviewer can't see your curated Result, and a watch only helps the person looking at it.
    *Why:* the backend Results API stores **runs** only (`/api/results`). There is no server record yet for a curated curve, a watch, a report, or a registered source. These four are the layer people build *on top of* runs, and they're what the store is for. The UI was built ahead of that backend so the workflows could be designed and tested against real run data; local storage is the stand-in. The runs themselves are never browser-only, and share links for runs and comparisons work for everyone.
-   *Fix:* a server-side record for each, designed through the development loop. This is the top item.
+   *Fix:* a server-side record for each. Drafted in the [engineering design](../specs/changes/results-store-ui/design.md); this is the top item.
 2. ~~**Two words for one idea.**~~ Done: the picker, the editor, the checks and Watches now all say **baseline**. *Reference* is gone from the UI.
 3. **Watches only watch throughput.** A TTFT regression or a jump in failed requests is invisible. Nothing notifies anyone; you have to come and look.
 4. **Jargon without a glossary.** `c=`, ISL/OSL, TPOT, harness and sweep are explained nowhere in the UI. A benchmark developer from outside the project will stall. Add short inline definitions and a link to *How we measure*.
@@ -295,4 +295,4 @@ Pass: four of five complete each task unaided, and nobody misreads a statistic.
 | Publish dialog | [PublishDialog.jsx](../src/components/ResultsStore/PublishDialog.jsx) |
 | Instance wording and the browser-only notice | [instance.js](../src/components/ResultsStore/instance.js) |
 | Prices | [pricingEngine.js](../src/utils/pricingEngine.js) |
-| Related specs | [UI spec](../specs/changes/results-store-ui/ui_spec.md), [Leaderboard UX brief](leaderboard_ux_brief.md) |
+| Related specs | [UI spec](../specs/changes/results-store-ui/ui_spec.md), [Engineering design](../specs/changes/results-store-ui/design.md), [Leaderboard UX brief](leaderboard_ux_brief.md) |

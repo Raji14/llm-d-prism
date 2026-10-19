@@ -57,12 +57,12 @@ const listLabels = (fields) => {
     return labels.length > 1 ? `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}` : labels[0] || '';
 };
 
-// Compare: default axes, a series per run/curve, and baselines overlaid
+// Compare: default axes, a series per run/curve, and added baselines overlaid
 // (dashed). Browsing never publishes; saving turns the selection into a curve.
 // `initialView` ({ latency, stat, throughput }) comes from a shared link.
 //
-// One series is the baseline for the table's Δ columns: the first reference
-// if there is one, else the first series, or whichever you pick.
+// One series is the baseline for the table's Δ columns: the one added last
+// with "Add baseline", else the first series, or whichever you pick.
 export function CompareView({ items, initialView, resolve, baselineOptions, copy, canCurate, nav, onShare, onAddToDashboard, onOpenInBrowser }) {
     const [extra, setExtra] = useState([]);
     const [removed, setRemoved] = useState(() => new Set());
@@ -74,7 +74,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const missing = all.length - resolved.length;
     // Results live in the browser that saved them, so a shared one can't open here.
     const missingResults = all.filter((i) => i.type === 'curve').length - resolved.filter((x) => x.item.type === 'curve').length;
-    // Defaults come from the compared series only, so adding a reference never
+    // Defaults come from the compared series only, so adding a baseline never
     // flips the chart to a metric they lack.
     const view = useChartView(
         resolved.filter((x) => !x.item.baseline).map((x) => x.s.points),
@@ -119,7 +119,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
             rows.map((r) => {
                 const d = r.key === baseKey ? null : deltas(r.stats);
                 return [
-                    `${r.s.name}${r.item.baseline ? ' (reference)' : ''}${r.key === baseKey ? ' · baseline' : ''}`,
+                    `${r.s.name}${r.key === baseKey ? ' · baseline' : ''}`,
                     r.s.points.length,
                     fmtTput(r.stats.peak),
                     d ? fmtPct(d.peak) : '',
@@ -210,15 +210,18 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                 subtitle={
                     unplotted.length
                         ? `${unplotted.length} series can’t be plotted with ${latLabel} and ${tp.label.toLowerCase()} throughput: ${unplotted.join(', ')}. Try another statistic or metric.`
-                        : 'Each line is one run or result, in concurrency order. References are dashed.'
+                        : `Each line is one run or result, in concurrency order. ${copy.publishedLabel} results added as baselines are dashed.`
                 }
                 actions={
                     <>
                         <MetricToggles view={view} />
                         <BaselinePicker
                             options={baselineOptions.filter((o) => !present.has(itemKey(o.item)))}
-                            onPick={(o) => setExtra((prev) => [...prev, { ...o.item, baseline: true }])}
-                            emptyText={`No ${copy.publishedLabel.toLowerCase()} results yet. Once you have one, you can add it here as a reference.`}
+                            onPick={(o) => {
+                                setExtra((prev) => [...prev, { ...o.item, baseline: true }]);
+                                setPickedBase(itemKey(o.item));
+                            }}
+                            emptyText={`No ${copy.publishedLabel.toLowerCase()} results yet. Once you have one, you can add it here as a baseline.`}
                         />
                     </>
                 }
@@ -244,7 +247,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                     </div>
                     <ExportActions
                         filename="prism-comparison.csv"
-                        csv={() => pointsCsv(resolved.map(({ item, s }) => ({ name: s.name, role: item.baseline ? 'reference' : 'compared', points: s.points })))}
+                        csv={() => pointsCsv(resolved.map(({ item, s }) => ({ name: s.name, role: itemKey(item) === baseKey ? 'baseline' : 'compared', points: s.points })))}
                         markdown={markdown}
                     />
                 </div>
@@ -272,7 +275,6 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(r.i) }} aria-hidden="true" />
                                                 <span className="font-medium text-zinc-900">{r.s.name}</span>
-                                                {r.item.baseline && <span className="text-tiny text-zinc-500">reference</span>}
                                                 {isBase && <span className="text-tiny font-semibold text-accent-700">baseline</span>}
                                                 {r.s.curve && <ResultStatusChip status={r.s.curve.status} copy={copy} size="xs" />}
                                             </div>

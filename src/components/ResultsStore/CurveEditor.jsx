@@ -83,7 +83,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
 
     const checks = useMemo(() => (curve ? curveChecks(curve) : []), [curve]);
     const baselines = curve ? curve.baselines.map((b) => ({ ...b, points: resolveBaseline(b) })) : [];
-    // Open on a latency this result recorded. Not the references': adding one
+    // Open on a latency this result recorded. Not the baselines': adding one
     // shouldn't switch the chart to a metric the result doesn't have.
     const view = useChartView(curve ? [curve.points] : [], { extraLists: baselines.map((b) => b.points) });
 
@@ -120,7 +120,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
         },
         ...baselines.map((b, i) => ({
             id: b.id,
-            name: `Reference: ${b.name}`,
+            name: `Baseline: ${b.name}`,
             color: seriesColor(i + 1),
             shape: ['diamond', 'triangle', 'square'][i % 3],
             lineStyle: 'dashed',
@@ -265,7 +265,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                                 <BaselinePicker
                                     options={baselineOptions.filter((o) => o.id !== curve.id && o.id !== curve.supersedes && !curve.baselines.some((b) => b.id === o.id))}
                                     onPick={(o) => ws.addBaseline(curve.id, { id: o.id, name: o.name, note: o.note, ref: o.item, points: o.points })}
-                                    emptyText={`No ${copy.publishedLabel.toLowerCase()} results yet. Once you have one, you can add it here as a reference.`}
+                                    emptyText={`No ${copy.publishedLabel.toLowerCase()} results yet. Once you have one, you can add it here as a baseline.`}
                                 />
                             )}
                         </>
@@ -280,11 +280,11 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                                     title={b.note ? `${b.name} · ${b.note}` : b.name}
                                     className="inline-flex max-w-full items-center gap-2 rounded-full border border-zinc-200 bg-white py-1 pl-3 pr-1.5 text-micro text-zinc-700"
                                 >
-                                    <span className="truncate">Reference: {b.name}</span>
+                                    <span className="truncate">Baseline: {b.name}</span>
                                     {!readOnly && (
                                         <button
                                             type="button"
-                                            aria-label={`Remove reference ${b.name}`}
+                                            aria-label={`Remove baseline ${b.name}`}
                                             onClick={() => ws.removeBaseline(curve.id, b.id)}
                                             className="rounded-full p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
                                         >

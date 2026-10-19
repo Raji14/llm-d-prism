@@ -47,7 +47,7 @@ function PointTooltip({ active, payload, xLabel, yLabel }) {
 }
 
 // What the chart shows, for its accessible description: "2 series: This
-// result, 6 points, 1 excluded; Reference: v1, 5 points."
+// result, 6 points, 1 excluded; Baseline: v1, 5 points."
 function describeSeries(series) {
     const points = (n) => `${n} point${n === 1 ? '' : 's'}`;
     const each = series.map((s) => [s.name, points(s.points.length), s.excluded?.length ? `${s.excluded.length} excluded` : null].filter(Boolean).join(', '));

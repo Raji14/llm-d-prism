@@ -84,7 +84,7 @@ const uniqueRuns = (list = []) => [...new Map(list.filter(Boolean).map((r) => [r
 //   u = one run (key) · s = a fixed set of runs (keys) · c = a result (id)
 //   r = a Browse row (key; only in links made before v2).
 // Sweeps travel as `s` with their exact runs, so a link doesn't drift to the
-// next nightly batch. ref = 1 marks a reference (drawn dashed). Results are
+// next nightly batch. ref = 1 marks an added baseline (drawn dashed). Results are
 // saved in one browser for now, so `c` only opens there; the share dialog
 // warns and offers the source runs instead. v1 links were a bare array, and
 // links without a statistic open on the default one.
@@ -248,7 +248,7 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, copy, onC
                 ? 'This run was uploaded only to this browser, so nobody else can open the link.'
                 : 'Anyone who can open the Results store can open this run.'
             : kind === 'compare'
-              ? 'The link opens the same runs, metric and references.'
+              ? 'The link opens the same runs, metric and baselines.'
               : 'Results are saved in this browser for now, so this link only opens here.';
     return (
         <Modal
@@ -882,7 +882,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     }, [share, runsFromKeys, runsFromItems]);
 
     // Swaps each result in a share for its source runs: a link that works for
-    // everyone. References stay references.
+    // everyone. Baselines stay baselines.
     const shareRunsInstead = () => {
         const swap = (item) => {
             const keys = ws.getCurve(item.id)?.builtFrom.runKeys || [];

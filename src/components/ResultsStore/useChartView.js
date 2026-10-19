@@ -22,7 +22,7 @@ import { availableMetrics, defaultStat } from './catalog';
 // `pointLists` holds one list of points per series the chart is about. The
 // defaults follow those: open on a metric they recorded, at P50 only when
 // every one of them has it (else the mean), so one chart never puts a median
-// next to a mean. `extraLists` (references, one list each) widen what the
+// next to a mean. `extraLists` (baselines, one list each) widen what the
 // toggles offer and steer the statistic toward one everyone shares, but never
 // flip the chart to something the main series lack. `initial` ({ latency,
 // stat, throughput }) comes from a shared link; null fields follow the data.

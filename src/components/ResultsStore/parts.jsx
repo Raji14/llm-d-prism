@@ -157,8 +157,8 @@ export function ExportActions({ filename, csv, markdown }) {
     );
 }
 
-// "+ Add reference" menu. options: [{ id, name, note, group }]
-export function BaselinePicker({ options, onPick, label = 'Add reference', emptyText }) {
+// "+ Add baseline" menu. options: [{ id, name, note, group }]
+export function BaselinePicker({ options, onPick, label = 'Add baseline', emptyText }) {
     const [open, setOpen] = useState(false);
     const rootRef = useRef(null);
     useEffect(() => {

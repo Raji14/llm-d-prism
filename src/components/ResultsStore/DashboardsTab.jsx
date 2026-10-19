@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Watches & reports. A Watch follows exactly one setup and compares each new
-// batch with a reference, so a different deployment is never flagged as a
+// batch with a baseline, so a different deployment is never flagged as a
 // regression. A Report collects Official / Published results to present, with
 // a price per accelerator type. (Reports are stored as "showcases".)
 
@@ -127,7 +127,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
     const rows = useMemo(() => buildRows(setup?.runs || []), [setup]);
     const batches = rows.reduce((n, row) => n + row.repeats.length, 0);
     const newestBatch = rows.find((row) => row.points.length > 1) || rows[0] || null;
-    // Only results of this same setup can be its reference.
+    // Only results of this same setup can be its baseline.
     const refs = useMemo(() => referenceCurves.filter((c) => curveConfigKey(c, runsByKey) === setupKey), [referenceCurves, runsByKey, setupKey]);
     const pinned = newestBatch ? { kind: 'pinned', name: `Pinned batch · ${fmtDay(newestBatch.ts)}`, points: newestBatch.points } : null;
     const chosen = refs.find((c) => c.id === refChoice) || (refChoice === 'pinned' ? null : refs[0]);
@@ -139,7 +139,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
 
     const create = () =>
         onCreate({
-            name: name.trim() || `${setup.label} vs. reference`,
+            name: name.trim() || `${setup.label} vs. baseline`,
             configKey: setup.key,
             setupLabel: setup.label,
             filters: {},
@@ -155,7 +155,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
             onClose={onClose}
             size="lg"
             title="Watch for regressions"
-            subtitle="Pick one setup. Each new batch of it is compared with a reference, and drops past the threshold are flagged."
+            subtitle="Pick one setup. Each new batch of it is compared with a baseline, and drops past the threshold are flagged."
             footer={
                 <>
                     <Button size="sm" variant="ghost" onClick={onClose}>
@@ -200,7 +200,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div className="sm:col-span-2">
                         <Label surface="light" htmlFor="rs-watch-ref">
-                            Reference
+                            Baseline
                         </Label>
                         <Select surface="light" id="rs-watch-ref" value={ref?.kind === 'curve' ? ref.id : 'pinned'} onChange={(e) => setRefChoice(e.target.value)} disabled={!setup}>
                             {refs.map((c) => (
@@ -242,7 +242,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         <Label surface="light" htmlFor="rs-watch-name">
                             Name
                         </Label>
-                        <Input surface="light" id="rs-watch-name" value={name} placeholder={setup ? `${setup.label} vs. reference` : 'Name this watch'} onChange={(e) => setName(e.target.value)} />
+                        <Input surface="light" id="rs-watch-name" value={name} placeholder={setup ? `${setup.label} vs. baseline` : 'Name this watch'} onChange={(e) => setName(e.target.value)} />
                     </div>
                 </div>
             </div>
@@ -309,10 +309,10 @@ function WatchTooltip({ active, payload }) {
     const p = payload[0].payload;
     return (
         <ChartTooltip title={fmtDay(p.ts)} subtitle={p.setup || p.title}>
-            <ChartTooltipRow color={p.flagged ? CHART_STATUS.critical : seriesColor(0)} label="vs. reference" value={fmtPct(p.delta)} />
+            <ChartTooltipRow color={p.flagged ? CHART_STATUS.critical : seriesColor(0)} label="vs. baseline" value={fmtPct(p.delta)} />
             <ChartTooltipRow label={p.conc != null ? `Output at c=${p.conc}` : 'Output throughput'} value={fmtTput(p.value)} unit=" tok/s" />
             {p.flagged && <div className="pt-1 text-tiny font-semibold text-red-700">Flagged: past the threshold</div>}
-            {p.isRef && !p.flagged && <div className="pt-1 text-tiny text-zinc-600">The batch the reference was made from</div>}
+            {p.isRef && !p.flagged && <div className="pt-1 text-tiny text-zinc-600">The batch the baseline was made from</div>}
         </ChartTooltip>
     );
 }
@@ -325,7 +325,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const matching = useMemo(() => (configKey ? runs.filter((r) => configKeyOf(r) === configKey) : []), [runs, configKey]);
     const series = useMemo(() => watchSeries(buildRows(matching), refPoints, watch), [matching, refPoints, watch]);
     const flagged = series.filter((s) => s.flagged);
-    // One batch, or only the batch the reference was made from, shows no trend
+    // One batch, or only the batch the baseline was made from, shows no trend
     // and proves nothing, so don't present it as a pass.
     const waiting = !flagged.length && (series.length < 2 || series.every((s) => s.isRef));
     const ref = nearestPoint(refPoints, watch.atConc);
@@ -340,8 +340,8 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const yHigh = Math.max(0, ...deltas);
     const yAxis = getAxisConfig([yLow - Math.max(1, (yHigh - yLow) * 0.15), yHigh], false, { includeZero: true });
     const waitingMessage = series.every((s) => s.isRef)
-        ? `So far this setup has only the batch${series.length === 1 ? '' : 'es'} the reference was made from, so there’s nothing to compare yet. Each new batch is compared with the reference, and drops of ${watch.threshold}% or worse are flagged.`
-        : `This setup has one batch so far (${fmtPct(series[0]?.delta)} against the reference). It takes a second batch to show a trend. Drops of ${watch.threshold}% or worse are flagged.`;
+        ? `So far this setup has only the batch${series.length === 1 ? '' : 'es'} the baseline was made from, so there’s nothing to compare yet. Each new batch is compared with the baseline, and drops of ${watch.threshold}% or worse are flagged.`
+        : `This setup has one batch so far (${fmtPct(series[0]?.delta)} against the baseline). It takes a second batch to show a trend. Drops of ${watch.threshold}% or worse are flagged.`;
     // The chart's accessible summary; the table under it lists every batch.
     const chartDesc = `${series.length} batch${series.length === 1 ? '' : 'es'}, ${
         flagged.length ? `${flagged.length} flagged at ${watch.threshold}% or worse` : `none past the ${watch.threshold}% threshold`
@@ -361,11 +361,11 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                         </div>
                     )}
                     <p className="mt-2 text-xs text-zinc-600">
-                        Reference: <span className="font-medium text-zinc-900">{watch.ref?.name}</span> · {metricLabel} · flag drops of {watch.threshold}% or worse
+                        Baseline: <span className="font-medium text-zinc-900">{watch.ref?.name}</span> · {metricLabel} · flag drops of {watch.threshold}% or worse
                     </p>
                     {watch.atConc == null && refConcs.length > 1 && (
                         <p className="mt-1 text-micro text-zinc-500">
-                            Peaks are compared over the concurrency levels the reference includes ({levelsLabel(refConcs)}), so a point left out of the reference can’t skew the result.
+                            Peaks are compared over the concurrency levels the baseline includes ({levelsLabel(refConcs)}), so a point left out of the baseline can’t skew the result.
                         </p>
                     )}
                 </div>
@@ -382,15 +382,15 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
 
             {fromFilters && configKey && (
                 <Notice>
-                    This watch was set up with filters, which compared different deployments with one reference. It now follows only its reference’s setup
+                    This watch was set up with filters, which compared different deployments with one baseline. It now follows only its baseline’s setup
                     {setupLabel ? ` (${setupLabel})` : ''}, so other deployments aren’t flagged.
                 </Notice>
             )}
 
             {!ref ? (
-                <EmptyState title="The reference is gone" message="Its result was discarded or has no point at this concurrency. Delete this watch and create a new one." />
+                <EmptyState title="The baseline is gone" message="Its result was discarded or has no point at this concurrency. Delete this watch and create a new one." />
             ) : !configKey ? (
-                <EmptyState title="This watch can’t tell which setup to follow" message="Its reference runs aren’t loaded. Delete it and start a new watch from a sweep." />
+                <EmptyState title="This watch can’t tell which setup to follow" message="Its baseline runs aren’t loaded. Delete it and start a new watch from a sweep." />
             ) : series.length === 0 ? (
                 <div className="rounded-3xl border border-zinc-200 bg-white">
                     <EmptyState icon={<Activity className="h-8 w-8" />} title="No batches yet" message="New runs of this setup join automatically." />
@@ -403,15 +403,15 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                         </div>
                     ) : (
                         <ChartContainer
-                            title="Change vs. reference"
-                            subtitle={`${series.length} batch${series.length === 1 ? '' : 'es'} · reference ${fmtTput(ref.output)} tok/s${ref.conc != null ? ` at c=${ref.conc}` : ''}`}
+                            title="Change vs. baseline"
+                            subtitle={`${series.length} batch${series.length === 1 ? '' : 'es'} · baseline ${fmtTput(ref.output)} tok/s${ref.conc != null ? ` at c=${ref.conc}` : ''}`}
                         >
                             <div style={{ height: 280 }}>
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart aria-label={`Change vs. reference: ${metricLabel}`} desc={chartDesc} data={series} margin={{ top: 10, right: 40, bottom: 45, left: 60 }}>
+                                    <LineChart aria-label={`Change vs. baseline: ${metricLabel}`} desc={chartDesc} data={series} margin={{ top: 10, right: 40, bottom: 45, left: 60 }}>
                                         <CartesianGrid {...gridProps()} />
                                         <ChartXAxis type="number" dataKey="ts" domain={['dataMin', 'dataMax']} tickFormatter={fmtShortDay} label="Run date" scale="time" />
-                                        <ChartYAxis type="number" dataKey="delta" domain={yAxis.domain} ticks={yAxis.ticks} tickFormatter={(v) => `${v}%`} label="Δ vs reference (%)" />
+                                        <ChartYAxis type="number" dataKey="delta" domain={yAxis.domain} ticks={yAxis.ticks} tickFormatter={(v) => `${v}%`} label="Δ vs baseline (%)" />
                                         <ReferenceLine y={0} stroke={theme.tick} strokeDasharray="2 4" />
                                         <ReferenceLine
                                             y={watch.threshold}
@@ -451,7 +451,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                     <th className="px-4 py-3 font-semibold">Date</th>
                                     <th className="px-4 py-3 font-semibold">Runs</th>
                                     <th className="px-4 py-3 text-right font-semibold">Output (tok/s)</th>
-                                    <th className="px-4 py-3 text-right font-semibold">Reference</th>
+                                    <th className="px-4 py-3 text-right font-semibold">Baseline</th>
                                     <th className="px-4 py-3 text-right font-semibold">Change</th>
                                     <th className="px-4 py-3 font-semibold">Status</th>
                                 </tr>
@@ -476,7 +476,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                             <StatusChip
                                                 status={s.flagged ? 'failed' : s.isRef ? 'waiting' : 'verified'}
                                                 size="xs"
-                                                label={s.flagged ? 'Flagged' : s.isRef ? 'Reference batch' : 'OK'}
+                                                label={s.flagged ? 'Flagged' : s.isRef ? 'Baseline batch' : 'OK'}
                                             />
                                             {s.missing?.length > 0 && <div className="mt-1 text-tiny text-amber-700">No {levelsLabel(s.missing)} in this batch</div>}
                                         </td>
@@ -797,7 +797,7 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                     {ws.watches.length ? (
                         <ul className="space-y-1">{all.filter((d) => d.kind === 'watch').map(item)}</ul>
                     ) : (
-                        <p className="px-3 text-micro text-zinc-500">Follows one setup and flags drops against a reference.</p>
+                        <p className="px-3 text-micro text-zinc-500">Follows one setup and flags drops against a baseline.</p>
                     )}
                 </div>
                 <div>
@@ -820,7 +820,7 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                         <EmptyState
                             icon={<LayoutDashboard className="h-8 w-8" />}
                             title="No watches or reports yet"
-                            message="A watch follows one setup and flags drops against a reference. A report collects results to present, with your own prices."
+                            message="A watch follows one setup and flags drops against a baseline. A report collects results to present, with your own prices."
                             action={
                                 <div className="flex flex-wrap justify-center gap-2">
                                     <Button size="xs" variant="secondary" onClick={onNewWatch}>

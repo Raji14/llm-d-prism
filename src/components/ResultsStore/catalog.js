@@ -24,7 +24,7 @@
 //            workload, harness, deployment). Watches follow exactly one.
 //
 // UI names: a curve is shown as a Result, a suggested curve as a Sweep, a
-// baseline as a Reference and a showcase as a Report.
+// baseline a Baseline and a showcase a Report.
 
 import { getBenchmarkKey } from '../../utils/dashboardHelpers';
 import { DEFAULT_PRICING_CATALOG, normalizeAcceleratorId } from '../../utils/pricingEngine';
@@ -177,7 +177,7 @@ export function availableMetrics(points) {
 // The statistic a chart opens on: P50 where every series recorded it, else
 // the mean, so one chart doesn't put one run's median next to another's mean.
 // `pointLists` holds one list of points per series the chart is about;
-// `otherLists` (references) count only toward a statistic everyone shares,
+// `otherLists` (baselines) count only toward a statistic everyone shares,
 // never toward one the main series lack.
 const STAT_ORDER = ['p50', 'mean', 'p99'];
 export function defaultStat(pointLists, metric, otherLists = []) {
@@ -1081,8 +1081,8 @@ export function curveChecks(curve) {
 
     out.push(
         curve.baselines.length
-            ? { id: 'base', level: 'ok', text: `Compared against ${curve.baselines.length} reference${curve.baselines.length > 1 ? 's' : ''}.` }
-            : { id: 'base', level: 'info', text: 'No reference yet. Add one to check this result against it.' }
+            ? { id: 'base', level: 'ok', text: `Compared against ${curve.baselines.length} baseline${curve.baselines.length > 1 ? 's' : ''}.` }
+            : { id: 'base', level: 'info', text: 'No baseline yet. Add one to check this result against it.' }
     );
     return out;
 }
@@ -1099,11 +1099,11 @@ export function nearestPoint(points, conc) {
 }
 
 // One value per batch (newest sweep, nightly repeat, …) against the pinned
-// reference. A drop past the threshold (e.g. -5%) is flagged.
+// baseline. A drop past the threshold (e.g. -5%) is flagged.
 //
-// Batches are measured over the concurrency levels the reference includes.
-// Otherwise excluding an overloaded c=256 from the reference would make every
-// batch's peak look higher than the reference's, and hide a real drop.
+// Batches are measured over the concurrency levels the baseline includes.
+// Otherwise excluding an overloaded c=256 from the baseline would make every
+// batch's peak look higher than the baseline's, and hide a real drop.
 export function watchSeries(rows, refPoints, watch) {
     const ref = nearestPoint(refPoints, watch.atConc);
     if (!ref) return [];
@@ -1126,9 +1126,9 @@ export function watchSeries(rows, refPoints, watch) {
                 refConc: ref.conc,
                 delta,
                 flagged: delta <= watch.threshold,
-                // The batch the reference was made from: comparing it with itself proves nothing.
+                // The batch the baseline was made from: comparing it with itself proves nothing.
                 isRef: rep.runs.some((r) => refRuns.has(r.key)),
-                // Reference levels this batch didn't measure (e.g. a sweep that stopped early).
+                // Baseline levels this batch didn't measure (e.g. a sweep that stopped early).
                 missing: watch.atConc == null ? [...refConcs].filter((c) => !all.some((q) => q.conc === c)).sort((a, b) => a - b) : [],
                 title: row.title,
                 setup: row.setup,
@@ -1139,7 +1139,7 @@ export function watchSeries(rows, refPoints, watch) {
     return out.sort((a, b) => a.ts - b.ts);
 }
 
-// A watch's reference: a live curve (follows its edits) or a pinned snapshot.
+// A watch's baseline: a live curve (follows its edits) or a pinned snapshot.
 export const watchRefPoints = (watch, getCurve) => {
     if (watch.ref?.kind === 'curve') {
         const c = getCurve(watch.ref.id);
@@ -1149,7 +1149,7 @@ export const watchRefPoints = (watch, getCurve) => {
 };
 
 // The one setup a watch follows. Watches made before setups existed only had
-// filters; they follow their reference's setup instead.
+// filters; they follow their baseline's setup instead.
 export function watchConfigKey(watch, { getCurve, runsByKey }) {
     if (watch.configKey) return watch.configKey;
     if (watch.ref?.kind === 'curve') {

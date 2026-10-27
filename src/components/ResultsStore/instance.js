@@ -14,8 +14,9 @@
 
 // One codebase, two instance modes. The mode drives labels, the publish rule
 // and whether the Review queue exists:
-//   internal — pipeline-fed instance. Publishing marks a curve Official; there
-//              is no approver. The word "public" is never shown.
+//   internal — pipeline-fed instance. Publishing marks a curve Official. Only
+//              approvers (admins, signed in) can; Prism records who did it.
+//              The word "public" is never shown.
 //   public   — community store. Publishing submits a curve for review; an
 //              admin approves it and it becomes Published.
 // Set VITE_PRISM_INSTANCE=internal at build time. On the dev server only,
@@ -36,13 +37,16 @@ export function readInstanceMode() {
     return import.meta.env.VITE_PRISM_INSTANCE === 'internal' ? 'internal' : 'public';
 }
 
+// `unofficialLabel` marks results that aren't Official / Published yet, for
+// example a draft priced in a report.
 export const INSTANCE_COPY = {
     internal: {
         name: 'Internal instance',
-        rule: 'Marking a result official needs no approver. Prism records who did it and when.',
+        rule: 'Only approvers can mark a result official. Prism records who did it and when.',
         publishVerb: 'Mark official',
         publishedStatus: 'official',
         publishedLabel: 'Official',
+        unofficialLabel: 'Unofficial',
         mineSection: 'Official by me',
         uploadLabel: 'Upload runs',
         shareVisibility: 'instance',
@@ -54,6 +58,7 @@ export const INSTANCE_COPY = {
         publishVerb: 'Submit for review',
         publishedStatus: 'published',
         publishedLabel: 'Published',
+        unofficialLabel: 'Unpublished',
         mineSection: 'Published by me',
         uploadLabel: 'Submit results',
         shareVisibility: 'link',

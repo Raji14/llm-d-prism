@@ -138,6 +138,8 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
         onNavigate?.(view);
     };
 
+    const hideSubmit = currentView === 'results-store' || currentView === SUBMIT.view || currentView === 'submit';
+
     return (
         <header className="surface-light relative z-50 shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl text-zinc-900 font-sans">
             <nav aria-label="Primary" className="mx-auto max-w-6xl h-16 px-4 sm:px-6 flex items-center gap-4 md:gap-6">
@@ -195,15 +197,17 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                 >
                     <Github className="w-4 h-4" /> GitHub
                 </a>
-                <Button
-                    href={`?view=${SUBMIT.view}`}
-                    onClick={(e) => goTo(e, SUBMIT.view)}
-                    variant="secondary"
-                    size="md"
-                    className="hidden h-9 px-4 py-0 sm:inline-flex"
-                >
-                    {SUBMIT.label}
-                </Button>
+                {!hideSubmit && (
+                    <Button
+                        href={`?view=${SUBMIT.view}`}
+                        onClick={(e) => goTo(e, SUBMIT.view)}
+                        variant="secondary"
+                        size="md"
+                        className="hidden h-9 px-4 py-0 sm:inline-flex"
+                    >
+                        {SUBMIT.label}
+                    </Button>
+                )}
                 <button
                     type="button"
                     className="lg:hidden h-9 w-9 rounded-full flex items-center justify-center text-zinc-700 hover:bg-zinc-100"
@@ -253,9 +257,11 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                         </div>
                     ))}
                     <div className="mt-2 pt-4 border-t border-zinc-100 flex flex-wrap items-center gap-3">
-                        <Button href={`?view=${SUBMIT.view}`} onClick={(e) => goTo(e, SUBMIT.view)} size="md" className="h-10 py-0">
-                            {SUBMIT.label}
-                        </Button>
+                        {!hideSubmit && (
+                            <Button href={`?view=${SUBMIT.view}`} onClick={(e) => goTo(e, SUBMIT.view)} size="md" className="h-10 py-0">
+                                {SUBMIT.label}
+                            </Button>
+                        )}
                         <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer" variant="secondary" size="md" className="h-10 py-0">
                             Docs
                         </Button>

@@ -23,7 +23,7 @@
 // Sweeps and runs publish in one step; the result is created behind the scenes.
 
 import React, { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronDown, CircleAlert, Github, LogOut, Shield, Upload, X } from 'lucide-react';
+import { BookOpen, ChevronDown, CircleAlert, Github, LogOut, Shield, Upload, X } from 'lucide-react';
 import { Badge, Button, Input, LoadingState, Modal, PageHeader, Spinner, TabPanel, Tabs, ToggleGroup } from './ui';
 import { cn } from '../utils/cn';
 import { useGitHubAuth } from '../hooks/useGitHubAuth.js';
@@ -46,6 +46,7 @@ import {
     fmtDay,
     handleOf,
     isPublishedState,
+    loadOrder,
     runKeyOf,
     runsConfig,
 } from './ResultsStore/catalog';
@@ -61,6 +62,7 @@ import { ReviewQueueTab } from './ResultsStore/ReviewQueueTab';
 import { SourcesTab } from './ResultsStore/SourcesTab';
 import { plainSyncError } from './ResultsStore/sourceHealth';
 import { PublishDialog } from './ResultsStore/PublishDialog';
+import { GlossaryDialog } from './ResultsStore/Glossary';
 import { CopyButton, Notice } from './ResultsStore/parts';
 
 const ClassicResultsStore = lazy(() => import('./ResultsStore/ClassicResultsStore'));
@@ -68,6 +70,9 @@ const ClassicResultsStore = lazy(() => import('./ResultsStore/ClassicResultsStor
 const TABS = ['browse', 'mywork', 'dashboards', 'review', 'sources'];
 const DEV = import.meta.env.DEV;
 const PREVIEW_ROLES = ['admin', 'contributor'];
+// What Back buttons call the place they return to.
+const TAB_NAMES = { browse: 'Browse', mywork: 'My work', dashboards: 'Watches & reports', review: 'Review queue', sources: 'Sources' };
+const SCREEN_NAMES = { run: 'the run', compare: 'the comparison', curve: 'the result' };
 
 const readParam = (name) => {
     try {
@@ -307,9 +312,9 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, copy, onC
 // admin can check the contributor view too; picking your real role clears it.
 function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRole }) {
     return (
-        <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-dashed border-zinc-300 px-4 py-2.5 text-micro text-zinc-600">
+        <div className="my-1.5 flex flex-wrap items-center gap-2.5 rounded-full border border-dashed border-zinc-300 bg-zinc-50/70 px-3 py-1 text-micro text-zinc-600">
             <span className="label-caps text-zinc-500">Preview · dev only</span>
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
                 Instance
                 <ToggleGroup
                     size="xs"
@@ -322,7 +327,7 @@ function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRol
                     ]}
                 />
             </span>
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5">
                 Role
                 <ToggleGroup
                     size="xs"
@@ -331,7 +336,7 @@ function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRol
                     onChange={(v) => onPreviewRole(v === (signedInAdmin ? 'admin' : 'contributor') ? null : v)}
                     options={[
                         { value: 'contributor', label: 'Contributor' },
-                        { value: 'admin', label: 'Admin / reviewer' },
+                        { value: 'admin', label: instance === 'internal' ? 'Admin / approver' : 'Admin / reviewer' },
                     ]}
                 />
                 {signedInAdmin && !isAdmin && <span className="text-zinc-500">You’re signed in as an admin</span>}
@@ -343,7 +348,7 @@ function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRol
 function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboardData, auth, instance, onInstance, previewRole, onPreviewRole, onOpenClassic }) {
     const ws = useWorkspace();
     const copy = INSTANCE_COPY[instance];
-    const { user, isAuthenticated } = auth;
+    const { user, isAuthenticated, login, isConfigured } = auth;
     const {
         data = [],
         selectedSources,
@@ -366,27 +371,52 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     // On the dev server the preview bar can override the real role either way.
     const isAdmin = DEV && previewRole ? previewRole === 'admin' : signedInAdmin;
     const isReviewer = instance === 'public' && isAdmin;
+    // Internal instance: only approvers mark a result official, and only when
+    // signed in, so Prism records who did it. Approvers are admins: llm-d org
+    // admins or people on the admin allowlist (specs/main/completed/results-api/iam.md).
+    // On the dev server a preview role stands in for a signed-in account.
+    // Null when allowed (always on the public store), else why not: 'signin' or 'approver'.
+    const signedIn = !!(isAuthenticated && user?.username);
+    const previewing = DEV && !!previewRole;
+    const officialBlock = instance !== 'internal' ? null : !signedIn && !previewing ? 'signin' : isAdmin ? null : 'approver';
 
     const [tab, setTab] = useState(initialTab);
     const [stack, setStack] = useState(initialStack);
-    const [browse, setBrowse] = useState(() => ({ query: '', filters: {}, sort: 'newest', kind: 'all', selected: new Set(), addTo: null, sweepsExpanded: false }));
+    const [browse, setBrowse] = useState(() => ({ query: '', filters: {}, sort: 'newest', kind: 'all', selected: new Set(), addTo: null }));
     const [dashActive, setDashActive] = useState(null);
     const [share, setShare] = useState(null);
     const [watchDialog, setWatchDialog] = useState(null);
+    const [glossary, setGlossary] = useState(false);
     const [dashDialog, setDashDialog] = useState(null);
     const [quick, setQuick] = useState(null);
     const [queue, setQueue] = useState({ items: [], loading: false, error: null });
     const [syncing, setSyncing] = useState(false);
+    const [noticeDismissed, setNoticeDismissed] = useState(() => {
+        try {
+            return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('prism_results_notice_dismissed') === '1';
+        } catch {
+            return false;
+        }
+    });
+    const dismissNotice = useCallback(() => {
+        setNoticeDismissed(true);
+        try {
+            sessionStorage.setItem('prism_results_notice_dismissed', '1');
+        } catch {
+            // sessionStorage unavailable
+        }
+    }, []);
     // Ties the section tabs to the panel that shows their content.
     const tabsId = useId();
     const screen = stack[stack.length - 1] || null;
 
     const notify = useCallback((message, type = 'success') => addToast?.(message, type), [addToast]);
 
-    // Who may curate (publish, edit, make results from) which runs. Internal:
-    // everyone. Public store: only your own uploads, meaning runs uploaded
-    // from this browser or submitted under your GitHub account.
-    const canCurate = useCallback(
+    // Which runs belong to the current user (uploaded from this browser or
+    // submitted under their GitHub account). On the public store, only your
+    // own uploaded runs show in My work's Uploads section or can be submitted
+    // for review.
+    const ownsRuns = useCallback(
         (list = []) => {
             if (instance === 'internal') return list.length > 0;
             const me = user?.username?.toLowerCase();
@@ -394,6 +424,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         },
         [instance, user]
     );
+    // Anyone may curate (edit, make sandbox draft results from) catalog runs or
+    // sweeps on either instance.
+    const canCurate = useCallback((list = []) => list.length > 0, []);
+    // Who may publish them in one step: on the internal instance, approvers
+    // (see officialBlock); on the public store, only the owner of the uploaded runs.
+    const canPublish = useCallback((list = []) => ownsRuns(list) && !officialBlock, [ownsRuns, officialBlock]);
 
     // ------------------------------------------------------------ catalog
     const aliases = useMemo(
@@ -452,8 +488,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const publishedCurves = useMemo(() => ws.curves.filter((c) => c.status === copy.publishedStatus), [ws.curves, copy.publishedStatus]);
     const curvedRunKeys = useMemo(() => new Set(ws.curves.flatMap((c) => c.builtFrom.runKeys || [])), [ws.curves]);
     const uploads = useMemo(
-        () => runs.filter((r) => r.isUpload && [null, 'staged', 'unlisted'].includes(r.submissionState) && !curvedRunKeys.has(r.key) && canCurate([r])),
-        [runs, curvedRunKeys, canCurate]
+        () => runs.filter((r) => r.isUpload && [null, 'staged', 'unlisted'].includes(r.submissionState) && !curvedRunKeys.has(r.key) && ownsRuns([r])),
+        [runs, curvedRunKeys, ownsRuns]
     );
     const serverItems = useMemo(
         () => submissions.filter((s) => !String(s.id).startsWith('dyn-') && !uploads.some((r) => r.runId === s.runId)),
@@ -532,13 +568,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 const list = runsFromKeys(item.keys);
                 if (!list.length) return null;
                 const first = list[0];
-                const setups = new Set(list.map((r) => r.setup));
-                const setup = setups.size === 1 ? first.setup : null;
                 const missing = item.keys.length - list.length;
-                const points = list.flatMap((r) => r.points).sort((a, b) => (a.conc ?? Infinity) - (b.conc ?? Infinity));
+                const points = loadOrder(list.flatMap((r) => r.points)).points;
                 return {
                     id: item.key,
-                    name: setup ? `${first.title} · ${setup}` : first.title,
+                    name: first.title,
                     kindLabel: [list.length > 1 ? `${list.length} runs` : `Run ${first.idLabel}`, fmtDay(Math.max(0, ...list.map((r) => r.ts || 0))), missing ? `${missing} not loaded` : null]
                         .filter(Boolean)
                         .join(' · '),
@@ -552,7 +586,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 if (!row) return null;
                 return {
                     id: row.key,
-                    name: row.setup ? `${row.title} · ${row.setup}` : row.title,
+                    name: row.title,
                     kindLabel: row.kind === 'suggested' ? `Sweep · ${row.runs.length} runs · ${fmtDay(row.ts)}` : `Run · ${fmtDay(row.ts)}`,
                     points: row.points,
                     runs: row.runs,
@@ -566,6 +600,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         [ws, rowsByKey, runOfKey, runsFromKeys]
     );
 
+    // Everything that can be a baseline, each with what it measured so
+    // Compare can list the closest matches first.
     const baselineOptions = useMemo(
         () => [
             ...publishedCurves.map((c) => ({
@@ -575,18 +611,17 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 group: `${copy.publishedLabel} results`,
                 item: { type: 'curve', id: c.id },
                 points: c.points.filter((p) => p.included),
+                config: curveConfig(c),
             })),
-            ...allRows
-                .filter((r) => r.kind === 'suggested' || r.points.length > 2)
-                .slice(0, 40)
-                .map((r) => ({
-                    id: r.key,
-                    name: r.setup ? `${r.title} · ${r.setup}` : r.title,
-                    note: `${r.harness} · ${fmtDay(r.ts)} · not ${copy.publishedLabel.toLowerCase()}`,
-                    group: 'Other runs',
-                    item: { type: 'row', key: r.key },
-                    points: r.points,
-                })),
+            ...allRows.map((r) => ({
+                id: r.key,
+                name: r.title,
+                note: [r.kind === 'suggested' ? `Sweep · ${r.runs.length} runs` : `${r.points.length} point${r.points.length === 1 ? '' : 's'}`, r.harness, fmtDay(r.ts)].join(' · '),
+                group: 'Runs and sweeps',
+                item: { type: 'row', key: r.key },
+                points: r.points,
+                config: runsConfig(r.runs),
+            })),
         ],
         [publishedCurves, allRows, copy]
     );
@@ -652,6 +687,29 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
 
     const push = useCallback((next) => setStack((s) => [...s, next]), []);
 
+    // Results made from exactly these runs, any status.
+    const resultsOfRuns = useCallback(
+        (list = []) => {
+            const keys = new Set(list.filter(Boolean).map((r) => r.key));
+            if (!keys.size) return [];
+            return ws.curves.filter((c) => (c.builtFrom.runKeys || []).length === keys.size && c.builtFrom.runKeys.every((k) => keys.has(k)));
+        },
+        [ws.curves]
+    );
+    // The one to reuse for a report: the live Official / Published result
+    // first, then one in review, then the newest draft.
+    const resultFromRuns = useCallback(
+        (list = []) => {
+            const rank = (c) => (['official', 'published'].includes(c.status) ? 0 : c.status === 'in_review' ? 1 : ['draft', 'needs_changes'].includes(c.status) ? 2 : null);
+            return (
+                resultsOfRuns(list)
+                    .filter((c) => rank(c) != null)
+                    .sort((a, b) => rank(a) - rank(b) || b.updatedAt - a.updatedAt)[0] || null
+            );
+        },
+        [resultsOfRuns]
+    );
+
     const makeCurve = useCallback(
         (curveRuns) => {
             const unique = uniqueRuns(curveRuns);
@@ -659,12 +717,21 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 notify('Those runs aren’t loaded yet. Try again in a moment.', 'error');
                 return;
             }
-            const id = ws.createCurve(unique);
             setBrowse((b) => ({ ...b, selected: new Set() }));
+            // A draft of exactly these runs already exists (say, one a report
+            // made): open it rather than start a second one with the same name.
+            const draft = resultsOfRuns(unique)
+                .filter((c) => ['draft', 'needs_changes'].includes(c.status))
+                .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+            if (draft) {
+                push({ type: 'curve', id: draft.id });
+                return;
+            }
+            const id = ws.createCurve(unique);
             push({ type: 'curve', id });
             notify('Draft saved. Only you can see it.');
         },
-        [ws, push, notify]
+        [ws, push, notify, resultsOfRuns]
     );
 
     const runsFromItems = useCallback(
@@ -699,12 +766,22 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         [ws.curves]
     );
 
+    // Where Back goes, named: the screen underneath, else the tab.
+    const prevScreen = stack.length > 1 ? stack[stack.length - 2] : null;
+    const backLabel = prevScreen ? `Back to ${SCREEN_NAMES[prevScreen.type] || 'the previous screen'}` : `Back to ${TAB_NAMES[tab] || 'Browse'}`;
+
     const nav = useMemo(
         () => ({
             goTab,
             back: () => setStack((s) => s.slice(0, -1)),
+            backLabel,
             openRun: (key) => push({ type: 'run', key }),
-            openCompare: (items) => push({ type: 'compare', items }),
+            // A comparison uses up the selection that made it, so picks hidden
+            // by later filters never slip into the next one.
+            openCompare: (items) => {
+                setBrowse((b) => (b.selected?.size ? { ...b, selected: new Set() } : b));
+                push({ type: 'compare', items });
+            },
             openCurve: (id) => push({ type: 'curve', id }),
             makeCurve,
             makeCurveFromItems: (items) => makeCurve(runsFromItems(items)),
@@ -714,18 +791,19 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 setStack([]);
             },
             // One step from a sweep or run to Official / In review. Already
-            // published? Open that result instead of making a duplicate.
+            // published? Open that result instead of making a duplicate. Only
+            // approvers mark results official (officialBlock).
             publish: (list) => {
                 const unique = uniqueRuns(list);
                 const existing = resultOf(unique);
                 if (existing) push({ type: 'curve', id: existing.id });
-                else if (unique.length) setQuick({ runs: unique });
+                else if (unique.length && canPublish(unique)) setQuick({ runs: unique });
             },
             // A watch always follows one setup ({ configKey }), or starts from
             // Browse filters and asks which setup ({ filters }).
             watchSetup: (initial) => setWatchDialog(initial),
         }),
-        [goTab, push, makeCurve, runsFromItems, resultOf]
+        [goTab, push, makeCurve, runsFromItems, resultOf, canPublish, backLabel]
     );
 
     const addSelectionToCurve = useCallback(
@@ -739,6 +817,52 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         },
         [browse.addTo, runsFromItems, ws, notify]
     );
+
+    // A report holds results of any status; ones that aren't Official /
+    // Published are marked Unofficial / Unpublished there. Compare's runs and
+    // sweeps go in as the result already made from them, or as a new draft.
+    // Returns the result ids and how many drafts it made.
+    const reportIdsFor = (items = []) => {
+        const made = new Map();
+        let created = 0;
+        const ids = items
+            .map((i) => {
+                if (i.type === 'curve') return i.id;
+                const list = uniqueRuns(runsFromItems([i]));
+                if (!list.length) return null;
+                const sig = list
+                    .map((r) => r.key)
+                    .sort()
+                    .join('+');
+                if (!made.has(sig)) {
+                    let id = resultFromRuns(list)?.id;
+                    if (!id) {
+                        id = ws.createCurve(list);
+                        created += 1;
+                    }
+                    made.set(sig, id);
+                }
+                return made.get(sig);
+            })
+            .filter(Boolean);
+        return { ids: [...new Set(ids)], created };
+    };
+
+    // "Add to a report" for Compare's series or one result. Runs and sweeps
+    // wait in `raw` until the dialog actually adds them, so cancelling makes nothing.
+    const openReportDialog = (items = []) =>
+        setDashDialog({ curveIds: items.filter((i) => i.type === 'curve').map((i) => i.id), raw: items.filter((i) => i.type !== 'curve') });
+
+    // Turns the dialog's runs and sweeps into results once, so adding to a
+    // second report reuses the same ones.
+    const resolveReportDialog = () => {
+        if (!dashDialog?.raw?.length) return { ids: dashDialog?.curveIds || [], created: 0 };
+        const { ids, created } = reportIdsFor(dashDialog.raw);
+        const all = [...new Set([...dashDialog.curveIds, ...ids])];
+        setDashDialog({ curveIds: all, raw: [] });
+        return { ids: all, created };
+    };
+    const draftsNote = (n) => (n ? ` ${n === 1 ? 'A new draft was' : `${n} new drafts were`} saved in My work.` : '');
 
     // ------------------------------------------------------------ hand-offs
     const onUpload = () => onNavigate('submit-benchmarks', { intent: instance === 'public' ? 'submit-review' : 'stage-locally' });
@@ -1023,6 +1147,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 curvesUsingRun={ws.curves.filter((c) => c.points.some((p) => p.runKey === runKey || p.runKey === screen.key))}
                 copy={copy}
                 canCurate={canCurate}
+                canPublish={canPublish}
                 resultOf={resultOf}
                 nav={nav}
                 onShare={setShare}
@@ -1040,23 +1165,33 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 canCurate={canCurate}
                 nav={nav}
                 onShare={setShare}
-                onAddToDashboard={(curveIds) => setDashDialog({ curveIds })}
+                onAddToDashboard={openReportDialog}
                 onOpenInBrowser={openInBrowser}
             />
         );
     } else if (screen?.type === 'curve') {
+        const shownCurve = ws.getCurve(screen.id);
+        const curveRuns = shownCurve ? runsFromKeys(shownCurve.builtFrom?.runKeys || []) : [];
+        const ownsCurve =
+            instance !== 'public' ||
+            (shownCurve && ((shownCurve.localRunIds?.length || 0) + (shownCurve.submissionRunIds?.length || 0) > 0 || ownsRuns(curveRuns)));
         content = (
             <CurveEditor
                 key={screen.id}
-                curve={ws.getCurve(screen.id)}
+                curve={shownCurve}
                 copy={copy}
                 baselineOptions={baselineOptions}
                 resolveBaseline={resolveBaseline}
                 isReviewer={isReviewer}
+                officialBlock={officialBlock}
+                publicBlock={!ownsCurve ? 'ownership' : null}
+                onUpload={onUpload}
+                onSignIn={() => login?.()}
+                signInReady={!!isConfigured}
                 nav={nav}
                 notify={notify}
                 onShare={setShare}
-                onAddToDashboard={(curveIds) => setDashDialog({ curveIds })}
+                onAddToDashboard={(curveIds) => setDashDialog({ curveIds, raw: [] })}
                 onWatch={(c) => setWatchDialog({ configKey: curveConfigKey(c, runsByKey), refCurveId: c.id })}
                 onSubmitForReview={submitForReview}
                 onContinueUpload={continueUpload}
@@ -1071,6 +1206,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 instance={instance}
                 copy={copy}
                 actor={actor}
+                canPublish={canPublish}
+                officialBlock={officialBlock}
                 nav={nav}
                 onOpenClassic={onOpenClassic}
                 onUpload={onUpload}
@@ -1086,7 +1223,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 onSelect={setDashActive}
                 nav={nav}
                 onNewWatch={() => setWatchDialog({})}
-                onNewShowcase={() => setDashDialog({ curveIds: [] })}
+                onNewShowcase={() => setDashDialog({ curveIds: [], raw: [] })}
             />
         );
     } else if (activeTab === 'review') {
@@ -1129,11 +1266,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     mineOf={mineOf}
                     canCurate={canCurate}
                     canCurateItems={canCurateItems}
+                    canPublish={canPublish}
+                    officialBlock={officialBlock}
                     resultOf={resultOf}
                     addTo={addToCurve}
                     onAddToCurve={addSelectionToCurve}
                     onWatchFilters={(filters) => setWatchDialog({ filters })}
-                    onShareView={(items) => setShare({ kind: 'compare', items, title: 'Selection' })}
                     onUpload={onUpload}
                     onOpenClassic={onOpenClassic}
                 />
@@ -1158,6 +1296,10 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 actions={
                     <>
                         <AccountMenu auth={auth} />
+                        <Button size="sm" variant="ghost" onClick={() => setGlossary(true)}>
+                            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                            Glossary
+                        </Button>
                         <Button size="sm" variant={instance === 'public' ? 'primary' : 'secondary'} onClick={onUpload}>
                             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
                             {copy.uploadLabel}
@@ -1166,26 +1308,32 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 }
             />
 
-            <div className="mx-auto w-full max-w-6xl px-4 pt-6 sm:px-6">
-                {DEV && (
-                    <PreviewBar
-                        instance={instance}
-                        onInstance={(v) => {
-                            setStack([]);
-                            setBrowse((b) => ({ ...b, selected: new Set(), addTo: null }));
-                            onInstance(v);
-                        }}
-                        isAdmin={isAdmin}
-                        signedInAdmin={signedInAdmin}
-                        onPreviewRole={onPreviewRole}
-                    />
+            <div className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 shadow-[inset_0_-1px_0_0_var(--color-zinc-200)]">
+                    <Tabs tabs={tabs} value={activeTab} onChange={goTab} ariaLabel="Results store sections" idBase={tabsId} className="shadow-none" />
+                    {DEV && (
+                        <PreviewBar
+                            instance={instance}
+                            onInstance={(v) => {
+                                setStack([]);
+                                setBrowse((b) => ({ ...b, selected: new Set(), addTo: null }));
+                                onInstance(v);
+                            }}
+                            isAdmin={isAdmin}
+                            signedInAdmin={signedInAdmin}
+                            onPreviewRole={onPreviewRole}
+                        />
+                    )}
+                </div>
+                {!noticeDismissed && (
+                    <Notice className="mt-3" onDismiss={dismissNotice} dismissLabel="Dismiss browser storage note">
+                        {BROWSER_NOTE}
+                    </Notice>
                 )}
-                <Tabs tabs={tabs} value={activeTab} onChange={goTab} ariaLabel="Results store sections" idBase={tabsId} />
-                <Notice className="mt-4">{BROWSER_NOTE}</Notice>
             </div>
 
             {/* The tabs' panel, not a <main>: App.jsx already wraps every view in one. */}
-            <TabPanel idBase={tabsId} value={activeTab} className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+            <TabPanel idBase={tabsId} value={activeTab} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6">
                 {content}
             </TabPanel>
 
@@ -1199,6 +1347,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 onClose={() => setShare(null)}
                 onShareRunsInstead={shareRunsInstead}
             />
+
+            <GlossaryDialog isOpen={glossary} onClose={() => setGlossary(false)} copy={copy} />
 
             {quick && quickSubject && (
                 <PublishDialog
@@ -1216,7 +1366,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         makeCurve(picked);
                     }}
                     onMarkOfficial={() => {
+                        if (officialBlock) return;
                         ws.publishRuns(quick.runs);
+                        // Like Edit, publishing uses up the selection: the sweep
+                        // now shows as its result, so a pick on it would linger.
+                        setBrowse((b) => ({ ...b, selected: new Set() }));
                         setQuick(null);
                         notify(`Marked official: ${quickSubject.name}. It’s saved in this browser for now.`);
                     }}
@@ -1225,7 +1379,10 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         setQuick(null);
                         const serverRunIds = picked.filter((r) => r.isUpload && !r.isLocalOnly && r.runId).map((r) => r.runId);
                         const outcome = reviewOutcome(serverRunIds.length, await sendRunsForReview(serverRunIds));
-                        if (outcome.ok) ws.publishRuns(picked, { attribution });
+                        if (outcome.ok) {
+                            ws.publishRuns(picked, { attribution });
+                            setBrowse((b) => ({ ...b, selected: new Set() }));
+                        }
                         notify(outcome.message, outcome.ok ? 'success' : 'error');
                     }}
                     onContinueUpload={() => {
@@ -1250,7 +1407,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         setWatchDialog(null);
                         setDashActive(id);
                         goTab('dashboards');
-                        notify('Watch created. New runs of this setup join automatically.');
+                        notify('Watch created. Each time you open it, it checks the newest runs of this setup against the baseline.');
                     }}
                 />
             )}
@@ -1260,23 +1417,27 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     isOpen
                     copy={copy}
                     curveIds={dashDialog.curveIds}
+                    pending={dashDialog.raw?.length || 0}
                     showcases={ws.showcases}
                     onClose={() => setDashDialog(null)}
                     onAdd={(showcaseId) => {
-                        dashDialog.curveIds.forEach((id) => ws.addToShowcase(showcaseId, id));
-                        notify('Added to the report.');
+                        const { ids, created } = resolveReportDialog();
+                        ids.forEach((id) => ws.addToShowcase(showcaseId, id));
+                        notify(`Added to the report.${draftsNote(created)}`);
                     }}
                     onCreate={(name) => {
-                        const id = ws.createShowcase({ name, curveIds: dashDialog.curveIds });
+                        const { ids, created } = resolveReportDialog();
+                        const id = ws.createShowcase({ name, curveIds: ids });
                         setDashDialog(null);
                         setDashActive(id);
                         goTab('dashboards');
-                        notify('Report created.');
+                        notify(`Report created.${draftsNote(created)}`);
                     }}
                 />
             )}
 
-            <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2" aria-live="polite">
+            {/* Top right, under the header: the bottom edge holds the result editor's sticky actions. */}
+            <div className="fixed right-4 top-20 z-[100] flex flex-col gap-2" aria-live="polite">
                 {toasts.map((t) => (
                     <div key={t.id} className="flex max-w-sm items-start gap-3 rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white shadow-lg">
                         <span

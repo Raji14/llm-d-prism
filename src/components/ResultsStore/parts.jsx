@@ -15,7 +15,7 @@
 // Small pieces shared by the Results store screens.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, CircleAlert, CircleCheck, Copy, Download, Info, Plus, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, CircleCheck, Copy, Download, Info, Plus, TriangleAlert, X } from 'lucide-react';
 import { Button, StatusChip, VisibilityChip } from '../ui';
 import { cn } from '../../utils/cn';
 import { downloadText } from './exporters';
@@ -37,12 +37,22 @@ const NOTICE_TONES = {
 
 // A one-line, in-flow message (never sticky): the browser-storage preview
 // note, or a warning that a comparison isn't like-for-like.
-export function Notice({ tone = 'info', icon, className, children }) {
+export function Notice({ tone = 'info', icon, onDismiss, dismissLabel = 'Dismiss notice', className, children }) {
     const Icon = icon || (tone === 'warning' ? TriangleAlert : Info);
     return (
-        <div className={cn('flex items-start gap-2.5 rounded-2xl border px-4 py-2.5 text-xs leading-relaxed', NOTICE_TONES[tone] || NOTICE_TONES.info, className)}>
+        <div className={cn('flex items-start gap-2.5 rounded-2xl border px-4 py-2 text-xs leading-relaxed', NOTICE_TONES[tone] || NOTICE_TONES.info, className)}>
             <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             <div className="min-w-0 flex-1">{children}</div>
+            {onDismiss && (
+                <button
+                    type="button"
+                    onClick={onDismiss}
+                    aria-label={dismissLabel}
+                    className="-mr-1 -mt-0.5 rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700"
+                >
+                    <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+            )}
         </div>
     );
 }
@@ -130,7 +140,7 @@ export function CopyButton({ text, label = 'Copy link', copiedLabel = 'Copied', 
     const timer = useRef(null);
     useEffect(() => () => clearTimeout(timer.current), []);
     const onCopy = () => {
-        navigator.clipboard?.writeText(text);
+        navigator.clipboard?.writeText(typeof text === 'function' ? text() : text);
         setCopied(true);
         clearTimeout(timer.current);
         timer.current = setTimeout(() => setCopied(false), 1800);
@@ -157,9 +167,11 @@ export function ExportActions({ filename, csv, markdown }) {
     );
 }
 
-// "+ Add baseline" menu. options: [{ id, name, note, group }]
+// "+ Add baseline" menu. options: [{ id, name, note, group }], in the order
+// to show them. Past a handful, a filter box narrows them by name.
 export function BaselinePicker({ options, onPick, label = 'Add baseline', emptyText }) {
     const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
     const rootRef = useRef(null);
     useEffect(() => {
         if (!open) return undefined;
@@ -176,7 +188,9 @@ export function BaselinePicker({ options, onPick, label = 'Add baseline', emptyT
             document.removeEventListener('keydown', onKey);
         };
     }, [open]);
-    const groups = [...new Set(options.map((o) => o.group))];
+    const q = query.trim().toLowerCase();
+    const shown = q ? options.filter((o) => `${o.name} ${o.note || ''}`.toLowerCase().includes(q)) : options;
+    const groups = [...new Set(shown.map((o) => o.group))];
     return (
         <div ref={rootRef} className="relative">
             <Button size="xs" variant="secondary" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
@@ -184,12 +198,23 @@ export function BaselinePicker({ options, onPick, label = 'Add baseline', emptyT
                 {label}
             </Button>
             {open && (
-                <div className="absolute right-0 top-full z-50 mt-2 max-h-80 w-80 overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-lg">
+                <div className="absolute right-0 top-full z-50 mt-2 max-h-96 w-96 max-w-[90vw] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-lg">
+                    {options.length > 8 && (
+                        <input
+                            type="search"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Filter by model, hardware or setup"
+                            aria-label="Filter baselines"
+                            className="mb-1 w-full rounded-xl border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-accent-500"
+                        />
+                    )}
                     {options.length === 0 && <p className="px-3 py-3 text-xs text-zinc-600">{emptyText || 'Nothing to add yet.'}</p>}
+                    {options.length > 0 && shown.length === 0 && <p className="px-3 py-3 text-xs text-zinc-600">Nothing matches “{query}”.</p>}
                     {groups.map((g) => (
                         <div key={g} className="py-1">
                             <div className="label-caps px-2.5 pb-1 pt-1.5 text-zinc-500">{g}</div>
-                            {options
+                            {shown
                                 .filter((o) => o.group === g)
                                 .map((o) => (
                                     <button
@@ -198,6 +223,7 @@ export function BaselinePicker({ options, onPick, label = 'Add baseline', emptyT
                                         onClick={() => {
                                             onPick(o);
                                             setOpen(false);
+                                            setQuery('');
                                         }}
                                         className="block w-full rounded-xl px-2.5 py-2 text-left hover:bg-zinc-50"
                                     >

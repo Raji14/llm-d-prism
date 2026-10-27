@@ -19,7 +19,7 @@ import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
 import { BackButton, CheckList, HistoryList, MetaGrid, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
-import { curveChecks, curveDraftFromRuns, fmtDay, seriesPoints } from './catalog';
+import { closeness, curveChecks, curveConfig, curveDraftFromRuns, fmtDay, seriesPoints } from './catalog';
 
 const REASONS = ['Failed requests over 5%', 'Hardware or labels look wrong', 'Configs or logs missing', 'Too few points', 'Duplicates a published result'];
 
@@ -47,8 +47,15 @@ function ReviewDetail({ item, baselines, onBack, onDecide }) {
     const [note, setNote] = useState('');
     const [busy, setBusy] = useState(false);
     const c = item.curve;
+    // Published results of the same model, closest setup first (hardware,
+    // chips, workload), so the overlay compares like with like.
     const sameModel = c ? baselines.filter((b) => b.meta.model === c.meta.model && b.id !== c.id) : [];
-    const overlaid = sameModel.slice(0, 4);
+    const target = c ? curveConfig(c) : null;
+    const overlaid = sameModel
+        .map((b, i) => ({ b, i, score: closeness(curveConfig(b), target) }))
+        .sort((x, y) => y.score - x.score || x.i - y.i)
+        .slice(0, 4)
+        .map((x) => x.b);
     const included = c ? c.points.filter((p) => p.included) : [];
     const feedback = [...reasons, note.trim()].filter(Boolean).join('. ');
     // Open on a latency (and statistic) the submission recorded, not always TTFT.

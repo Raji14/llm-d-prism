@@ -63,7 +63,8 @@ export function ChartContainer({
                             {subtitle && <p className="text-xs text-zinc-700 mt-0.5">{subtitle}</p>}
                         </div>
                         {actions && (
-                            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                            // min-w-0, not shrink-0: in a narrow card the controls wrap inside it instead of running past its edge.
+                            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                                 {actions}
                             </div>
                         )}

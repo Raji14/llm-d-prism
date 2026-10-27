@@ -88,12 +88,34 @@ export function fmtDateTime(ts) {
     return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${hh}:${mm}`;
 }
 
+// "c=1–256", or for a sweep of request rates "1–9 req/s". Null when neither
+// was recorded.
 export function concRange(points) {
     const cs = points.map((p) => p.conc).filter(isNum);
-    if (!cs.length) return null;
-    const lo = Math.min(...cs);
-    const hi = Math.max(...cs);
-    return lo === hi ? `c=${lo}` : `c=${lo}–${hi}`;
+    if (cs.length) {
+        const lo = Math.min(...cs);
+        const hi = Math.max(...cs);
+        return lo === hi ? `c=${lo}` : `c=${lo}–${hi}`;
+    }
+    const rs = points.map((p) => p.rate).filter(isNum);
+    if (!rs.length) return null;
+    const lo = Math.min(...rs);
+    const hi = Math.max(...rs);
+    return lo === hi ? `${lo} req/s` : `${lo}–${hi} req/s`;
+}
+
+// Points in the order load was applied: by concurrency, else by offered
+// request rate (rate sweeps), else by throughput. A stage that recorded no
+// rate among ones that did sits by the rated stage closest in throughput.
+// Drawn in this order, an overloaded tail bends back instead of zig-zagging.
+export function loadOrder(points) {
+    if (points.length && points.every((p) => isNum(p.conc))) return { by: 'conc', points: [...points].sort((a, b) => a.conc - b.conc) };
+    const rated = points.filter((p) => isNum(p.rate));
+    if (rated.length >= 2 && rated.length >= points.length * 0.6) {
+        const keyOf = (p) => (isNum(p.rate) ? p.rate : rated.reduce((best, q) => (Math.abs(q.output - p.output) < Math.abs(best.output - p.output) ? q : best)).rate);
+        return { by: 'rate', points: [...points].sort((a, b) => keyOf(a) - keyOf(b) || a.output - b.output) };
+    }
+    return { by: 'output', points: [...points].sort((a, b) => a.output - b.output) };
 }
 
 // Stable key for a Compare / Share item: a Browse row, a run or a curve.
@@ -311,15 +333,132 @@ const hardwareOf = (d) =>
 
 export const hardwareLabel = (hw, count) => (isGenericHardware(hw) ? '' : `${hw} ×${count || 1}`);
 
-function workloadOf(d) {
-    const variant = d._raw?.metadata?.variant ?? d.metadata?.variant;
-    if (typeof variant === 'string' && /^\s*\d+\s*\/\s*\d+\s*$/.test(variant)) {
-        const [isl, osl] = variant.split('/').map((x) => parseInt(x, 10));
-        return { isl, osl };
+// Benchmark report v0.2 lists each serving component's accelerators per
+// replica (count = TP × PP × DP-local) next to its replica count. The shared
+// parser reads only the count, so two TP4 replicas show as 4 chips, not 8.
+// TPU slices may give a topology instead ("tpu7x-2x2x1" is 4 chips).
+// Returns { chips, topology } or null when the report doesn't say.
+function reportChips(report) {
+    const engines = (report?.scenario?.stack || []).filter((c) => c?.standardized?.kind === 'inference_engine');
+    let chips = 0;
+    let topology = false;
+    for (const c of engines) {
+        const s = c.standardized;
+        const acc = s.accelerator || {};
+        const par = acc.parallelism || s.parallelism || {};
+        const topo = String(acc.model || '').match(/(\d+)x(\d+)(?:x(\d+))?\s*$/i);
+        const counted = num(acc.count);
+        const per = counted || (topo ? topo.slice(1).filter(Boolean).reduce((n, v) => n * Number(v), 1) : null);
+        if (!per) return null;
+        topology = topology || (!counted && Boolean(topo));
+        const replicas = num(s.replicas) || 1;
+        const perReplica = (num(par.tp) || 1) * (num(par.pp) || 1) * (num(par.dp_local) || 1);
+        // A count bigger than one replica needs already covers every replica.
+        chips += per <= perReplica || !counted ? per * replicas : per;
     }
+    return chips ? { chips, topology } : null;
+}
+
+// Benchmark report v0.2 names its stack ("standard-k8s (plain Service, no
+// llm-d gateway/EPP)"): the text before the first comma or bracket is the
+// setup, the full label its detail. An unlabelled stack is named by its
+// shape, as the archives do: "2 TP4" (replicas, TP) or "1P-TP4 3D-TP4".
+function reportSetupOf(report) {
+    const stack = report?.scenario?.stack || [];
+    const label = stack.map((c) => String(c?.metadata?.label || '').trim()).find(Boolean);
+    if (label) return { setup: label.split(/\s*[,(]/)[0].trim() || label, detail: label };
+    const tpOf = (s) => num(s.accelerator?.parallelism?.tp ?? s.parallelism?.tp);
+    const engines = stack.filter((c) => c?.standardized?.kind === 'inference_engine' && tpOf(c.standardized));
+    if (!engines.length) return null;
+    const pd = engines.some((c) => c.standardized.role === 'prefill');
+    const shape = (s) => {
+        const n = num(s.replicas) || 1;
+        if (!pd) return `${n} TP${tpOf(s)}`;
+        return `${n}${s.role === 'prefill' ? 'P' : 'D'}-TP${tpOf(s)}`;
+    };
+    return { setup: engines.map((c) => shape(c.standardized)).join(pd ? ' ' : ' + '), detail: null };
+}
+
+// A run's workload: as configured where the source says, else as measured.
+// Measured averages drift from run to run (models stop before the output
+// cap; shared prefixes add input tokens), so going by them alone splits one
+// workload into many. In order:
+//   variant "1000/300"         configured
+//   run id "…-run_1000_300_…"  configured (the archives' treatment name)
+//   report load cfg_id         measured, but one key for every run of that load
+//   otherwise                  measured; unifyWorkloads groups near-equal ones
+function workloadOf(d, runId) {
     const isl = num(d.workload?.input_tokens ?? d.isl);
     const osl = num(d.workload?.output_tokens ?? d.osl);
-    return { isl: isl ? Math.round(isl) : null, osl: osl ? Math.round(osl) : null };
+    const measured = { isl: isl ? Math.round(isl) : null, osl: osl ? Math.round(osl) : null };
+    const variant = d._raw?.metadata?.variant ?? d.metadata?.variant;
+    if (typeof variant === 'string' && /^\s*\d+\s*\/\s*\d+\s*$/.test(variant)) {
+        const [a, b] = variant.split('/').map((x) => parseInt(x, 10));
+        return { isl: a, osl: b, configured: true, measured };
+    }
+    // Only when the measured lengths fit it: input at least the configured
+    // length, output a little under its cap.
+    const t = String(runId || '').match(/[-_]run_(\d{1,6})_(\d{1,6})(?=_|$)/);
+    if (t && measured.isl >= Number(t[1]) * 0.9 && measured.osl >= Number(t[2]) * 0.5 && measured.osl <= Number(t[2]) * 1.1) {
+        return { isl: Number(t[1]), osl: Number(t[2]), configured: true, measured };
+    }
+    const cfg = d.rawReport?.scenario?.load?.metadata?.cfg_id;
+    return { isl: isl || null, osl: osl || null, cfg: cfg ? String(cfg) : null, measured };
+}
+
+// Measured workloads this close are one workload. Input length is set by the
+// prompts, so it barely moves; output length is a cap the model stops short
+// of, so it drifts more.
+const ISL_TOLERANCE = 0.04;
+const OSL_TOLERANCE = 0.12;
+const near = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(a, b);
+const median = (xs) => {
+    const s = [...xs].sort((a, b) => a - b);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+// Two significant figures: 994.76 → 990, 31961 → 32000.
+const sig2 = (n) => {
+    const step = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1);
+    return Math.round(n / step) * step;
+};
+// One label for a group's measured lengths: exact when every run reports the
+// same whole number (a configured length, e.g. 7200), else the median to two
+// significant figures, so the label doesn't move with every new run.
+const groupLength = (values) => (values.every((v) => Number.isInteger(v) && v === values[0]) ? values[0] : sig2(median(values)));
+
+// Gives runs that measured the same workload one label: by report load
+// config where recorded, else by closeness, per model (tokenizers differ).
+function unifyWorkloads(runs) {
+    const groups = new Map();
+    const clusters = new Map();
+    runs.forEach((r) => {
+        const w = r.wl;
+        if (w.configured || !w.isl || !w.osl) return;
+        const model = r.model.toLowerCase();
+        if (w.cfg) {
+            const k = `${w.cfg}|${model}`;
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(r);
+            return;
+        }
+        const list = clusters.get(model) || [];
+        const hit = list.find((c) => near(c[0].wl.isl, w.isl, ISL_TOLERANCE) && near(c[0].wl.osl, w.osl, OSL_TOLERANCE));
+        if (hit) hit.push(r);
+        else list.push([r]);
+        clusters.set(model, list);
+    });
+    const label = (group) => {
+        const isl = groupLength(group.map((r) => r.wl.isl));
+        const osl = groupLength(group.map((r) => r.wl.osl));
+        group.forEach((r) => {
+            r.isl = isl;
+            r.osl = osl;
+            r.workload = `${isl}/${osl}`;
+        });
+    };
+    groups.forEach(label);
+    clusters.forEach((list) => list.forEach(label));
 }
 
 function harnessOf(d) {
@@ -461,6 +600,8 @@ function toPoint(d, runKey, chips = accelCountOf(d)) {
         key: runKey,
         runKey,
         conc: num(d.workload?.concurrency ?? d.concurrency ?? d.metadata?.concurrency),
+        // Offered load in requests per second, for sweeps that step through rates.
+        rate: num(d.workload?.target_qps),
         output,
         total,
         chips,
@@ -518,14 +659,26 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
     });
 
     const runs = [];
-    groups.forEach((list, key) => {
+    groups.forEach((arrived, key) => {
+        // The same report can arrive through two loaders at once, doubling
+        // every stage. Keep one copy of each stage (entries without a stage
+        // number are separate measurements and all stay).
+        const seenStages = new Set();
+        const list = arrived.filter((d) => {
+            if (!Number.isInteger(d.workload?.stage)) return true;
+            const k = `${d.workload.stage}|${readOutput(d)}|${d.workload.concurrency ?? ''}`;
+            if (seenStages.has(k)) return false;
+            seenStages.add(k);
+            return true;
+        });
         const d0 = list[0];
-        const hwRaw = mostCommon(list.map(hardwareOf).filter((h) => !isGenericHardware(h))) || hardwareOf(d0);
-        const accelCount = mostCommon(list.map(accelCountOf).filter((n) => n > 1)) || accelCountOf(d0);
+        const reported = reportChips(d0.rawReport);
+        let hwRaw = mostCommon(list.map(hardwareOf).filter((h) => !isGenericHardware(h))) || hardwareOf(d0);
+        // "TPU7X-2X2X1" names a slice; with its chips counted it's a TPU7X ×4.
+        if (reported?.topology) hwRaw = hwRaw.replace(/[-_\s]?\d+x\d+(?:x\d+)?$/i, '') || hwRaw;
+        const accelCount = reported?.chips || mostCommon(list.map(accelCountOf).filter((n) => n > 1)) || accelCountOf(d0);
         const all = list.map((d) => toPoint(d, key, accelCount));
-        const points = all
-            .filter((p) => p.output != null)
-            .sort((a, b) => (a.conc != null && b.conc != null ? a.conc - b.conc : a.output - b.output));
+        const points = loadOrder(all.filter((p) => p.output != null)).points;
         if (!points.length) return;
         // Stages with no output throughput can't be plotted. Note them so the
         // checks can name them, rather than let a 0 tok/s stage vanish.
@@ -541,18 +694,18 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
         const rawModel = shortModel(d0.model_name || d0.model || d0.metadata?.model_name) || 'Model not recorded';
         const model = canonical.get(rawModel.toLowerCase()) || rawModel;
         const hwLabel = hardwareLabel(hwRaw, accelCount);
-        const { isl, osl } = workloadOf(d0);
-        const workload = isl && osl ? `${isl}/${osl}` : '';
-        const src = sourceOf(d0, aliases);
         const runId = runIdOf(d0);
+        const wl = workloadOf(d0, runId);
+        const src = sourceOf(d0, aliases);
         const sub = (d0.run_id && submissionsMap[d0.run_id]) || null;
         const submissionState = sub?.status || d0.source_info?.submission_state || (String(d0.source).startsWith('brv02:') ? 'staged' : null);
         const harness = harnessOf(d0);
         const category = categoryOf(d0);
-        const setup = setupOf(d0);
+        const stack = reportSetupOf(d0.rawReport);
+        const setup = setupOf(d0) || stack?.setup || null;
         const engine = engineOf(d0);
         const ts = Math.max(0, ...list.map(entryTs));
-        const title = [model, hwLabel || 'Hardware not recorded', workload || 'Workload not recorded'].join(' · ');
+        const measuredWorkload = wl.measured.isl && wl.measured.osl ? `${wl.measured.isl}/${wl.measured.osl}` : '';
 
         runs.push({
             key,
@@ -567,9 +720,14 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             hardwareRaw: hwRaw,
             accelCount,
             hwLabel,
-            isl,
-            osl,
-            workload,
+            wl,
+            isl: wl.configured ? wl.isl : wl.measured.isl,
+            osl: wl.configured ? wl.osl : wl.measured.osl,
+            workload: wl.configured ? `${wl.isl}/${wl.osl}` : measuredWorkload,
+            // What the run measured on average, when the label above is the
+            // configured or shared one.
+            measuredWorkload,
+            workloadConfigured: Boolean(wl.configured),
             harness,
             engine,
             source: src.label,
@@ -577,6 +735,7 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             sourceRaw: String(d0.source || 'local'),
             category,
             setup,
+            setupDetail: setup === stack?.setup ? stack?.detail || null : null,
             batch: batchOf(d0),
             ts,
             author: handleOf(d0.github_author),
@@ -585,19 +744,28 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             isUpload: String(d0.source || '').startsWith('brv02:') || d0.source_info?.type === 'benchmark_report_v02',
             isLocalOnly: String(d0.source || '').startsWith('brv02:'),
             conc: points.length === 1 ? points[0].conc : null,
-            title,
+            title: '',
             benchmarkKey: getBenchmarkKey(d0),
             rawReport: d0.rawReport || null,
             fileId: d0._raw?.source_info?.file_identifier || d0.source_info?.file_identifier || d0.filename || null,
             rawUrl: d0._raw?.source_info?.raw_url || d0.source_info?.raw_url || null,
-            searchText: [title, d0.model_name, harness, src.label, category, setup, engine, runId, handleOf(d0.github_author)]
+            searchText: [d0.model_name, harness, src.label, category, setup, stack?.detail, engine, runId, measuredWorkload, handleOf(d0.github_author)]
                 .filter(Boolean)
                 .join(' ')
                 .toLowerCase(),
         });
     });
+    unifyWorkloads(runs);
+    // Titles name the setup too: two setups of one model, hardware and
+    // workload (a baseline and the optimization under test) never share one.
+    runs.forEach((r) => {
+        r.title = runTitle(r);
+        r.searchText = `${r.title.toLowerCase()} ${r.searchText}`;
+    });
     return dedupeRuns(runs);
 }
+
+export const runTitle = (r) => [r.model, r.hwLabel || 'Hardware not recorded', r.workload || 'Workload not recorded', r.setup].filter(Boolean).join(' · ');
 
 // The same run can arrive through two loaders (e.g. an archive file and its
 // live-sync copy). Show it once, keeping the copy with the most metadata.
@@ -625,7 +793,7 @@ function dedupeRuns(runs) {
 
 // ---------------------------------------------------------------------- rows
 
-const curveKeyOf = (r) => [r.sourceRaw, r.batch, r.harness, r.model.toLowerCase(), r.hardware.toLowerCase(), r.accelCount, r.workload].join('|');
+const curveKeyOf = (r) => [r.sourceRaw, r.batch, r.harness, r.model.toLowerCase(), r.hardware.toLowerCase(), r.accelCount, r.workload, r.setup || ''].join('|');
 const commonValue = (values) => (values.length && values.every((v) => v === values[0]) ? values[0] : null);
 const maxTs = (runs) => Math.max(0, ...runs.map((r) => r.ts || 0));
 
@@ -724,7 +892,7 @@ export function buildRows(runs) {
     const repeats = new Map();
     rest.forEach((r) => {
         const signature = r.points.map((p) => p.conc ?? '').join(',');
-        const k = `${curveKeyOf(r)}|${r.setup || ''}|${signature}|${r.points.length}`;
+        const k = `${curveKeyOf(r)}|${signature}|${r.points.length}`;
         if (!repeats.has(k)) repeats.set(k, []);
         repeats.get(k).push(r);
     });
@@ -743,7 +911,25 @@ const setupKey = (values) => values.map((v) => String(v || '').trim().toLowerCas
 // in a new folder each night.
 export const configKeyOf = (r) => setupKey([r.model, r.hwLabel || r.hardwareRaw, r.workload, r.harness, r.setup]);
 
-export const configLabelOf = (r) => [r.title, r.setup].filter(Boolean).join(' · ');
+// Titles already name the setup (see runTitle).
+export const configLabelOf = (r) => r.title;
+
+// Whether two setup keys name one setup. Measured workloads match within the
+// drift tolerance, so a label that moved (a new run shifted the median) still
+// finds its watch.
+export function sameSetup(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const pa = a.split('|');
+    const pb = b.split('|');
+    if (pa.length !== pb.length) return false;
+    return pa.every((v, i) => {
+        if (v === pb[i]) return true;
+        const wa = i === 2 && v.match(/^(\d+)\/(\d+)$/);
+        const wb = i === 2 && pb[i].match(/^(\d+)\/(\d+)$/);
+        return Boolean(wa && wb && near(+wa[1], +wb[1], ISL_TOLERANCE) && near(+wa[2], +wb[2], OSL_TOLERANCE));
+    });
+}
 
 // Every setup in these runs, newest first.
 export function setupsOf(runs) {
@@ -848,7 +1034,7 @@ export const isPublishedState = (s) => s === 'public' || s === 'promoted';
 // -------------------------------------------------------------------- curves
 
 export const autoCurveName = (meta) =>
-    [meta.model, meta.accelerator || 'Hardware not recorded', meta.workload || 'Workload not recorded', meta.engine || meta.harness]
+    [meta.model, meta.accelerator || 'Hardware not recorded', meta.workload || 'Workload not recorded', meta.setup, meta.engine || meta.harness]
         .filter(Boolean)
         .join(' · ');
 
@@ -867,8 +1053,7 @@ export function snapshotPoints(runs) {
             reason: '',
         }))
     );
-    const allConc = points.every((p) => p.conc != null);
-    return points.sort((a, b) => (allConc ? a.conc - b.conc : a.output - b.output));
+    return loadOrder(points).points;
 }
 
 // Stages these runs reported with no output throughput, so they never became
@@ -934,11 +1119,12 @@ export function chipsOf(meta) {
 export const withChips = (points, chips) =>
     points.map((p) => ({ ...p, chips, outputPerChip: isNum(p.output) ? p.output / chips : null, totalPerChip: isNum(p.total) ? p.total / chips : null }));
 
-// How checks name a point: by concurrency, or for a stage without one (rate-
-// based sweeps) by its throughput, which the Points list shows too. Never by
-// run: every stage of a multi-stage run shares one run ID.
+// How checks name a point: by concurrency, by request rate (rate sweeps), or
+// for a stage with neither by its throughput, which the Points list shows
+// too. Never by run: every stage of a multi-stage run shares one run ID.
 function stageLabel(p) {
     if (p.conc != null) return `c=${p.conc}`;
+    if (isNum(p.rate)) return `the ${p.rate} req/s stage`;
     if (isNum(p.output)) return `the ${fmtTput(p.output)} tok/s stage`;
     return p.stage != null ? `stage ${p.stage} of run ${p.idLabel}` : `a stage of run ${p.idLabel}`;
 }
@@ -958,15 +1144,80 @@ const normAccel = (s) =>
         .replace(/\s*[×x]\s*(\d+)$/, ' ×$1')
         .replace(/\s+/g, ' ');
 
+// Latency a load check reads: TTFT where two or more points recorded it,
+// else end-to-end latency (some archives record no TTFT).
+function loadLatency(points) {
+    const useTtft = points.filter((p) => isNum(p.ttft)).length >= 2;
+    return { of: (p) => (useTtft ? p.ttft : p.e2e), name: useTtft ? 'TTFT' : 'E2E latency' };
+}
+
+// Points that would skew a curve, each with a one-click exclude:
+//   overloaded   latency ≥5× the last healthy point for ≤1.25× its
+//                throughput: the server is queueing, not serving more. Every
+//                point past saturation is flagged, not just the first.
+//   out of line  slower than the next, heavier point (>1.5× and >250 ms):
+//                noise such as a cold cache. Sweeps with a load order only.
+// Points go in load order (concurrency, else request rate), else in latency
+// order, which load follows.
+export function loadChecks(included) {
+    const lat = loadLatency(included);
+    const timed = included.filter((p) => isNum(lat.of(p)) && isNum(p.output));
+    const order = loadOrder(timed);
+    const ordered = order.by !== 'output';
+    const seq = ordered ? order.points : [...timed].sort((a, b) => lat.of(a) - lat.of(b));
+    const out = [];
+    let healthy = seq[0];
+    for (let i = 1; i < seq.length; i++) {
+        const p = seq[i];
+        if (lat.of(p) < 5 * lat.of(healthy) || p.output > 1.25 * healthy.output) {
+            healthy = p;
+            continue;
+        }
+        const gain = p.output > healthy.output ? `only ${Math.max(1, Math.round(pctDelta(p.output, healthy.output)))}% more throughput` : 'no more throughput';
+        const note = `${startCase(stageLabel(p))} looks overloaded: ${lat.name} is ${fmtMs(lat.of(p))}, ${Math.round(lat.of(p) / lat.of(healthy))}× ${stageLabel(healthy)}, for ${gain}.`;
+        out.push({
+            id: `sat-${p.key}`,
+            level: 'warn',
+            note,
+            text: `${note} Exclude it so it doesn’t set the peak?`,
+            fix: { type: 'exclude', pointKey: p.key, reason: `Overloaded: ${lat.name} ${fmtMs(lat.of(p))} for ${gain}` },
+            fixLabel: 'Exclude point',
+        });
+    }
+    if (ordered) {
+        // Overloaded points are already flagged; only healthy ones can be out of line.
+        const overloaded = new Set(out.map((c) => c.fix.pointKey));
+        for (let i = 0; i < seq.length - 1; i++) {
+            const p = seq[i];
+            const next = seq[i + 1];
+            if (overloaded.has(p.key) || overloaded.has(next.key)) continue;
+            if (lat.of(p) <= 1.5 * lat.of(next) || lat.of(p) - lat.of(next) <= 250) continue;
+            const note = `${startCase(stageLabel(p))} is slower than ${stageLabel(next)} (${lat.name} ${fmtMs(lat.of(p))} vs ${fmtMs(lat.of(next))}) with less load.`;
+            out.push({
+                id: `odd-${p.key}`,
+                level: 'warn',
+                note,
+                text: `${note} Likely noise; rerun it or exclude it.`,
+                fix: { type: 'exclude', pointKey: p.key, reason: `Out of line: ${lat.name} ${fmtMs(lat.of(p))}, slower than ${stageLabel(next)}` },
+                fixLabel: 'Exclude point',
+            });
+        }
+    }
+    return out;
+}
+
 export function curveChecks(curve) {
     const out = [];
     const included = curve.points.filter((p) => p.included);
     const concs = included.map((p) => p.conc).filter(isNum);
+    const by = loadOrder(included).by;
 
     out.push(
-        concs.length && concs.length === included.length
+        by === 'conc'
             ? { id: 'order', level: 'ok', text: `Points ordered by concurrency (${concRange(included)}).` }
-            : { id: 'order', level: 'ok', text: 'Points ordered by throughput (concurrency wasn’t recorded).' }
+            : by === 'rate'
+              ? { id: 'order', level: 'ok', text: `Points ordered by request rate (${concRange(included)}).` }
+              : { id: 'order', level: 'ok', text: 'Points ordered by throughput (concurrency wasn’t recorded).' }
     );
 
     const seen = new Map();
@@ -998,6 +1249,11 @@ export function curveChecks(curve) {
             text: `${startCase(stageLabel(p))} has no ${listOf(missing, { joiner: 'or' })} (missing or 0), so it’s left off the ${listOf(missing)} chart${missing.length === 1 ? '' : 's'}.`,
         });
     });
+    out.push(...loadChecks(included));
+    const setAside = curve.points.filter((p) => !p.included && p.reason && /^(Overloaded|Out of line)/.test(p.reason));
+    if (setAside.length) {
+        out.push({ id: 'set-aside', level: 'ok', text: `Excluded: ${listOf(setAside.map((p) => `${stageLabel(p)} (${p.reason.split(':')[0].toLowerCase()})`))}.` });
+    }
 
     // A failure rate needs the total request count. Without it, list the counts
     // in one note instead of flagging every failed request.
@@ -1098,36 +1354,82 @@ export function nearestPoint(points, conc) {
     return withConc.reduce((a, b) => (Math.abs(b.conc - conc) < Math.abs(a.conc - conc) ? b : a));
 }
 
+// The value a watch tracks in a set of points: with `limit` (a TTFT in ms)
+// the highest output with TTFT at or under it, else the point nearest
+// `atConc` (the peak when null). { point, value } or null when these points
+// can't say (no TTFT recorded, or no point at that concurrency). Over the
+// limit everywhere, value is 0: nothing usable.
+export function watchValue(points, watch) {
+    if (isNum(watch.limit)) {
+        const { point, reason } = pricingPoint(points, watch.limit);
+        if (reason === 'no-points' || reason === 'no-ttft') return null;
+        return { point, value: point ? point.output : 0 };
+    }
+    const point = nearestPoint(points, watch.atConc);
+    if (!point || (watch.atConc != null && point.conc !== watch.atConc)) return null;
+    return { point, value: point.output };
+}
+
+export const WATCH_TTFT_SPIKE_PCT = 20;
+
 // One value per batch (newest sweep, nightly repeat, …) against the pinned
-// baseline. A drop past the threshold (e.g. -5%) is flagged.
+// baseline. A drop past the threshold (e.g. -5%) is flagged; when `watch.guard`
+// is enabled, a TTFT spike (+20% at the watched point) or request failure rate
+// ≥ 5% is also flagged.
 //
 // Batches are measured over the concurrency levels the baseline includes.
 // Otherwise excluding an overloaded c=256 from the baseline would make every
 // batch's peak look higher than the baseline's, and hide a real drop.
 export function watchSeries(rows, refPoints, watch) {
-    const ref = nearestPoint(refPoints, watch.atConc);
-    if (!ref) return [];
+    const refHit = watchValue(refPoints, watch);
+    const ref = refHit?.point;
+    if (!ref || !refHit.value) return [];
     const refConcs = new Set(refPoints.map((p) => p.conc).filter(isNum));
     const refRuns = new Set(refPoints.map((p) => p.runKey).filter(Boolean));
+    const guard = Boolean(watch.guard);
+    const ttftLimitPct = isNum(watch.ttftThreshold) ? Math.abs(watch.ttftThreshold) : WATCH_TTFT_SPIKE_PCT;
     const out = [];
     rows.forEach((row) =>
         row.repeats.forEach((rep, i) => {
             const all = rep.runs.flatMap((r) => r.points);
             const comparable = refConcs.size ? all.filter((q) => refConcs.has(q.conc)) : all;
-            const p = nearestPoint(comparable, watch.atConc);
-            if (!p || (watch.atConc != null && p.conc !== watch.atConc)) return;
-            const delta = ((p.output - ref.output) / ref.output) * 100;
+            const hit = watchValue(comparable, watch);
+            if (!hit) return;
+            const delta = ((hit.value - refHit.value) / refHit.value) * 100;
+            const ttft = hit.point?.ttft ?? null;
+            const refTtft = ref?.ttft ?? null;
+            const ttftDelta = isNum(ttft) && isNum(refTtft) && refTtft > 0 ? ((ttft - refTtft) / refTtft) * 100 : null;
+            const maxErrPct = comparable.reduce((m, p) => (isNum(p.errPct) && p.errPct > m ? p.errPct : m), 0);
+            // The batch the baseline was made from: comparing it with itself proves nothing.
+            const isRef = rep.runs.some((r) => refRuns.has(r.key));
+            const tputFlagged = !isRef && delta <= watch.threshold;
+            const ttftFlagged = !isRef && guard && isNum(ttftDelta) && ttftDelta >= ttftLimitPct;
+            const errFlagged = !isRef && guard && maxErrPct >= ERROR_LIMIT_PCT;
+            const flagReasons = [
+                tputFlagged ? `output ${fmtPct(delta)}` : null,
+                ttftFlagged ? `TTFT +${ttftDelta.toFixed(1)}%` : null,
+                errFlagged ? `${maxErrPct.toFixed(1)}% failed` : null,
+            ].filter(Boolean);
             out.push({
                 key: `${row.key}#${i}`,
                 ts: rep.ts,
-                value: p.output,
-                conc: p.conc,
-                ref: ref.output,
+                value: hit.value,
+                conc: hit.point?.conc ?? null,
+                // No point met the TTFT limit: nothing usable at all.
+                overLimit: !hit.point,
+                ref: refHit.value,
                 refConc: ref.conc,
                 delta,
-                flagged: delta <= watch.threshold,
-                // The batch the baseline was made from: comparing it with itself proves nothing.
-                isRef: rep.runs.some((r) => refRuns.has(r.key)),
+                ttft,
+                refTtft,
+                ttftDelta,
+                maxErrPct,
+                tputFlagged,
+                ttftFlagged,
+                errFlagged,
+                flagReasons,
+                flagged: tputFlagged || ttftFlagged || errFlagged,
+                isRef,
                 // Baseline levels this batch didn't measure (e.g. a sweep that stopped early).
                 missing: watch.atConc == null ? [...refConcs].filter((c) => !all.some((q) => q.conc === c)).sort((a, b) => a - b) : [],
                 title: row.title,
@@ -1148,16 +1450,32 @@ export const watchRefPoints = (watch, getCurve) => {
     return watch.ref?.points || [];
 };
 
-// The one setup a watch follows. Watches made before setups existed only had
-// filters; they follow their baseline's setup instead.
-export function watchConfigKey(watch, { getCurve, runsByKey }) {
-    if (watch.configKey) return watch.configKey;
+// The setup a watch's baseline runs belong to, under today's labels.
+function refConfigKey(watch, { getCurve, runsByKey }) {
     if (watch.ref?.kind === 'curve') {
         const c = getCurve(watch.ref.id);
         if (c) return curveConfigKey(c, runsByKey);
     }
     const refRuns = (watch.ref?.points || []).map((p) => runsByKey.get(p.runKey)).filter(Boolean);
     return mostCommon(refRuns.map(configKeyOf)) || null;
+}
+
+// The one setup a watch follows. Watches made before setups existed only had
+// filters; they follow their baseline's setup instead.
+export function watchConfigKey(watch, ctx) {
+    return watch.configKey || refConfigKey(watch, ctx);
+}
+
+// The runs a watch follows: its setup (workload within drift tolerance). If
+// nothing matches any more because the setup's labels changed (a workload
+// now read from its configuration, a chip count corrected), it follows the
+// setup its baseline runs have today.
+export function watchRuns(watch, runs, ctx) {
+    const saved = watchConfigKey(watch, ctx);
+    const hit = saved ? runs.filter((r) => sameSetup(configKeyOf(r), saved)) : [];
+    if (hit.length) return hit;
+    const now = refConfigKey(watch, ctx);
+    return now && now !== saved ? runs.filter((r) => configKeyOf(r) === now) : [];
 }
 
 // "H100 ×16" → "H100". Reports price each accelerator type separately.
@@ -1195,6 +1513,7 @@ export function runsConfig(runs) {
         model: pick((r) => r.model),
         accelerator: pick((r) => r.hardware),
         chips: pick((r) => (r.hardware ? r.accelCount : null)),
+        setup: pick((r) => r.setup),
         workload: pick((r) => r.workload),
         harness: pick((r) => r.harness),
         engine: pick((r) => r.engine),
@@ -1209,43 +1528,100 @@ export function curveConfig(curve) {
         model: recorded(m.model) || '',
         accelerator: known ? accel : '',
         chips: known ? chipsOf(m) : '',
+        setup: recorded(m.setup) || '',
         workload: m.workload || '',
         harness: recorded(m.harness) || '',
         engine: recorded(m.engine) || '',
     };
 }
 
+// Each field belongs to one axis of a comparison. Serving fields (hardware,
+// deployment, engine) usually change together when one stack is tried
+// against another, so they count as one thing under test.
 const PARITY_FIELDS = [
-    ['model', 'model'],
-    ['accelerator', 'accelerator'],
-    ['chips', 'chip count'],
-    ['workload', 'workload (ISL/OSL)'],
-    ['harness', 'harness'],
-    ['engine', 'serving engine'],
+    ['model', 'model', 'model'],
+    ['accelerator', 'accelerator', 'serving'],
+    ['chips', 'chip count', 'serving'],
+    ['setup', 'deployment', 'serving'],
+    ['engine', 'serving engine', 'serving'],
+    ['workload', 'workload (ISL/OSL)', 'workload'],
+    ['harness', 'harness', 'harness'],
 ];
 
 // Whether series compare like-for-like, from their configs (runsConfig /
-// curveConfig): what differs ({ key, label, values }), what all share, and
-// what some didn't record. Same shape as runParity.computeParity, which
-// expects Leaderboard recipes and counts concurrency, which a curve spans.
+// curveConfig): what differs ({ key, label, axis, values, byIndex }), what
+// all share, and what some didn't record. Same shape as
+// runParity.computeParity, which expects Leaderboard recipes and counts
+// concurrency, which a curve spans.
 export function seriesParity(configs) {
     const mismatches = [];
     const matched = [];
     const unrecorded = [];
-    PARITY_FIELDS.forEach(([key, label]) => {
+    PARITY_FIELDS.forEach(([key, label, axis]) => {
         const values = configs.map((c) => (c[key] == null ? '' : String(c[key]).trim()));
         const known = values.filter(Boolean);
         const distinct = [...new Map(known.map((v) => [v.toLowerCase(), v])).values()];
-        if (distinct.length > 1) mismatches.push({ key, label, values: distinct });
-        else if (known.length && known.length === values.length) matched.push({ key, label });
-        else unrecorded.push({ key, label });
+        if (distinct.length > 1) mismatches.push({ key, label, axis, values: distinct, byIndex: values });
+        else if (known.length && known.length === values.length) matched.push({ key, label, axis });
+        else unrecorded.push({ key, label, axis });
     });
     return { likeForLike: mismatches.length === 0, mismatches, matched, unrecorded };
+}
+
+// How a comparison reads (from seriesParity):
+//   repeat  nothing differs: the same setup measured again
+//   test    one axis differs: that's what's being tested, e.g. the deployment
+//   mixed   several axes differ, so no gap can be pinned on one of them
+// `perChip` when chip counts differ: totals then favour the bigger setup.
+export function parityFraming(parity) {
+    if (!parity) return null;
+    const axes = [...new Set(parity.mismatches.map((m) => m.axis))];
+    return {
+        kind: axes.length === 0 ? 'repeat' : axes.length === 1 ? 'test' : 'mixed',
+        axes,
+        perChip: parity.mismatches.some((m) => m.key === 'chips'),
+    };
+}
+
+// How close a candidate baseline's config is to `target` (both runsConfig /
+// curveConfig): same model counts most, then hardware, chips, workload and
+// harness.
+const CLOSENESS = [
+    ['model', 3],
+    ['accelerator', 2],
+    ['chips', 2],
+    ['workload', 1],
+    ['harness', 1],
+];
+export function closeness(config, target) {
+    if (!config || !target) return 0;
+    const same = (a, b) => a !== '' && a != null && String(a).toLowerCase() === String(b).toLowerCase();
+    return CLOSENESS.reduce((n, [k, w]) => n + (same(config[k], target[k]) ? w : 0), 0);
+}
+
+// Baseline options in the order to offer them: up to 8 that share at least
+// the model and hardware with `target` under "Closest matches", then the rest
+// by closeness, keeping their own groups.
+export function rankBaselines(options, target, { limit = 60 } = {}) {
+    const ranked = options.map((o, i) => ({ o, i, score: closeness(o.config, target) })).sort((a, b) => b.score - a.score || a.i - b.i);
+    const close = ranked.filter((r) => r.score >= 5).slice(0, 8);
+    return [
+        ...close.map((r) => ({ ...r.o, group: 'Closest matches' })),
+        ...ranked
+            .filter((r) => !close.includes(r))
+            .slice(0, limit)
+            .map((r) => r.o),
+    ];
 }
 
 // Reports price a result where it's usable, not at an overloaded peak: by
 // default at the highest-throughput point whose TTFT is at most this.
 export const OPERATING_TTFT_MS = 2000;
+
+// A limit as people say it: 2000 → "2 s", 1500 → "1.5 s". "TTFT ≤ 2 s" reads
+// the same in Browse, Compare, Watches and a report's Price at.
+export const secondsLabel = (ms) => `${Number((ms / 1000).toFixed(2))} s`;
+export const limitLabel = (ms = OPERATING_TTFT_MS) => `TTFT ≤ ${secondsLabel(ms)}`;
 
 // The point a report prices. `limit` is a TTFT limit in ms, or 'peak' for the
 // highest throughput however slow. Returns { point, reason, fastest }: with no
@@ -1265,3 +1641,60 @@ export function pricingPoint(points, limit = OPERATING_TTFT_MS) {
 export const ACCELERATOR_SUGGESTIONS = ['H100', 'H200', 'B200', 'A100', 'L4', 'MI300X', 'TPU v5e', 'TPU v6e', 'TPU v7'].flatMap((hw) =>
     [1, 2, 4, 8, 16].map((n) => `${hw} ×${n}`)
 );
+
+// Synthesizes a copy-pasteable CLI command to reproduce a run's workload and
+// concurrency/request-rate stages with its recorded harness and stack.
+export function reproduceCommand(run) {
+    if (!run) return '';
+    const model = run.modelFull && run.modelFull !== 'Model not recorded' ? run.modelFull : '<model>';
+    const isl = run.isl || run.wl?.measured?.isl || 1000;
+    const osl = run.osl || run.wl?.measured?.osl || 1000;
+    const concs = [...new Set((run.points || []).map((p) => p.conc).filter(isNum))].sort((a, b) => a - b);
+    const rates = [...new Set((run.points || []).map((p) => p.rate).filter(isNum))].sort((a, b) => a - b);
+    const harness = String(run.harness || '').toLowerCase();
+    const header = [
+        `# ${run.title || 'Benchmark run'}`,
+        `# Engine: ${run.engine || 'not recorded'} · Hardware: ${run.hwLabel || 'not recorded'}${run.setupDetail || run.setup ? ` · Deployment: ${run.setupDetail || run.setup}` : ''}`,
+    ];
+    if (harness.includes('guidellm')) {
+        const rateType = concs.length ? 'concurrent' : 'constant';
+        const rateArg = concs.length ? concs.join(',') : rates.length ? rates.join(',') : '1,8,32';
+        return [
+            ...header,
+            `guidellm benchmark \\`,
+            `  --target "\${OPENAI_BASE_URL:-http://localhost:8000/v1}" \\`,
+            `  --model "${model}" \\`,
+            `  --data "prompt_tokens=${isl},output_tokens=${osl}" \\`,
+            `  --rate-type ${rateType} \\`,
+            `  --rate "${rateArg}"`,
+        ].join('\n');
+    }
+    if (harness.includes('vllm')) {
+        const loadArg = concs.length ? `--max-concurrency ${concs.join(',')}` : rates.length ? `--request-rate ${rates.join(',')}` : '--max-concurrency 1,8,32';
+        return [
+            ...header,
+            `vllm bench serve \\`,
+            `  --base-url "\${OPENAI_BASE_URL:-http://localhost:8000}" \\`,
+            `  --model "${model}" \\`,
+            `  --dataset-name random \\`,
+            `  --random-input-len ${isl} \\`,
+            `  --random-output-len ${osl} \\`,
+            `  ${loadArg}`,
+        ].join('\n');
+    }
+    const stageArg = concs.length
+        ? `--concurrency "${concs.join(',')}"`
+        : rates.length
+          ? `--request_rate "${rates.join(',')}"`
+          : '--concurrency "1,8,32"';
+    return [
+        ...header,
+        `inference-perf \\`,
+        `  --server_type ${String(run.engine || 'vllm').toLowerCase().includes('sglang') ? 'sglang' : 'vllm'} \\`,
+        `  --base_url "\${OPENAI_BASE_URL:-http://localhost:8000/v1}" \\`,
+        `  --model_name "${model}" \\`,
+        `  --input_tokens ${isl} \\`,
+        `  --output_tokens ${osl} \\`,
+        `  ${stageArg}`,
+    ].join('\n');
+}

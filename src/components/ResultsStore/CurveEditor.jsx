@@ -13,16 +13,30 @@
 // limitations under the License.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Activity, GitBranch, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, X } from 'lucide-react';
+import { Activity, Github, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, X } from 'lucide-react';
 import { Badge, Button, ChartContainer, Checkbox, EmptyState, Input, Label, Modal, Panel, Select, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { BackButton, BaselinePicker, CheckList, HistoryList, ResultStatusChip, ResultVisibilityChip } from './parts';
-import { resultAudience, resultStatusLabel } from './instance';
+import { BackButton, BaselinePicker, CheckList, HistoryList, MetaGrid, ResultStatusChip, ResultVisibilityChip } from './parts';
+import { resultAudience } from './instance';
 import { PublishDialog } from './PublishDialog';
 import { useChartView } from './useChartView';
 import { useWorkspace } from './workspaceContext';
-import { ACCELERATOR_SUGGESTIONS, CATEGORY_OPTIONS, ERROR_LIMIT_PCT, curveChecks, fmtDay, fmtInt, fmtTput, latencyLabel, latencyValue, seriesPoints } from './catalog';
+import {
+    ACCELERATOR_SUGGESTIONS,
+    CATEGORY_OPTIONS,
+    ERROR_LIMIT_PCT,
+    curveChecks,
+    curveConfig,
+    fmtDay,
+    fmtInt,
+    fmtTput,
+    latencyLabel,
+    latencyValue,
+    loadOrder,
+    rankBaselines,
+    seriesPoints,
+} from './catalog';
 
 const EDITABLE = new Set(['draft', 'needs_changes']);
 const savedAt = (ts) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -31,6 +45,8 @@ function PointRow({ p, latency, stat, readOnly, onToggle, onOpenRun }) {
     // Only a known failure rate over the limit is a problem; without a total
     // request count there's no rate (matches the publish check).
     const bad = p.errPct != null && p.errPct >= ERROR_LIMIT_PCT;
+    // The load the point measured: concurrency, or a rate sweep's request rate.
+    const load = p.conc != null ? `c=${p.conc}` : p.rate != null ? `${p.rate} req/s` : null;
     return (
         <li className={cn('flex items-start gap-3 px-4 py-2.5', !p.included && 'bg-zinc-50/80')}>
             <Checkbox
@@ -38,12 +54,12 @@ function PointRow({ p, latency, stat, readOnly, onToggle, onOpenRun }) {
                 checked={p.included}
                 disabled={readOnly}
                 onChange={() => onToggle(p)}
-                aria-label={`${p.included ? 'Exclude' : 'Include'} ${p.conc != null ? `c=${p.conc}` : `run ${p.idLabel}`}`}
+                aria-label={`${p.included ? 'Exclude' : 'Include'} ${load || `run ${p.idLabel}`}`}
                 className="mt-0.5"
             />
             <div className={cn('min-w-0 flex-1', !p.included && 'opacity-60')}>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                    <span className="w-14 font-mono text-xs font-semibold tabular-nums text-zinc-900">{p.conc != null ? `c=${p.conc}` : '—'}</span>
+                    <span className="w-14 font-mono text-xs font-semibold tabular-nums text-zinc-900">{load || '—'}</span>
                     <button type="button" onClick={() => onOpenRun(p.runKey)} className="font-mono text-tiny text-zinc-600 hover:text-accent-700 hover:underline">
                         run {p.idLabel}
                     </button>
@@ -72,13 +88,43 @@ function FieldNote({ was, now }) {
     return <span className="text-micro font-medium text-accent-700">edited · was {was ? `“${was}”` : 'missing'}</span>;
 }
 
+// In place of Mark official on the internal instance, for people who can't
+// approve: says who can, and offers sign-in when that's what's missing.
+function OfficialGate({ reason, onSignIn, signInReady }) {
+    return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+            <span className="text-xs text-zinc-600">Only approvers can mark results official.</span>
+            {reason === 'signin' && (
+                <Button size="sm" variant="secondary" onClick={() => onSignIn?.()} disabled={!signInReady} title={signInReady ? undefined : 'GitHub sign-in isn’t configured on this server.'}>
+                    <Github className="h-3.5 w-3.5" aria-hidden="true" /> Sign in
+                </Button>
+            )}
+        </span>
+    );
+}
+
+// In place of Submit for review on the public store when a draft was made from
+// community catalog runs rather than your own uploaded runs.
+function PublicOwnershipGate({ copy, onUpload }) {
+    return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+            <span className="text-xs text-zinc-600">Catalog draft · only your own uploaded runs can be submitted for review.</span>
+            {onUpload && (
+                <Button size="sm" variant="secondary" onClick={onUpload}>
+                    {copy.uploadLabel}
+                </Button>
+            )}
+        </span>
+    );
+}
+
 // The one place to edit a curve: prune points, fix labels (measured values
 // stay locked), check against baselines, then publish. Official/Published
-// curves are read-only; editing opens a new draft version.
-export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isReviewer, nav, onShare, onAddToDashboard, onWatch, onSubmitForReview, onContinueUpload, notify }) {
+// curves are read-only; editing opens a new draft version. On the internal
+// instance only approvers publish (officialBlock says why someone can't).
+export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isReviewer, officialBlock, publicBlock, onUpload, onSignIn, signInReady, nav, onShare, onAddToDashboard, onWatch, onSubmitForReview, onContinueUpload, notify }) {
     const ws = useWorkspace();
     const [dialog, setDialog] = useState(null);
-    const [showLineage, setShowLineage] = useState(false);
     const accelRef = useRef(null);
 
     const checks = useMemo(() => (curve ? curveChecks(curve) : []), [curve]);
@@ -90,7 +136,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
     if (!curve) {
         return (
             <div className="space-y-4">
-                <BackButton onClick={nav.back}>Back</BackButton>
+                <BackButton onClick={nav.back}>{nav.backLabel || 'Back'}</BackButton>
                 <EmptyState title="Result not found" message="It may have been discarded. Results are saved in this browser for now." />
             </div>
         );
@@ -98,17 +144,19 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
 
     const instance = ws.instance;
     const readOnly = !EDITABLE.has(curve.status);
+    const editable = !readOnly;
     const included = curve.points.filter((p) => p.included);
     const excluded = curve.points.filter((p) => !p.included);
     const { latency, stat, throughput } = view;
     const supersedes = curve.supersedes ? ws.getCurve(curve.supersedes) : null;
     const supersededBy = curve.supersededBy ? ws.getCurve(curve.supersededBy) : null;
     const published = curve.status === 'official' || curve.status === 'published';
-    // On the public store people curate only their own uploads: no adding
-    // other people's runs, and only the owner (or a reviewer) starts a new version.
-    const isPublic = instance === 'public';
-    const canAddRuns = !readOnly && !isPublic;
-    const canNewVersion = !isPublic || curve.owner === ws.actor || isReviewer;
+    // Anything live can be shared or put in a report; declined and replaced versions can't.
+    const shareable = published || editable || curve.status === 'in_review';
+    // Anyone may curate a local sandbox draft on either instance; on the public
+    // store, submitting for review is gated on owning the source runs (publicBlock).
+    const canAddRuns = !readOnly;
+    const canNewVersion = true;
 
     const series = [
         {
@@ -151,7 +199,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
 
     return (
         <div className="space-y-6">
-            <BackButton onClick={nav.back}>Back</BackButton>
+            <BackButton onClick={nav.back}>{nav.backLabel || 'Back'}</BackButton>
 
             {curve.status === 'needs_changes' && curve.feedback && (
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
@@ -181,17 +229,18 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
             <header className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                     <ResultStatusChip status={curve.status} />
-                    {/* Official, Published and In review chips already say who can see it. */}
-                    {!resultAudience(curve.status) && <ResultVisibilityChip curve={curve} />}
+                    {/* A draft is private, and Official, Published and In review chips
+                        already say who can see it: the chip only marks a draft someone shared. */}
+                    {!resultAudience(curve.status) && curve.visibility !== 'me' && <ResultVisibilityChip curve={curve} />}
                     {curve.version > 1 && <Badge size="sm">v{curve.version}</Badge>}
                     {curve.featured && (
                         <Badge tone="brand">
                             <Star className="h-3 w-3" aria-hidden="true" /> Featured
                         </Badge>
                     )}
+                    {/* Where it's saved is the page notice's job. */}
                     <span className="ml-auto text-micro text-zinc-500">
-                        {/* For these the status chip already says they live only in this browser. */}
-                        {resultAudience(curve.status) ? 'Saved' : 'Saved in this browser ·'} {savedAt(curve.updatedAt)}
+                        Saved {savedAt(curve.updatedAt)}
                         {readOnly ? ' · Read-only' : ''}
                     </span>
                 </div>
@@ -212,9 +261,10 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 )}
                 <p className="text-xs text-zinc-600">
                     {curve.autoName && !readOnly ? 'Suggested name from the labels below. ' : ''}
+                    {/* The status chip above already names the status. */}
                     {published && curve.markedBy && (
                         <>
-                            {resultStatusLabel(curve.status, copy)} · marked by <span className="font-medium text-zinc-900">{curve.markedBy}</span> on {fmtDay(curve.markedAt)} ·{' '}
+                            Marked by <span className="font-medium text-zinc-900">{curve.markedBy}</span> on {fmtDay(curve.markedAt)} ·{' '}
                         </>
                     )}
                     {curve.status === 'published' && curve.reviewedBy && (
@@ -231,7 +281,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                     variant="editorial"
                     padding="none"
                     title="Points"
-                    subtitle={`${included.length} of ${curve.points.length} included · sorted by concurrency`}
+                    subtitle={`${included.length} of ${curve.points.length} included · sorted by ${{ conc: 'concurrency', rate: 'request rate', output: 'throughput' }[loadOrder(curve.points).by]}`}
                     actions={
                         canAddRuns && (
                             <Button size="xs" variant="ghost" onClick={() => nav.addRunsTo(curve.id)}>
@@ -263,9 +313,12 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                             <MetricToggles view={view} />
                             {!readOnly && (
                                 <BaselinePicker
-                                    options={baselineOptions.filter((o) => o.id !== curve.id && o.id !== curve.supersedes && !curve.baselines.some((b) => b.id === o.id))}
+                                    options={rankBaselines(
+                                        baselineOptions.filter((o) => o.id !== curve.id && o.id !== curve.supersedes && !curve.baselines.some((b) => b.id === o.id)),
+                                        curveConfig(curve)
+                                    )}
                                     onPick={(o) => ws.addBaseline(curve.id, { id: o.id, name: o.name, note: o.note, ref: o.item, points: o.points })}
-                                    emptyText={`No ${copy.publishedLabel.toLowerCase()} results yet. Once you have one, you can add it here as a baseline.`}
+                                    emptyText="Nothing else to add yet. Runs and results show up here once they’re loaded."
                                 />
                             )}
                         </>
@@ -298,170 +351,162 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 </ChartContainer>
             </div>
 
-            <Panel variant="editorial" title="Labels & metadata" subtitle="Fix labels, never numbers: measured values are read-only.">
-                <div className="grid gap-5 sm:grid-cols-2">
-                    <div>
-                        <div className="flex items-baseline justify-between gap-2">
-                            <Label surface="light" htmlFor="rs-accelerator">
-                                Accelerator
-                            </Label>
-                            <FieldNote was={curve.original.accelerator} now={curve.meta.accelerator} />
-                        </div>
-                        <Input
-                            ref={accelRef}
-                            surface="light"
-                            id="rs-accelerator"
-                            list="rs-accelerator-options"
-                            value={curve.meta.accelerator}
-                            disabled={readOnly}
-                            placeholder="e.g. TPU v6e ×8"
-                            onChange={(e) => ws.setMeta(curve.id, 'accelerator', e.target.value)}
-                        />
-                        <datalist id="rs-accelerator-options">
-                            {ACCELERATOR_SUGGESTIONS.map((a) => (
-                                <option key={a} value={a} />
-                            ))}
-                        </datalist>
-                    </div>
-                    <div>
-                        <div className="flex items-baseline justify-between gap-2">
-                            <Label surface="light" htmlFor="rs-model">
-                                Model
-                            </Label>
-                            <FieldNote was={curve.original.model} now={curve.meta.model} />
-                        </div>
-                        <Input surface="light" id="rs-model" value={curve.meta.model} disabled={readOnly} onChange={(e) => ws.setMeta(curve.id, 'model', e.target.value)} />
-                    </div>
-                    <div>
-                        <div className="flex items-baseline justify-between gap-2">
-                            <Label surface="light" htmlFor="rs-category">
-                                Category
-                            </Label>
-                            <FieldNote was={curve.original.category} now={curve.meta.category} />
-                        </div>
-                        <Select surface="light" id="rs-category" value={curve.meta.category} disabled={readOnly} onChange={(e) => ws.setMeta(curve.id, 'category', e.target.value)}>
-                            {CATEGORY_OPTIONS.map((c) => (
-                                <option key={c} value={c}>
-                                    {c}
-                                </option>
-                            ))}
-                        </Select>
-                    </div>
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
-                        {[
-                            ['Workload (measured)', curve.meta.workload || 'Not recorded'],
-                            ['Harness', curve.meta.harness],
-                            ['Source', curve.meta.source || 'Not recorded'],
-                            ['Deployment', curve.meta.setup || '—'],
-                        ].map(([k, v]) => (
-                            <div key={k} className="min-w-0">
-                                <dt className="label-caps text-zinc-500">{k}</dt>
-                                <dd className="mt-1 truncate text-zinc-900" title={v}>
-                                    {v}
-                                </dd>
+            <Panel variant="editorial" title="Labels & metadata" subtitle={readOnly ? undefined : 'Fix labels, never numbers: measured values are read-only.'}>
+                {readOnly ? (
+                    // Nothing to edit here, so the labels read as text, not a disabled form.
+                    <MetaGrid
+                        items={[
+                            { label: 'Model', value: curve.meta.model, was: curve.meta.model !== curve.original.model ? curve.original.model : undefined },
+                            {
+                                label: 'Accelerator',
+                                value: curve.meta.accelerator || 'Not recorded',
+                                was: curve.meta.accelerator !== curve.original.accelerator ? curve.original.accelerator : undefined,
+                            },
+                            { label: 'Category', value: curve.meta.category, was: curve.meta.category !== curve.original.category ? curve.original.category : undefined },
+                            { label: 'Workload (ISL/OSL)', value: curve.meta.workload || 'Not recorded', mono: true },
+                            { label: 'Harness', value: curve.meta.harness },
+                            { label: 'Source', value: curve.meta.source || 'Not recorded' },
+                            { label: 'Deployment', value: curve.meta.setup || null },
+                            { label: 'Notes', value: curve.meta.notes || null },
+                        ]}
+                    />
+                ) : (
+                    <div className="grid gap-5 sm:grid-cols-2">
+                        <div>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <Label surface="light" htmlFor="rs-accelerator">
+                                    Accelerator
+                                </Label>
+                                <FieldNote was={curve.original.accelerator} now={curve.meta.accelerator} />
                             </div>
-                        ))}
-                    </dl>
-                    <div className="sm:col-span-2">
-                        <Label surface="light" htmlFor="rs-notes">
-                            Notes
-                        </Label>
-                        <Textarea
-                            surface="light"
-                            id="rs-notes"
-                            rows={3}
-                            value={curve.meta.notes}
-                            disabled={readOnly}
-                            placeholder="What changed in this run, known caveats, links…"
-                            className="font-sans text-sm"
-                            onChange={(e) => ws.setMeta(curve.id, 'notes', e.target.value)}
-                        />
+                            <Input
+                                ref={accelRef}
+                                surface="light"
+                                id="rs-accelerator"
+                                list="rs-accelerator-options"
+                                value={curve.meta.accelerator}
+                                placeholder="e.g. TPU v6e ×8"
+                                onChange={(e) => ws.setMeta(curve.id, 'accelerator', e.target.value)}
+                            />
+                            <datalist id="rs-accelerator-options">
+                                {ACCELERATOR_SUGGESTIONS.map((a) => (
+                                    <option key={a} value={a} />
+                                ))}
+                            </datalist>
+                        </div>
+                        <div>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <Label surface="light" htmlFor="rs-model">
+                                    Model
+                                </Label>
+                                <FieldNote was={curve.original.model} now={curve.meta.model} />
+                            </div>
+                            <Input surface="light" id="rs-model" value={curve.meta.model} onChange={(e) => ws.setMeta(curve.id, 'model', e.target.value)} />
+                        </div>
+                        <div>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <Label surface="light" htmlFor="rs-category">
+                                    Category
+                                </Label>
+                                <FieldNote was={curve.original.category} now={curve.meta.category} />
+                            </div>
+                            <Select surface="light" id="rs-category" value={curve.meta.category} onChange={(e) => ws.setMeta(curve.id, 'category', e.target.value)}>
+                                {CATEGORY_OPTIONS.map((c) => (
+                                    <option key={c} value={c}>
+                                        {c}
+                                    </option>
+                                ))}
+                            </Select>
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                            {[
+                                ['Workload (ISL/OSL)', curve.meta.workload || 'Not recorded'],
+                                ['Harness', curve.meta.harness],
+                                ['Source', curve.meta.source || 'Not recorded'],
+                                ['Deployment', curve.meta.setup || '—'],
+                            ].map(([k, v]) => (
+                                <div key={k} className="min-w-0">
+                                    <dt className="label-caps text-zinc-500">{k}</dt>
+                                    <dd className="mt-1 truncate text-zinc-900" title={v}>
+                                        {v}
+                                    </dd>
+                                </div>
+                            ))}
+                        </dl>
+                        <div className="sm:col-span-2">
+                            <Label surface="light" htmlFor="rs-notes">
+                                Notes
+                            </Label>
+                            <Textarea
+                                surface="light"
+                                id="rs-notes"
+                                rows={3}
+                                value={curve.meta.notes}
+                                placeholder="What changed in this run, known caveats, links…"
+                                className="font-sans text-sm"
+                                onChange={(e) => ws.setMeta(curve.id, 'notes', e.target.value)}
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
             </Panel>
 
             <div className="grid gap-6 lg:grid-cols-2">
                 <Panel variant="editorial" title="Checks" subtitle="Plain-language checks with the fix next to each one.">
                     <CheckList checks={checks} onFix={fix} readOnly={readOnly} />
                 </Panel>
-                <Panel
-                    variant="editorial"
-                    title="Lineage"
-                    subtitle={`Version ${curve.version}${supersedes ? ` · replaces v${supersedes.version}` : ''}`}
-                    actions={
-                        <Button size="xs" variant="ghost" onClick={() => setShowLineage((s) => !s)}>
-                            <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
-                            {showLineage ? 'Hide runs' : 'View runs'}
-                        </Button>
-                    }
-                >
-                    {showLineage && (
-                        <ul className="mb-4 flex flex-wrap gap-1.5">
-                            {[...new Map(curve.points.map((p) => [p.runKey, p])).values()].map((p) => (
-                                <li key={p.runKey}>
-                                    <button
-                                        type="button"
-                                        onClick={() => nav.openRun(p.runKey)}
-                                        className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 font-mono text-tiny text-zinc-700 hover:border-accent-200 hover:text-accent-700"
-                                    >
-                                        {p.conc != null ? `c=${p.conc} · ` : ''}
-                                        {p.idLabel}
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                {/* Each source run is linked from its point in the Points panel above. */}
+                <Panel variant="editorial" title="Lineage" subtitle={`Version ${curve.version}${supersedes ? ` · replaces v${supersedes.version}` : ''}`}>
                     <HistoryList history={curve.history} />
                 </Panel>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-5">
-                {EDITABLE.has(curve.status) && (
+            {/* Sticky, so publishing and sharing stay in reach on a long result.
+                Add to report and Share mean the same thing at every status, so they
+                appear once; reports take drafts too (marked Unofficial there). */}
+            <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center gap-2 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+                {editable && (
                     <Button size="sm" variant="dangerOutline" onClick={() => setDialog('discard')}>
                         Discard
                     </Button>
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
-                    {published && (
-                        <>
-                            {canNewVersion && (
-                                <Button size="sm" variant="secondary" onClick={editAsNewVersion}>
-                                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit as new version
-                                </Button>
-                            )}
-                            {onWatch && (
-                                <Button size="sm" variant="secondary" onClick={() => onWatch(curve)}>
-                                    <Activity className="h-3.5 w-3.5" aria-hidden="true" /> Watch this
-                                </Button>
-                            )}
-                            <Button size="sm" variant="secondary" onClick={() => onAddToDashboard([curve.id])}>
-                                <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" /> Add to report
-                            </Button>
-                            {isReviewer && instance === 'public' && (
-                                <Button size="sm" variant="secondary" onClick={() => ws.toggleFeatured(curve.id)}>
-                                    <Star className="h-3.5 w-3.5" aria-hidden="true" /> {curve.featured ? 'Unfeature' : 'Feature'}
-                                </Button>
-                            )}
-                            <Button size="sm" onClick={() => onShare({ kind: 'curve', id: curve.id, title: curve.name })}>
-                                <Share2 className="h-3.5 w-3.5" aria-hidden="true" /> Share
-                            </Button>
-                        </>
+                    {published && canNewVersion && (
+                        <Button size="sm" variant="secondary" onClick={editAsNewVersion}>
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit as new version
+                        </Button>
                     )}
-                    {curve.status === 'in_review' && (
-                        <Button size="sm" variant="secondary" onClick={() => onShare({ kind: 'curve', id: curve.id, title: curve.name })}>
+                    {published && onWatch && (
+                        <Button size="sm" variant="secondary" onClick={() => onWatch(curve)}>
+                            <Activity className="h-3.5 w-3.5" aria-hidden="true" /> Watch this setup
+                        </Button>
+                    )}
+                    {shareable && (
+                        <Button size="sm" variant="secondary" onClick={() => onAddToDashboard([curve.id])}>
+                            <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" /> Add to report
+                        </Button>
+                    )}
+                    {published && isReviewer && instance === 'public' && (
+                        <Button size="sm" variant="secondary" onClick={() => ws.toggleFeatured(curve.id)}>
+                            <Star className="h-3.5 w-3.5" aria-hidden="true" /> {curve.featured ? 'Unfeature' : 'Feature'}
+                        </Button>
+                    )}
+                    {shareable && (
+                        // A draft opens up to link sharing first; the share dialog says who can open it.
+                        <Button size="sm" variant={published ? 'primary' : 'secondary'} onClick={editable ? shareForFeedback : () => onShare({ kind: 'curve', id: curve.id, title: curve.name })}>
                             <Share2 className="h-3.5 w-3.5" aria-hidden="true" /> Share
                         </Button>
                     )}
-                    {EDITABLE.has(curve.status) && (
-                        <>
-                            <Button size="sm" variant="secondary" onClick={shareForFeedback}>
-                                <Share2 className="h-3.5 w-3.5" aria-hidden="true" /> Share for feedback
-                            </Button>
+                    {editable &&
+                        (officialBlock ? (
+                            <OfficialGate reason={officialBlock} onSignIn={onSignIn} signInReady={signInReady} />
+                        ) : publicBlock ? (
+                            <PublicOwnershipGate copy={copy} onUpload={onUpload} />
+                        ) : (
                             <Button size="sm" onClick={() => setDialog('publish')}>
                                 {curve.status === 'needs_changes' ? 'Submit again' : copy.publishVerb}
                             </Button>
-                        </>
-                    )}
+                        ))}
                 </div>
             </div>
 
@@ -475,6 +520,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 actor={ws.actor}
                 onClose={() => setDialog(null)}
                 onMarkOfficial={() => {
+                    if (officialBlock) return;
                     ws.markOfficial(curve.id);
                     setDialog(null);
                     notify('Marked official. It’s saved in this browser for now.');

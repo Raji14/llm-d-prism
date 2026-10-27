@@ -2,7 +2,7 @@
 
 - **Status**: Draft for review
 - **Phase**: Engineering (the UI/UX phase is complete; see [ui_spec.md](ui_spec.md) and the [UX brief](../../../docs/results_store_ux_brief.md))
-- **Product context**: [Prism 2.0 product spec](../prism2.0-home/product_spec.md) (persona entry flows) and UX brief §1–2, §9
+- **Product context**: [Prism 2.0 product spec](../prism2.0-home/product_spec.md) (persona entry flows) and UX brief §1–2, §10
 - **Roadmap**: Q3 2026 *llm-d Results Store: Ingestion & UI* and *Results Store Scalability* ([roadmap.md](../../main/roadmap.md))
 - **Builds on**: [results-api](../../main/completed/results-api/README.md) (runs, GCS object contexts, state machine), [iam.md](../../main/completed/results-api/iam.md), [routes.md](../../main/completed/results-api/routes.md)
 
@@ -53,9 +53,9 @@ erDiagram
 
 | Server record | UI name | Owner can… | Others can… | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| `curve` | Result | create, edit labels and point inclusion, submit, retract own, discard drafts | read per visibility; admins review | Measured values are a **read-only snapshot**; the server rejects writes that change them (§4.2). |
+| `curve` | Result | create, edit labels and point inclusion, submit (public), retract own, discard drafts | read per visibility; admins review (public) and mark Official (internal, §4.3) | Measured values are a **read-only snapshot**; the server rejects writes that change them (§4.2). |
 | `watch` | Watch | create, rename, delete | admins read all | Evaluation stays client-side in this phase. |
-| `report` | Report | create, edit, delete | read per visibility | Namespaced slug `/u/<user>/<slug>`, compatible with the on-demand dashboards spec. |
+| `report` | Report | create, edit, delete | read per visibility | Namespaced slug `/u/<user>/<slug>`, compatible with the on-demand dashboards spec. Holds results of any status (§4.5). |
 | `source` | Source | — | admins: register, hide/show, remove, sync | Instance-wide, not per user. |
 
 ---
@@ -139,7 +139,7 @@ Visibility maps from the client's current values: `me → private`, `reviewers �
 ```mermaid
 stateDiagram-v2
     [*] --> draft : POST /api/curves
-    draft --> official : mark (internal instance, role ≥ user)
+    draft --> official : mark (internal instance, approver)
     draft --> in_review : submit (public instance, DCO)
     in_review --> published : approve (admin)
     in_review --> needs_changes : request changes (admin, feedback)
@@ -155,6 +155,7 @@ stateDiagram-v2
 ```
 
 - The instance decides which first transition exists; the server refuses the other (`internal` never has `in_review`; `public` never has `official`).
+- **Only approvers mark a result official** (internal instance; decided 2026-10-19). The caller must be signed in, so `markedBy` is always a real GitHub login, and must be an approver. In this phase approvers are admins: llm-d org admins or people on the admin allowlist (`prism-iam/github-admin-allowlist.txt`, managed with `tools/prism-iam`; see [iam.md](../../main/completed/results-api/iam.md)). Anyone else gets `403 approver_required`. Everyone can still create and edit drafts and put them in reports (§4.5).
 - **Approving a Result also publishes its runs**: each `submissionRunIds` run in `unlisted` or `submitted_pending_review` moves to `public` (same admin, same history entry). One review covers the curated curve and the evidence under it.
 - `retracted` records stay readable by direct link with the reason, are excluded from Browse and from report cost tables by default, and keep their `history`. Watches whose baseline was retracted show the existing "The baseline is gone" empty state.
 
@@ -179,16 +180,17 @@ Watch {
 Report {
   id, clientId?, instance, owner, name, slug, description?, createdAt, updatedAt;
   visibility: 'private'|'unlisted'|'public';                  // default 'private'; Share sets 'unlisted'
-  curveIds: uuid[];
+  curveIds: uuid[];                                            // results of any status (see below)
   priceAt: 1000|2000|5000|'peak';                              // TTFT limit in ms
   prices: { [accelType: string]: number|null };                // $ per chip-hour overrides
 }
 ```
 
 - `slug` is unique per owner, generated from the name, editable. The shareable URL is `/?view=results-store&report=<owner>/<slug>` now and `/u/<owner>/<slug>` once the SPA route from the on-demand dashboards spec exists. The client already computes this slug.
+- **Results of any status (decided 2026-10-19).** A report can hold drafts and results in review as well as Official / Published ones, so a tuner can price candidate configs before anyone curates them. Results that aren't Official / Published are labelled **Unofficial** (internal) / **Unpublished** (public) in the cost table, chart legend, CSV `Status` column and Markdown, and a notice says their points and labels can still change. Adding runs or sweeps from Compare reuses the result already made from exactly those runs, or creates a draft owned by the report's author.
 - **Private until shared.** A new report is `private`: only the owner can open its URL. The report's **Share** action does two things in one request: `PATCH { visibility: 'unlisted' }` and copy the link. `unlisted` reports open for anyone with the link and never appear in lists. The owner can set it back to `private` from the same control (the link then stops working for others). `public` (listed) is reserved for a later "publish" feature and isn't exposed in the UI in this phase.
 - The typed-in `prices` are the one thing a report can leak (a customer's negotiated rate), which is why the default is `private` rather than `unlisted`. The ReportView header states who can open it (*Only you* / *Anyone with the link*), so a URL copied from the address bar instead of via Share is explained, not silently broken.
-- A report's read response includes each curve the reader can see and a stub `{ id, visible: false }` for the rest, so a shared report that includes a private draft degrades to "1 result isn't visible to you" rather than an error.
+- A report's read response includes each curve the reader can see and a stub `{ id, visible: false }` for the rest, so a shared report that includes a private draft degrades to "1 result isn't visible to you" rather than an error. Because reports now take drafts, that case is common: see §10 Q6 for how Share handles drafts.
 - Prices are overrides only; list prices come from `pricingEngine` at render time and aren't stored, so a GCP price change isn't frozen into old reports.
 
 ### 4.6 `source`
@@ -287,6 +289,8 @@ sequenceDiagram
 
 IAM has `admin | user | none`. The UI's *reviewer* is `admin` in this phase. If reviewers who aren't admins are needed, add a `reviewer` allowlist beside the existing two (`prism-iam/github-reviewer-allowlist.txt`) and a `PermissionLevel` between `user` and `admin` that may call `/api/curves/:id/status` with review transitions and nothing else. The route table above is written so that's the only change.
 
+The internal instance's *approver*, the only role that may mark a result official (§4.3), is also `admin` in this phase (decided 2026-10-19). Approvers who aren't admins would get the same treatment: a `prism-iam/github-approver-allowlist.txt` and a permission that allows only the `draft → official` transition. The UI hides one-step **Mark official** from everyone else and, in the Result editor, says *"Only approvers can mark results official"* (with **Sign in** when signed out).
+
 ### 6.3 Instance
 
 The client decides its instance from `VITE_PRISM_INSTANCE` plus the dev `PreviewBar`. The server must know it to enforce §4.3. Add `PRISM_INSTANCE=internal|public` to the server, surface it in `GET /api/config`, and have the client prefer the server's value when present. In development only (`NODE_ENV !== 'production'`), the server honours an `X-Prism-Preview-Instance` header so the PreviewBar still works against a local server.
@@ -298,7 +302,7 @@ On first sign-in after deploy, if `prism_results_workspace_v1` has records for t
 1. `POST` curves oldest-first (so `supersedes` targets exist), sending `clientId`; build an `oldId → newId` map from the responses.
 2. Rewrite `curve.supersedes/supersededBy`, `curve.baselines[].id`, `watch.ref.id`, `report.curveIds` through the map, then `POST` watches and reports.
 3. On full success, delete the local key. On partial failure, keep the local copy and show which items didn't move; re-running is idempotent via `clientId`.
-4. Local `official`/`published` curves migrate with their status **only on the internal instance**; on the public instance they migrate as `draft` (nobody reviewed them) with a history entry saying so.
+4. Local `official`/`published` curves keep their status **only on the internal instance, and only when the person migrating is an approver**. Otherwise they migrate as `draft` with a history entry saying so: on the public instance nobody reviewed them, and on the internal instance they may have been marked before only approvers could.
 
 Signed-out users keep working locally as today; the migration dialog appears when they sign in.
 
@@ -353,5 +357,6 @@ Each phase is behind a server flag (`RESULTS_WORKSPACE_API=1`); with the flag of
 1. ~~**Approve-publishes-runs (§6.1).**~~ Decided: approving a Result publishes its runs (see §6.1).
 2. ~~**Who can open a new report?**~~ Decided (2026-10-19): `private` until shared; **Share** sets `unlisted` and copies the link in one action (see §4.5). Chosen over `unlisted`-from-creation because typed-in prices may be a customer's negotiated rate.
 3. **Sources: instance-wide vs org-scoped.** Proposed instance-wide, admin-managed. If teams need private pipeline buckets, that's a different feature (per-team sources with GCS IAM), not a flag on this one.
-4. **Internal instance, second pair of eyes.** `draft → official` by any `user` with no review is the current UI. Should `official` on the internal instance require an admin, or a second person? Cheap to change in the state table.
+4. ~~**Internal instance, second pair of eyes.**~~ Decided (2026-10-19): only approvers mark a result official, and they must be signed in (§4.3, §6.2). Approvers are admins in this phase, which matches the roadmap's "AllowList of approvers". Everyone else saves drafts and can price them in reports.
 5. **Retention.** Drafts never submitted: keep forever, or expire after N months with a warning in *My work*?
+6. **Sharing a report that holds drafts.** Reports take results of any status (decided 2026-10-19, §4.5), and drafts are `private`, so a shared report would show them as "not visible to you". Proposed: **Share** lists the private drafts in the report and offers to make them `unlisted` in the same step; declining keeps the stubs. Alternative: a report shares read access to its own results, which is simpler but makes a report a back door to drafts.

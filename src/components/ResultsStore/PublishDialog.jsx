@@ -14,8 +14,8 @@
 
 // Publishing, in one dialog for both ways in: from the result editor, or in
 // one step from a sweep or run (the result is created behind the scenes).
-// Internal: Mark official, no approver. Public: Submit for review with
-// attribution and the DCO. `onEditFirst` (one-step only) opens the editor.
+// Internal: Mark official, by an approver (signed in, admin). Public: Submit
+// for review with attribution and the DCO. `onEditFirst` (one-step only) opens the editor.
 
 import React, { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
@@ -68,17 +68,10 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                     {summary && <p className="mt-0.5 text-xs text-zinc-600">{summary}</p>}
                 </div>
                 {internal ? (
-                    signedIn ? (
-                        <p>
-                            It becomes Official. Prism records <span className="font-semibold text-zinc-900">{actor}</span> and today’s date, and no approver is needed. The
-                            source runs don’t change.
-                        </p>
-                    ) : (
-                        <p>
-                            It becomes Official, and no approver is needed. Prism records today’s date but not your name, because you’re not signed in. The source runs
-                            don’t change.
-                        </p>
-                    )
+                    // Only approvers get here: signed in, or previewing a role on the dev server.
+                    <p>
+                        It becomes Official, with <span className="font-semibold text-zinc-900">{actor}</span> recorded as the approver today. The source runs don’t change.
+                    </p>
                 ) : (
                     <>
                         <div>

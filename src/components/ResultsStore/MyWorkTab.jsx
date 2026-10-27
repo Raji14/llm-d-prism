@@ -77,13 +77,14 @@ function localSteps(curve) {
 }
 
 // `chip` replaces the visibility chip (saved results say where they live).
+// `status` is left out where the section heading already says it.
 function WorkRow({ title, status, statusLabel, visibility, chip, detail, meta, action, children }) {
     return (
         <li className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-zinc-900">{title}</span>
-                    <StatusChip status={status} size="xs" label={statusLabel} />
+                    {status && <StatusChip status={status} size="xs" label={statusLabel} />}
                     {chip || (visibility && <VisibilityChip visibility={visibility} size="xs" />)}
                 </div>
                 {detail && <p className="mt-1 text-xs text-zinc-700">{detail}</p>}
@@ -107,7 +108,7 @@ function Section({ title, count, subtitle, children }) {
 
 // Everything you're curating, apart from browsing: drafts, uploads, what's
 // waiting on a reviewer and what you've published.
-export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, nav, onOpenClassic, onUpload }) {
+export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, canPublish, officialBlock, nav, onOpenClassic, onUpload }) {
     const mine = curves.filter((c) => c.owner === actor || !c.owner);
     const by = (status) => mine.filter((c) => c.status === status).sort((a, b) => b.updatedAt - a.updatedAt);
     const drafts = by('draft');
@@ -135,7 +136,9 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                     message={
                         isPublic
                             ? 'Submit your results to get started. Drafts, reviews and what you publish show up here.'
-                            : 'Mark a sweep official in Browse, or upload runs. Drafts and what you publish show up here.'
+                            : officialBlock
+                              ? 'Edit a sweep in Browse to start a draft, or upload runs. Your drafts show up here; an approver marks results official.'
+                              : 'Mark a sweep official in Browse, or upload runs. Drafts and what you publish show up here.'
                     }
                     action={
                         <div className="flex flex-wrap justify-center gap-2">
@@ -172,56 +175,7 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
 
     return (
         <div className="space-y-6">
-            <Section title="Drafts" count={drafts.length} subtitle="Only you can see a draft.">
-                {drafts.map((c) => curveRow(c, { label: 'Edit', primary: true }))}
-            </Section>
-
-            <Section
-                title="Uploaded runs"
-                count={uploads.length + serverDrafts.length}
-                subtitle={`Runs you uploaded that aren’t in a result yet. ${copy.publishVerb} in one step, or edit first to prune points or fix labels.`}
-            >
-                {uploads.map((r) => {
-                    const ui = mapSubmissionState(r.submissionState, { instance }) || { status: 'draft', visibility: 'me' };
-                    return (
-                        <WorkRow
-                            key={r.key}
-                            title={r.title}
-                            status={ui.status}
-                            visibility={ui.visibility}
-                            meta={`${r.isLocalOnly ? 'Only in this browser' : 'Uploaded'} · ${fmtDay(r.ts)} · ${r.points.length} stage${r.points.length === 1 ? '' : 's'}`}
-                            action={
-                                <>
-                                    <Button size="xs" variant="ghost" onClick={() => nav.openRun(r.key)}>
-                                        View run
-                                    </Button>
-                                    <Button size="xs" variant="ghost" onClick={() => nav.makeCurve([r])}>
-                                        Edit
-                                    </Button>
-                                    <Button size="xs" variant="secondary" onClick={() => nav.publish([r])}>
-                                        {copy.publishVerb}
-                                    </Button>
-                                </>
-                            }
-                        />
-                    );
-                })}
-                {serverDrafts.map((s) => (
-                    <WorkRow
-                        key={s.runId}
-                        title={`${s.model} · ${s.hardware}`}
-                        status={s.ui.status}
-                        visibility={s.ui.visibility}
-                        meta={`Uploaded ${s.submittedAt}`}
-                        action={
-                            <Button size="xs" variant="ghost" onClick={onOpenClassic}>
-                                Open in classic view
-                            </Button>
-                        }
-                    />
-                ))}
-            </Section>
-
+            {/* First: the only section that's waiting on you. */}
             {isPublic && (
                 <Section title="Needs changes" count={needsChanges.length + declined.length + serverChanges.length} subtitle="A reviewer sent these back. Fix and submit again.">
                     {[...needsChanges, ...declined].map((c) =>
@@ -244,6 +198,62 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                     ))}
                 </Section>
             )}
+
+            <Section title="Drafts" count={drafts.length} subtitle="Only you can see a draft.">
+                {/* The heading says Draft and the subtitle says who sees it, so rows only flag a draft someone shared. */}
+                {drafts.map((c) =>
+                    curveRow(c, { label: 'Edit', primary: true, rowProps: { status: null, chip: c.visibility !== 'me' ? <ResultVisibilityChip curve={c} size="xs" /> : null } })
+                )}
+            </Section>
+
+            <Section
+                title="Uploaded runs"
+                count={uploads.length + serverDrafts.length}
+                subtitle={`Runs you uploaded that aren’t in a result yet. ${
+                    officialBlock ? 'Edit one to prune points or fix labels; an approver marks it official.' : `${copy.publishVerb} in one step, or edit first to prune points or fix labels.`
+                }`}
+            >
+                {/* Every upload here is unpublished, so rows say who can see them, not a status. */}
+                {uploads.map((r) => {
+                    const ui = mapSubmissionState(r.submissionState, { instance }) || { status: 'draft', visibility: 'me' };
+                    return (
+                        <WorkRow
+                            key={r.key}
+                            title={r.title}
+                            visibility={ui.visibility}
+                            meta={`${r.isLocalOnly ? 'Only in this browser' : 'Uploaded'} · ${fmtDay(r.ts)} · ${r.points.length} stage${r.points.length === 1 ? '' : 's'}`}
+                            action={
+                                <>
+                                    <Button size="xs" variant="ghost" onClick={() => nav.openRun(r.key)}>
+                                        View run
+                                    </Button>
+                                    <Button size="xs" variant="ghost" onClick={() => nav.makeCurve([r])}>
+                                        Edit
+                                    </Button>
+                                    {canPublish([r]) && (
+                                        <Button size="xs" variant="secondary" onClick={() => nav.publish([r])}>
+                                            {copy.publishVerb}
+                                        </Button>
+                                    )}
+                                </>
+                            }
+                        />
+                    );
+                })}
+                {serverDrafts.map((s) => (
+                    <WorkRow
+                        key={s.runId}
+                        title={`${s.model} · ${s.hardware}`}
+                        visibility={s.ui.visibility}
+                        meta={`Uploaded ${s.submittedAt}`}
+                        action={
+                            <Button size="xs" variant="ghost" onClick={onOpenClassic}>
+                                Open in classic view
+                            </Button>
+                        }
+                    />
+                ))}
+            </Section>
 
             {isPublic && (
                 <Section
@@ -274,18 +284,13 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
             <Section
                 title={copy.mineSection}
                 count={published.length + serverPublished.length}
-                subtitle={
-                    published.length
-                        ? 'Results you publish here are saved in this browser for now. Editing opens a new version.'
-                        : isPublic
-                          ? 'Live for everyone.'
-                          : 'Everyone on this instance can see these.'
-                }
+                subtitle={published.length ? 'Editing one opens a new version.' : isPublic ? 'Live for everyone.' : 'Everyone on this instance can see these.'}
             >
                 {published.map((c) =>
                     curveRow(c, {
                         rowProps: {
-                            detail: c.markedBy ? `${copy.publishedLabel} · ${c.markedBy} · ${fmtDay(c.markedAt)}` : undefined,
+                            // The heading and chip already say Official / Published: say who and when.
+                            detail: c.markedBy ? `Marked by ${c.markedBy} · ${fmtDay(c.markedAt)}` : c.reviewedBy ? `Approved by ${c.reviewedBy} · ${fmtDay(c.markedAt)}` : undefined,
                         },
                     })
                 )}

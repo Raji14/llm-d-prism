@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useId, useMemo } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button, Input, Label, Panel, Spinner, StatusChip, Switch, ToggleGroup } from '../ui';
 import { cn } from '../../utils/cn';
@@ -101,7 +101,14 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
         // dashboard's source filter), so the switch never says Shown when it isn't.
         if (show && selectedSources && !selectedSources.has(key)) setSelectedSources(new Set([...selectedSources, key]));
     };
-    const add = () => (connectionType === 'aws' ? handleAddAWSBucket(newBucketAlias) : handleAddGCSBucket(newBucketAlias));
+    // The hook shares one error/success slot between sync and register. Sync
+    // problems already show in each source's Health, so the form only reports
+    // once someone has used Register on this visit.
+    const [registerTried, setRegisterTried] = useState(false);
+    const add = () => {
+        setRegisterTried(true);
+        return connectionType === 'aws' ? handleAddAWSBucket(newBucketAlias) : handleAddGCSBucket(newBucketAlias);
+    };
 
     return (
         <div className="space-y-6">
@@ -237,8 +244,8 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                 </div>
                 {/* Always in the page, so what Register reports is read out when it appears. */}
                 <div aria-live="polite">
-                    {gcsError && <p className="mt-3 text-xs text-red-700">{gcsError}</p>}
-                    {gcsSuccess && <p className="mt-3 text-xs text-emerald-700">{gcsSuccess}</p>}
+                    {registerTried && gcsError && <p className="mt-3 text-xs text-red-700">{gcsError}</p>}
+                    {registerTried && gcsSuccess && <p className="mt-3 text-xs text-emerald-700">{gcsSuccess}</p>}
                 </div>
             </Panel>
         </div>

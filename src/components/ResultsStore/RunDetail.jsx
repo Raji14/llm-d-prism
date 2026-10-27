@@ -16,9 +16,25 @@ import React, { useId, useState } from 'react';
 import { Activity, ExternalLink, GitCompareArrows, Share2, Sparkles } from 'lucide-react';
 import { Badge, Button, ChartContainer, EmptyState, Panel, StatusChip, TabPanel, Tabs } from '../ui';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { BackButton, MetaGrid, PublishedState, ResultStatusChip } from './parts';
+import { BackButton, CopyButton, MetaGrid, Notice, PublishedState, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
-import { concRange, configKeyOf, fmtDateTime, fmtInt, fmtMs, fmtTput, latencyLabel, peakOutput, seriesPoints, typicalStat } from './catalog';
+import {
+    OPERATING_TTFT_MS,
+    concRange,
+    configKeyOf,
+    fmtDateTime,
+    fmtInt,
+    fmtMs,
+    fmtTput,
+    latencyLabel,
+    limitLabel,
+    loadChecks,
+    peakOutput,
+    pricingPoint,
+    reproduceCommand,
+    seriesPoints,
+    typicalStat,
+} from './catalog';
 
 // One label/value pair of the KPI grid, which is a <dl>.
 function Kpi({ label, value, unit }) {
@@ -42,17 +58,29 @@ const previewJson = (obj) => {
     }
 };
 
+// "1000/300 as configured · measured 3209/258 on average". Runs of one
+// workload share a label, so the measured averages are spelled out here.
+function workloadText(run) {
+    if (!run.workload) return 'Not recorded';
+    const measured = run.measuredWorkload && run.measuredWorkload !== run.workload ? ` · measured ${run.measuredWorkload} on average` : '';
+    if (run.workloadConfigured) return `${run.workload} as configured${measured}`;
+    return measured ? `about ${run.workload}${measured}` : run.workload;
+}
+
 // Run page: chart first with default axes, then Metadata · Configs & logs · Lineage.
-export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, resultOf, nav, onShare }) {
+// A lone point (no sweep to sit on) shows its numbers only: a one-dot chart
+// says nothing.
+export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = () => false, canPublish = canCurate, resultOf, nav, onShare }) {
     const [tab, setTab] = useState('meta');
     const tabsId = useId();
     // Opens on a latency (and statistic) this run recorded: some archive runs have no TTFT.
     const view = useChartView(run ? (parentRow ? [parentRow.points, run.points] : [run.points]) : []);
+    const backLabel = nav.backLabel || 'Back to Browse';
 
     if (!run) {
         return (
             <div className="space-y-4">
-                <BackButton onClick={nav.back}>Back to Browse</BackButton>
+                <BackButton onClick={nav.back}>{backLabel}</BackButton>
                 <EmptyState title="Run not found" message="It may still be loading, or its source is no longer connected." />
             </div>
         );
@@ -60,6 +88,7 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
 
     const { latency, stat, throughput } = view;
     const single = run.points.length === 1;
+    const lone = single && !parentRow;
     const p = run.points[0];
     const series = [];
     if (single && parentRow) {
@@ -68,17 +97,23 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
     series.push({ id: run.key, name: single ? `This run${p.conc != null ? ` (c=${p.conc})` : ''}` : run.title, points: seriesPoints(run.points, { latency, stat, throughput }) });
     // "TTFT mean": the KPI says which statistic it is.
     const kpiLabel = (metric) => latencyLabel(metric, typicalStat(p, metric));
+    // The tail of a sweep often runs past saturation; say so before anyone
+    // quotes its peak.
+    const warnings = single ? [] : loadChecks(run.points);
+    const usable = single ? null : pricingPoint(run.points, OPERATING_TTFT_MS);
 
     // A run that's part of a sweep publishes the whole sweep, and says so.
     const subjectRuns = parentRow ? parentRow.runs : [run];
     const curate = canCurate(subjectRuns);
+    // On the internal instance only approvers publish (mark official).
+    const publish = canPublish(subjectRuns);
     const published = resultOf(subjectRuns);
     const internal = copy.publishedStatus === 'official';
     const publishLabel = parentRow ? (internal ? 'Mark sweep official' : 'Submit sweep for review') : copy.publishVerb;
 
     return (
         <div className="space-y-6">
-            <BackButton onClick={nav.back}>Back to Browse</BackButton>
+            <BackButton onClick={nav.back}>{backLabel}</BackButton>
 
             <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="min-w-0">
@@ -114,9 +149,11 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
                                 <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
                                 {parentRow ? 'Edit sweep' : 'Make result'}
                             </Button>
-                            <Button size="sm" onClick={() => nav.publish(subjectRuns)}>
-                                {publishLabel}
-                            </Button>
+                            {publish && (
+                                <Button size="sm" onClick={() => nav.publish(subjectRuns)}>
+                                    {publishLabel}
+                                </Button>
+                            )}
                         </>
                     )}
                 </div>
@@ -131,20 +168,38 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
                     <Kpi label="Failed requests" value={p.errPct != null ? `${p.errPct.toFixed(1)}%` : fmtInt(p.errCount)} />
                 </dl>
             )}
+            {lone && (
+                <p className="text-xs text-zinc-500">
+                    This run measured one load level{p.conc != null ? ` (c=${p.conc})` : ''}, so there’s no curve to draw. Use Compare with… to see it next to other runs.
+                </p>
+            )}
 
-            <ChartContainer
-                title="Throughput vs latency"
-                subtitle={
-                    single
-                        ? parentRow
+            {warnings.length > 0 && (
+                <Notice tone="warning">
+                    {warnings.map((w) => w.note).join(' ')} {curate ? `Make a result from this run to exclude ${warnings.length === 1 ? 'that point' : 'those points'}.` : 'Keep that in mind before quoting its peak.'}
+                </Notice>
+            )}
+
+            {!lone && (
+                <ChartContainer
+                    title="Throughput vs latency"
+                    subtitle={
+                        single
                             ? `This run measured one concurrency level. It's part of a sweep (${concRange(parentRow.points)}).`
-                            : 'This run measured one point.'
-                        : `${run.points.length} stages · ${concRange(run.points) || 'concurrency not recorded'} · peak ${fmtTput(peakOutput(run.points))} tok/s`
-                }
-                actions={<MetricToggles view={view} />}
-            >
-                <CurveChart series={series} latency={latency} stat={stat} throughput={throughput} />
-            </ChartContainer>
+                            : [
+                                  `${run.points.length} stages`,
+                                  concRange(run.points) || 'concurrency not recorded',
+                                  `peak ${fmtTput(peakOutput(run.points))} tok/s`,
+                                  usable?.point ? `${fmtTput(usable.point.output)} tok/s at ${limitLabel()}` : null,
+                              ]
+                                  .filter(Boolean)
+                                  .join(' · ')
+                    }
+                    actions={<MetricToggles view={view} />}
+                >
+                    <CurveChart series={series} latency={latency} stat={stat} throughput={throughput} />
+                </ChartContainer>
+            )}
 
             <Panel variant="editorial" padding="md">
                 <Tabs
@@ -165,11 +220,11 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
                             items={[
                                 { label: 'Model', value: run.modelFull },
                                 { label: 'Hardware', value: run.hwLabel || 'Not recorded' },
-                                { label: 'Workload (ISL/OSL)', value: run.workload || 'Not recorded', mono: true },
+                                { label: 'Workload (ISL/OSL)', value: workloadText(run), mono: true },
                                 { label: single ? 'Concurrency' : 'Stages', value: single ? (p.conc ?? 'Not recorded') : `${run.points.length} · ${concRange(run.points) || 'concurrency not recorded'}`, mono: true },
                                 { label: 'Harness', value: run.harness },
                                 { label: 'Serving engine', value: run.engine },
-                                { label: 'Deployment', value: run.setup },
+                                { label: 'Deployment', value: run.setupDetail || run.setup },
                                 { label: 'Category', value: run.category },
                                 { label: 'Source', value: run.source },
                                 { label: 'Measured', value: fmtDateTime(run.ts) },
@@ -180,6 +235,20 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
                     )}
                     {tab === 'configs' && (
                         <div className="space-y-4 text-xs text-zinc-700">
+                            <div>
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <div className="label-caps text-zinc-500">Reproduce this run</div>
+                                        <p className="mt-0.5 text-micro text-zinc-500">
+                                            Synthesized from the recorded harness, model, workload and load stages.
+                                        </p>
+                                    </div>
+                                    <CopyButton text={reproduceCommand(run)} label="Copy command" />
+                                </div>
+                                <pre className="overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">
+                                    {reproduceCommand(run)}
+                                </pre>
+                            </div>
                             {run.fileId && (
                                 <p>
                                     Report file: <span className="font-mono text-zinc-900">{run.fileId}</span>
@@ -192,11 +261,14 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate, res
                                 </Button>
                             )}
                             {run.rawReport ? (
-                                <pre className="max-h-96 overflow-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">
-                                    {previewJson(run.rawReport)}
-                                </pre>
+                                <div>
+                                    <div className="label-caps mb-2 text-zinc-500">Raw report manifest</div>
+                                    <pre className="max-h-96 overflow-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">
+                                        {previewJson(run.rawReport)}
+                                    </pre>
+                                </div>
                             ) : (
-                                <p className="text-zinc-600">No configs or logs were attached to this run.</p>
+                                <p className="text-zinc-600">No raw report manifest or logs were attached to this run.</p>
                             )}
                         </div>
                     )}

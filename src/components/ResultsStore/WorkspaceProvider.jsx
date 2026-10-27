@@ -24,10 +24,14 @@ import { autoCurveName, chipsOf, curveDraftFromRuns, droppedStages, snapshotPoin
 const STORAGE_KEY = 'prism_results_workspace_v1';
 const EMPTY = { curves: [], watches: [], showcases: [] };
 
+// Names nobody edited follow the suggestion as it improves (it now names
+// the setup, so a baseline and its optimization no longer share a name).
+const refreshNames = (w) => ({ ...EMPTY, ...w, curves: (w?.curves || []).map((c) => (c.autoName && c.meta ? { ...c, name: autoCurveName(c.meta) } : c)) });
+
 function load() {
     try {
         const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-        return { internal: { ...EMPTY, ...raw.internal }, public: { ...EMPTY, ...raw.public } };
+        return { internal: refreshNames(raw.internal), public: refreshNames(raw.public) };
     } catch {
         return { internal: { ...EMPTY }, public: { ...EMPTY } };
     }
@@ -314,17 +318,21 @@ export function WorkspaceProvider({ instance, actor, children }) {
                 return id;
             },
 
+            updateWatch(id, patch) {
+                update((w) => ({ ...w, watches: w.watches.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+            },
+
             deleteWatch(id) {
                 update((w) => ({ ...w, watches: w.watches.filter((x) => x.id !== id) }));
             },
 
-            createShowcase({ name, curveIds = [] }) {
+            createShowcase({ name, description = '', curveIds = [] }) {
                 const id = newId('showcase');
                 const handle = String(actor || 'you').replace(/^@/, '');
                 update((w) => ({
                     ...w,
                     showcases: [
-                        { id, name, slug: `/u/${handle}/${slugify(name)}`, curveIds, price: null, owner: actor, createdAt: Date.now() },
+                        { id, name, description, slug: `/u/${handle}/${slugify(name)}`, curveIds, price: null, owner: actor, createdAt: Date.now() },
                         ...w.showcases,
                     ],
                 }));
@@ -332,7 +340,13 @@ export function WorkspaceProvider({ instance, actor, children }) {
             },
 
             updateShowcase(id, patch) {
-                update((w) => ({ ...w, showcases: w.showcases.map((s) => (s.id === id ? { ...s, ...patch } : s)) }));
+                const handle = String(actor || 'you').replace(/^@/, '');
+                update((w) => ({
+                    ...w,
+                    showcases: w.showcases.map((s) =>
+                        s.id === id ? { ...s, ...patch, ...(patch.name ? { slug: `/u/${handle}/${slugify(patch.name)}` } : {}) } : s
+                    ),
+                }));
             },
 
             // Reports price each accelerator type on its own ($ per chip-hour).

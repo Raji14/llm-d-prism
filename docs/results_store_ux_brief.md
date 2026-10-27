@@ -90,7 +90,7 @@ These are the rules we use to settle arguments. Each one has a concrete example 
    Tabs move with arrow keys. Every chart has a hidden data table with a caption. Every toggle group has a name. Status changes are announced. Deltas say "(better)" or "(worse)" out loud, not only in color.
 
 8. **Tell the truth about where things are saved.**
-   Right now, Results, Watches, Reports and Sources live in your browser only. We say so on every screen that creates one, in the publish dialog, and in the toast. We'd rather be plainly limited than quietly misleading.
+   Right now, Results, Watches, Reports and Sources live in your browser only. A single dismissible notice at the top of the workspace says so up front, and the publish dialog and toasts repeat it when you save. We'd rather be plainly limited than quietly misleading, without nagging on every screen.
 
 ---
 
@@ -100,9 +100,9 @@ One page, five tabs, three detail screens that open on top, and a few dialogs.
 
 ```mermaid
 flowchart TD
-    Header["Header: title, instance badge, sign in, Upload"] --> Tabs["Tabs: Browse · My work · Watches & reports · Review queue* · Sources**"]
-    Tabs --> Browse["Browse: search and filters, matching sweeps, list, selection bar"]
-    Tabs --> MyWork["My work: drafts, uploads, in review, published by me"]
+    Header["Header: title, instance badge, Glossary, Classic view, sign in"] --> Tabs["Tabs: Browse · My work · Watches & reports · Review queue* · Sources**"]
+    Tabs --> Browse["Browse: search, filters, Upload, matching sweeps, list, selection bar"]
+    Tabs --> MyWork["My work: needs changes, drafts, uploads, in review, published by me"]
     Tabs --> Dash["Watches & reports: list on the left, one open on the right"]
     Tabs --> Review["Review queue: oldest first, then a review screen"]
     Tabs --> Sources["Sources: bucket health, show/hide, register"]
@@ -127,13 +127,13 @@ Three rules hold it together:
 ## 6. The screens, in plain language
 
 ### Browse
-*What you see:* A search box, a sort menu, filter pills (source, harness, category, model, hardware, workload, date) and a **Mine** toggle at the top. They narrow everything under them: first up to three unpublished sweeps that match (with **See all N sweeps ↓** jumping to the **Sweeps** filter in the list), then a list of runs, sweeps and results, forty at a time. Under **All**, a single-batch sweep that has already been published as a Result folds into that Result row so it isn't listed twice. Every title names the setup, and every row leads with its throughput at TTFT ≤ 2 s, or its peak when TTFT wasn't recorded.
-*What you can do:* Open anything by clicking its title. Check a few rows and a bar appears at the bottom with **Compare**, **Make result** and **Clear**; it also says how many of your picks the filters hide. When your filters leave one setup, **Watch this setup** starts a watch on it; with several, **Watch a setup…** asks which.
+*What you see:* A search box, a sort menu, filter pills (source, harness, category, model, hardware, workload, date), a **Mine** toggle and an **Upload** button at the top. They narrow everything under them: first up to three unpublished sweeps that match (with **See all N sweeps ↓** jumping to the **Sweeps** filter in the list), then a list of runs, sweeps and results, forty at a time. Under **All**, a single-batch sweep that has already been published as a Result folds into that Result row so it isn't listed twice. Every title names the setup, and every row leads with its throughput at TTFT ≤ 2 s, or its peak when TTFT wasn't recorded.
+*What you can do:* Open anything by clicking its title, or **Upload** a JSON/CSV run. Check a few rows and a bar appears at the bottom with **Compare**, **Make result** and **Clear**; it also says how many of your picks the filters hide. When your filters leave one setup, **Watch this setup** starts a watch on it; with several, **Watch a setup…** asks which.
 *Design note:* The list mixes three kinds of things on purpose. A kind badge (`Run`, `Sweep · 6 runs`, `Result`) and a kind filter keep them apart without splitting the page in three.
 
 ### My work
 *What you see:* Up to five short sections: Needs changes, Drafts, Uploaded runs, In review, and Official (or Published) by me. Empty sections don't appear.
-*What you can do:* Edit, publish, fix, or view the run behind each item. Items in review show a four-step timeline.
+*What you can do:* Edit, publish, fix, **Withdraw** a submission from review (returning it to a draft), or view the run behind each item. Items in review show a four-step timeline.
 *Design note:* It's a to-do list, not an archive. The first section is always the one that needs you most.
 
 ### Watches & reports
@@ -225,13 +225,13 @@ Each journey is written as what the person does, then what "done" looks like.
 | Only **approvers mark a Result Official** on the internal instance, and they must be signed in | Official is a claim other people rely on; anonymous Official results undermine it. Matches the roadmap's allowlist of approvers. | Non-approvers can't publish on their own. They keep drafts and ask an approver. |
 | Reports take Results **of any status**, marked Unofficial | Tuners price candidate configs before anyone curates them. Requiring a publish first added steps and, on the public store, a review wait. | A report can change as its drafts are edited; the label and a notice say so. |
 
-The recommendations from the 2026-10-20 review, each with what we built and why, are in section 9.
+The recommendations from the 2026-10-20 review and 2026-10-26 UI audit cleanup, each with what we built and why, are in section 9.
 
 ---
 
 ## 9. Recommendations from the 2026-10-20 review
 
-We walked the four journeys as each person, on the live data, and asked one question: can they finish without help? The answer was "almost" for three of them and "no" for the stack operator. These are the changes we recommended, what each one does, and why. Everything in 9.1 to 9.5 is built on `prism2.0`.
+We walked the four journeys as each person, on the live data, and asked one question: can they finish without help? The answer was "almost" for three of them and "no" for the stack operator. These are the changes we recommended, what each one does, and why. Everything in 9.1 to 9.6 is built on `prism2.0`.
 
 ### 9.1 Make every setup recognisable
 
@@ -284,7 +284,18 @@ We walked the four journeys as each person, on the live data, and asked one ques
 | 25 | **A glossary** | A **Glossary** button in the header explains setup, sweep, baseline, c=, ISL/OSL, TTFT, p99 and the rest, one sentence each, and links to *How we measure*. | Section 10 listed jargon without a glossary as a blocker for newcomers. |
 | 26 | **Review against the closest results** | The review overlay ranks published results by setup closeness, not just model. | A reviewer could judge a 16×H100 run against a TPU curve. |
 
-### 9.6 Where the journeys stand
+### 9.6 UI audit cleanup & lifecycle completion (2026-10-26)
+
+| # | Recommendation | What we built | Why |
+| :--- | :--- | :--- | :--- |
+| 27 | **Remove duplicate action controls** | Removed the header **Upload** button (kept in-context in Browse and My work); removed the per-row **Use as baseline** column in Compare (leaving the top **Baseline** menu and row **Remove** action); folded already-published single-batch sweeps into their Result row under Browse **All**; and changed **See all N sweeps** to scroll down to the **Sweeps** list filter. | Two Upload buttons, two baseline controls on one screen, and duplicate sweep/Result rows added visual noise and competing click targets. |
+| 28 | **One dismissible browser-storage notice** | Replaced six repeated browser-storage callouts across tabs and detail screens with a single dismissible banner at the top of the workspace (`sessionStorage`), while keeping the reminder in the Publish dialog and save toasts. | Repeating the same yellow notice on every screen caused banner fatigue. |
+| 29 | **Complete CRUD lifecycles for Watches, Reports, and submissions** | Added in-place **Edit** for Watches (name, baseline, metric, threshold, guard), in-place **Edit** for Report title and description, and **Withdraw** on `In review` / `Needs changes` items in My work and the Result editor. | Any mistake in a Watch threshold, Report title, or submitted Result previously forced deleting and recreating it from scratch. |
+| 30 | **Compound latency & error-rate Watch guards** | Watches now include an optional **Also flag TTFT > +20% or error rate ≥ 5%** guard (enabled by default) and list the exact `flagReasons` (`output -25.0%`, `TTFT +24%`, `7.0% errors`) on each flagged batch. | Throughput alone can miss tail-latency spikes or elevated request failure rates in nightly runs. |
+| 31 | **Per-chip normalization on the Report cost table** | Added a **Per chip** switch directly in the Report cost table header so throughput and cost rows normalize per accelerator alongside the chart. | Comparing 4-chip and 8-chip candidates in a sizing report required mentally dividing the throughput column. |
+| 32 | **Reproduce this run CLI block** | Added a **Reproduce this run** block with a one-click **Copy command** button at the top of every run's **Configs & logs** tab (`inference-perf`, `guidellm`, or `vllm bench serve`). | Engineers inspecting a run needed a ready-to-paste command with the run's model, ISL/OSL, and concurrency stages. |
+
+### 9.7 Where the journeys stand
 
 | Journey | Before | Now |
 | :--- | :--- | :--- |
@@ -295,7 +306,7 @@ We walked the four journeys as each person, on the live data, and asked one ques
 
 All four journeys finish for one person in one browser. Sharing the results with a team needs server storage (section 10, item 1).
 
-### 9.7 Not done here, and why
+### 9.8 Not done here, and why
 
 | Recommendation | Why it waits | What it unblocks |
 | :--- | :--- | :--- |

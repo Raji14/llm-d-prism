@@ -58,12 +58,13 @@ function serverSteps(status) {
 
 // Results saved in this browser: Prism's own checks as they stand now, and
 // whether reviewers can see anything. Only uploaded runs that live on the
-// server reach them; the result itself can't leave this browser yet.
+// server reach them, and only if they were sent when it was submitted
+// (`reviewReach`); the result itself can't leave this browser yet.
 function localSteps(curve) {
     const checks = curveChecks(curve);
     const errors = checks.filter((c) => c.level === 'error').length;
     const warns = checks.filter((c) => c.level === 'warn').length;
-    const onServer = (curve.submissionRunIds || []).length > 0;
+    const reached = curve.reviewReach || 0;
     return [
         { label: 'Saved in this browser', state: 'done' },
         errors
@@ -71,7 +72,9 @@ function localSteps(curve) {
             : warns
               ? { label: `Checks: ${warns} need${warns === 1 ? 's' : ''} attention`, state: 'warn' }
               : { label: 'Checks passed', state: 'done' },
-        onServer ? { label: 'Reviewers see the uploaded runs', state: 'now' } : { label: 'Reviewers can’t see it yet', state: 'todo' },
+        reached
+            ? { label: `Reviewers see its ${reached} uploaded run${reached === 1 ? '' : 's'}`, state: 'now' }
+            : { label: 'Reviewers can’t see it yet', state: 'todo' },
         { label: 'Published', state: 'todo' },
     ];
 }
@@ -109,7 +112,9 @@ function Section({ title, count, subtitle, children }) {
 // Everything you're curating, apart from browsing: drafts, uploads, what's
 // waiting on a reviewer and what you've published.
 export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, canPublish, officialBlock, nav, onOpenClassic, onUpload }) {
-    const mine = curves.filter((c) => c.owner === actor || !c.owner);
+    // Results saved before signing in are owned by 'you'; they're still in
+    // this browser, so they stay in My Work after sign-in.
+    const mine = curves.filter((c) => c.owner === actor || !c.owner || c.owner === 'you');
     const by = (status) => mine.filter((c) => c.status === status).sort((a, b) => b.updatedAt - a.updatedAt);
     const drafts = by('draft');
     const needsChanges = by('needs_changes');
@@ -177,7 +182,15 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
         <div className="space-y-6">
             {/* First: the only section that's waiting on you. */}
             {isPublic && (
-                <Section title="Needs changes" count={needsChanges.length + declined.length + serverChanges.length} subtitle="A reviewer sent these back. Fix and submit again.">
+                <Section
+                    title="Needs changes"
+                    count={needsChanges.length + declined.length + serverChanges.length}
+                    subtitle={
+                        declined.length
+                            ? 'A reviewer sent these back. Fix and submit again; reopen a declined result as a draft to change it.'
+                            : 'A reviewer sent these back. Fix and submit again.'
+                    }
+                >
                     {[...needsChanges, ...declined].map((c) =>
                         curveRow(c, { label: c.status === 'declined' ? 'Open' : 'Fix', primary: true, rowProps: { detail: c.feedback ? `“${c.feedback}”` : undefined } })
                     )}

@@ -16,6 +16,7 @@ import React, { useId, useMemo, useState } from 'react';
 import { Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button, Input, Label, Panel, Spinner, StatusChip, Switch, ToggleGroup } from '../ui';
 import { cn } from '../../utils/cn';
+import { getCanonicalBucketName } from '../../utils/bucketUtils';
 import { LOADED_AT, fmtDay, sourceOf } from './catalog';
 import { sourceHealth } from './sourceHealth';
 
@@ -35,7 +36,9 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
         setHiddenSources,
         gcsLoading,
         gcsError,
+        setGcsError,
         gcsSuccess,
+        setGcsSuccess,
         connectionType,
         setConnectionType,
         newBucketName,
@@ -103,12 +106,20 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
     };
     // The hook shares one error/success slot between sync and register. Sync
     // problems already show in each source's Health, so the form only reports
-    // once someone has used Register on this visit.
+    // once someone has used Register on this visit, and each attempt starts
+    // clean (an old error used to sit next to a new success).
     const [registerTried, setRegisterTried] = useState(false);
+    // The source the last Register added: the hook says "Added bucket" even
+    // when nothing in it could be read, so the page checks for itself.
+    const [registered, setRegistered] = useState(null);
     const add = () => {
         setRegisterTried(true);
+        setGcsError?.(null);
+        setGcsSuccess?.(null);
+        setRegistered(`${connectionType === 'aws' ? 'aws' : 'gcs'}:${getCanonicalBucketName(newBucketName)}`);
         return connectionType === 'aws' ? handleAddAWSBucket(newBucketAlias) : handleAddGCSBucket(newBucketAlias);
     };
+    const addedEmpty = registered ? sources.find((s) => s.key === registered && s.profile && !s.profile.loading && !s.profile.error && s.runs === 0) : null;
 
     return (
         <div className="space-y-6">
@@ -245,7 +256,13 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                 {/* Always in the page, so what Register reports is read out when it appears. */}
                 <div aria-live="polite">
                     {registerTried && gcsError && <p className="mt-3 text-xs text-red-700">{gcsError}</p>}
-                    {registerTried && gcsSuccess && <p className="mt-3 text-xs text-emerald-700">{gcsSuccess}</p>}
+                    {addedEmpty ? (
+                        <p className="mt-3 text-xs text-amber-800">
+                            Registered {addedEmpty.label}, but Prism found no benchmark reports in it. Check the bucket name and that it holds report files; remove it if it’s the wrong one.
+                        </p>
+                    ) : (
+                        registerTried && gcsSuccess && <p className="mt-3 text-xs text-emerald-700">{gcsSuccess}</p>
+                    )}
                 </div>
             </Panel>
         </div>

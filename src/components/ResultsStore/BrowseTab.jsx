@@ -318,7 +318,7 @@ function SuggestedCard({ row, nav, copy, curate, publish }) {
     );
 }
 
-export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canCurateItems = canCurate, canPublish = canCurate, officialBlock, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload, onOpenClassic }) {
+export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canMakeResultItems = () => false, canPublish = canCurate, officialBlock, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload, onOpenClassic }) {
     const { query, filters, sort, kind, selected } = state;
     const [expanded, setExpanded] = useState(() => new Set());
     const [limit, setLimit] = useState(PAGE);
@@ -535,11 +535,11 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                         {/* Next to the count, not in the filter row: appearing there it
                             wrapped to a new line and pushed the list down. With one
                             setup left it watches that; with more it asks which. */}
-                        {activeCount > 0 && filteredSetups.length > 0 && (
+                        {narrowed && filteredSetups.length > 0 && (
                             <Button
                                 size="xs"
                                 variant="secondary"
-                                onClick={() => (filteredSetups.length === 1 ? nav.watchSetup({ configKey: filteredSetups[0] }) : onWatchFilters(filters))}
+                                onClick={() => (filteredSetups.length === 1 ? nav.watchSetup({ configKey: filteredSetups[0] }) : onWatchFilters(filters, q))}
                             >
                                 <Activity className="h-3.5 w-3.5" aria-hidden="true" />
                                 {filteredSetups.length === 1 ? 'Watch this setup' : 'Watch a setup…'}
@@ -632,7 +632,8 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                             <Button size="xs" onClick={() => nav.openCompare(selectedItems)}>
                                 Compare
                             </Button>
-                            {canCurateItems(selectedItems) && (
+                            {/* Only when the picks form one sweep; mixed picks are for Compare. */}
+                            {canMakeResultItems(selectedItems) && (
                                 <Button size="xs" variant="secondary" onClick={() => nav.makeCurveFromItems(selectedItems)}>
                                     Make result
                                 </Button>

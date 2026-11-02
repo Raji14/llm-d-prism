@@ -344,7 +344,10 @@ export function parseReportV02(yamlText, filename) {
         performance,
         observability,
         components,
-        rawReport: doc,
+        // The document as uploaded, not the parsed copy: parsing converts
+        // latencies to ms, and re-queuing or submitting re-parses this, so the
+        // parsed copy would multiply every latency by 1,000 again.
+        rawReport: rawDoc,
     };
 }
 

@@ -19,20 +19,30 @@
 
 import React, { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
-import { Button, Checkbox, Input, Label, Modal } from '../ui';
+import { Button, Checkbox, Input, Label, Modal, ToggleGroup } from '../ui';
 
-export function PublishDialog({ subject, summary, checks, copy, instance, actor, isOpen, onClose, onMarkOfficial, onSubmit, onContinueUpload, onEditFirst }) {
+// `localRuns` counts source runs uploaded only to this browser (the caller
+// knows them even when the result's own list is out of date), and
+// `reviewRuns` the uploaded runs reviewers would actually get (on the server
+// and not public yet).
+export function PublishDialog({ subject, summary, checks, copy, instance, actor, localRuns = 0, reviewRuns, isOpen, onClose, onMarkOfficial, onSubmit, onContinueUpload, onEditFirst }) {
     // Without sign-in the actor is just the word "you": don't record it as a name.
     const signedIn = typeof actor === 'string' && actor.startsWith('@');
     const [attribution, setAttribution] = useState(signedIn ? actor : '');
     const [dco, setDco] = useState(false);
+    // Who sees it once a reviewer approves it: listed in the store, or only
+    // people with the link (spec §4 CUJ 2: Public vs Link only).
+    const [visibility, setVisibility] = useState('public');
     const blocking = checks.filter((c) => c.level === 'error');
     // Only three warnings are listed: relabelled hardware or model goes first,
     // since it changes what the numbers claim to be.
     const LABEL_IDS = ['hw', 'model'];
     const warnings = checks.filter((c) => c.level === 'warn').sort((a, b) => Number(LABEL_IDS.includes(b.id)) - Number(LABEL_IDS.includes(a.id)));
-    const localOnly = subject.localRunIds?.length || 0;
+    const localOnly = Math.max(subject.localRunIds?.length || 0, localRuns);
+    const serverRuns = reviewRuns ?? (subject.submissionRunIds?.length || 0);
     const internal = instance === 'internal';
+    // The sign-off as given, kept with the submission so reviewers can see it.
+    const dcoRecord = () => ({ version: '1.1', by: attribution.trim() || actor, at: Date.now() });
 
     const footer = (
         <>
@@ -53,7 +63,7 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                     Continue to upload
                 </Button>
             ) : (
-                <Button size="sm" disabled={blocking.length > 0 || !dco || !attribution.trim()} onClick={() => onSubmit({ attribution: attribution.trim() })}>
+                <Button size="sm" disabled={blocking.length > 0 || !dco || !attribution.trim()} onClick={() => onSubmit({ attribution: attribution.trim(), visibility, dco: dcoRecord() })}>
                     Submit for review
                 </Button>
             )}
@@ -69,9 +79,17 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                 </div>
                 {internal ? (
                     // Only approvers get here: signed in, or previewing a role on the dev server.
-                    <p>
-                        It becomes Official, with <span className="font-semibold text-zinc-900">{actor}</span> recorded as the approver today. The source runs don’t change.
-                    </p>
+                    <>
+                        <p>
+                            It becomes Official, with <span className="font-semibold text-zinc-900">{actor}</span> recorded as the approver today. The source runs don’t change.
+                        </p>
+                        {localOnly > 0 && (
+                            <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                {localOnly} of its runs {localOnly === 1 ? 'was' : 'were'} uploaded only to this browser, so nobody else can check {localOnly === 1 ? 'it' : 'them'}. Once results
+                                are stored on the server, those runs must be uploaded before a result can be marked official.
+                            </p>
+                        )}
+                    </>
                 ) : (
                     <>
                         <div>
@@ -80,6 +98,26 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                             </Label>
                             <Input surface="light" id="rs-attribution" value={attribution} onChange={(e) => setAttribution(e.target.value)} placeholder="@github-user or organization" />
                         </div>
+                        {!localOnly && (
+                            <div>
+                                <div className="mb-1.5 text-xs font-semibold text-zinc-900">Once approved</div>
+                                <ToggleGroup
+                                    size="xs"
+                                    aria-label="Who can see it once approved"
+                                    value={visibility}
+                                    onChange={setVisibility}
+                                    options={[
+                                        { value: 'public', label: 'Listed in the store' },
+                                        { value: 'link', label: 'Link only' },
+                                    ]}
+                                />
+                                <p className="mt-1.5 text-micro text-zinc-500">
+                                    {visibility === 'link'
+                                        ? 'Anyone with the link can open it, but it isn’t listed in Browse.'
+                                        : 'Everyone can find it in Browse and compare against it.'}
+                                </p>
+                            </div>
+                        )}
                         <Checkbox
                             surface="light"
                             checked={dco}
@@ -91,7 +129,8 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                             Automatic checks (a few minutes) → a reviewer looks at it → Published. You’ll find it in <span className="font-semibold">My work</span>.
                             {localOnly > 0 && (
                                 <p className="mt-2 text-amber-800">
-                                    {localOnly} run{localOnly === 1 ? ' is' : 's are'} only in this browser. You’ll confirm the upload next, then the result goes to review.
+                                    {localOnly} run{localOnly === 1 ? ' is' : 's are'} only in this browser, so {localOnly === 1 ? 'it needs' : 'they need'} uploading first. Continue to upload opens the
+                                    upload wizard, which sends the runs themselves for review. This result stays a draft in this browser.
                                 </p>
                             )}
                         </div>
@@ -126,7 +165,11 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                 )}
                 {!internal && copy && <p className="text-micro text-zinc-500">{copy.rule}</p>}
                 <p className="text-micro text-zinc-500">
-                    {internal ? 'For now the result is saved in this browser, so only you can see it.' : 'For now the result itself is saved in this browser. Reviewers see the runs you uploaded.'}
+                    {internal
+                        ? 'For now the result is saved in this browser, so only you can see it.'
+                        : serverRuns > 0
+                          ? 'For now the result itself is saved in this browser. Reviewers see the runs you uploaded.'
+                          : 'For now the result is saved in this browser only, so reviewers can’t see it yet.'}
                 </p>
             </div>
         </Modal>

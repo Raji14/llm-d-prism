@@ -168,6 +168,11 @@ export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
                                             parsedStage.well_lit_path = resolvedWellLit;
                                             parsedStage.wellLitPath = resolvedWellLit;
                                             const entry = stageToEntry(parsedStage);
+                                            // Files attached at upload and the harness arguments,
+                                            // for the Results store's Configs & logs and review screens.
+                                            entry.manifests = jsonContent.manifests || null;
+                                            entry.evidence = jsonContent.evidence || null;
+                                            entry.run_metadata = jsonContent.run_metadata || null;
                                             entries.push(entry);
                                         }
                                     }

@@ -16,7 +16,7 @@ import React, { useId, useState } from 'react';
 import { Activity, ExternalLink, GitCompareArrows, Share2, Sparkles } from 'lucide-react';
 import { Badge, Button, ChartContainer, EmptyState, Panel, StatusChip, TabPanel, Tabs } from '../ui';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { BackButton, CopyButton, MetaGrid, Notice, PublishedState, ResultStatusChip } from './parts';
+import { Attachments, BackButton, CopyButton, MetaGrid, Notice, PublishedState, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
 import {
     OPERATING_TTFT_MS,
@@ -31,6 +31,7 @@ import {
     loadChecks,
     peakOutput,
     pricingPoint,
+    recordedCommand,
     reproduceCommand,
     seriesPoints,
     typicalStat,
@@ -110,6 +111,11 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
     const published = resultOf(subjectRuns);
     const internal = copy.publishedStatus === 'official';
     const publishLabel = parentRow ? (internal ? 'Mark sweep official' : 'Submit sweep for review') : copy.publishVerb;
+    // Configs & logs: the command the harness recorded when there is one
+    // (otherwise an approximate rebuild), and the files uploaded with the run.
+    const recorded = recordedCommand(run);
+    const command = recorded || reproduceCommand(run);
+    const files = run.attachments || [];
 
     return (
         <div className="space-y-6">
@@ -229,46 +235,56 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
                                 { label: 'Source', value: run.source },
                                 { label: 'Measured', value: fmtDateTime(run.ts) },
                                 { label: 'Run ID', value: run.runId, mono: true },
+                                { label: 'Run label', value: run.runLabel, mono: true },
                                 { label: 'Submitted by', value: run.author ? `@${run.author}` : null },
                             ]}
                         />
                     )}
                     {tab === 'configs' && (
-                        <div className="space-y-4 text-xs text-zinc-700">
+                        <div className="space-y-5 text-xs text-zinc-700">
                             <div>
                                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                                     <div>
-                                        <div className="label-caps text-zinc-500">Reproduce this run</div>
+                                        <div className="label-caps text-zinc-500">{recorded ? 'Command this run used' : 'Reproduce this run'}</div>
                                         <p className="mt-0.5 text-micro text-zinc-500">
-                                            Synthesized from the recorded harness, model, workload and load stages.
+                                            {recorded
+                                                ? 'As the harness recorded it.'
+                                                : 'Approximate: rebuilt from the recorded harness, model, workload and load stages. The run’s own config may differ.'}
                                         </p>
                                     </div>
-                                    <CopyButton text={reproduceCommand(run)} label="Copy command" />
+                                    <CopyButton text={command} label="Copy command" />
                                 </div>
                                 <pre className="overflow-x-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">
-                                    {reproduceCommand(run)}
+                                    {command}
                                 </pre>
                             </div>
+                            {files.length > 0 && (
+                                <div>
+                                    <div className="label-caps text-zinc-500">Attached files</div>
+                                    <p className="mb-3 mt-0.5 text-micro text-zinc-500">Uploaded with this run, as submitted.</p>
+                                    <Attachments files={files} />
+                                </div>
+                            )}
                             {run.fileId && (
                                 <p>
                                     Report file: <span className="font-mono text-zinc-900">{run.fileId}</span>
                                 </p>
                             )}
                             {run.rawUrl && (
-                                <Button size="xs" variant="secondary" href={run.rawUrl} target="_blank" rel="noreferrer">
+                                <Button size="xs" variant="secondary" href={run.rawUrl} target="_blank" rel="noopener noreferrer">
                                     <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                                     Open source folder
                                 </Button>
                             )}
                             {run.rawReport ? (
                                 <div>
-                                    <div className="label-caps mb-2 text-zinc-500">Raw report manifest</div>
+                                    <div className="label-caps mb-2 text-zinc-500">Raw benchmark report</div>
                                     <pre className="max-h-96 overflow-auto rounded-2xl border border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">
                                         {previewJson(run.rawReport)}
                                     </pre>
                                 </div>
                             ) : (
-                                <p className="text-zinc-600">No raw report manifest or logs were attached to this run.</p>
+                                files.length === 0 && <p className="text-zinc-600">No configs, logs or raw report were attached to this run.</p>
                             )}
                         </div>
                     )}

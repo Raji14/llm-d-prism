@@ -72,6 +72,7 @@ import {
     fmtTput,
     latencyLabel,
     listPrice,
+    loadOrder,
     pricingPoint,
     runMatches,
     sameSetup,
@@ -114,13 +115,28 @@ const ttftLabel = (p) => (Number.isFinite(p.ttft) ? `${latencyLabel('ttft', typi
 // "c=128 · TTFT p50 2.64 s": the point a price was worked out at.
 const pointLabel = (p) => [p.conc != null ? `c=${p.conc}` : null, nobreak(ttftLabel(p))].filter(Boolean).join('\u00a0· ');
 
+// Every batch of a setup's rows, newest first, so any of them can be pinned
+// as a watch's baseline: pinning only the newest made older batches read as
+// gains and hid a drop.
+const batchesOf = (rows) =>
+    rows
+        .flatMap((row) => row.repeats.map((rep) => ({ ts: rep.ts, points: loadOrder(rep.runs.flatMap((r) => r.points)).points })))
+        .filter((b) => b.points.length)
+        .sort((a, b) => b.ts - a.ts);
+
+// "Sep 23, 2025, 09:41": two batches can land on one day.
+const batchWhen = (ts) => `${fmtDay(ts)}, ${new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
 // ------------------------------------------------------------- dialogs
 
 export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {}, referenceCurves, onCreate }) {
+    // The setups Browse was showing: every Browse filter and the search narrow
+    // the list, as they narrowed Browse ("mine" needs an account, so it doesn't).
     const scoped = useMemo(() => {
-        const f = watchFilters(initial.filters);
-        return Object.keys(f).length ? runs.filter((r) => runMatches(r, f)) : runs;
-    }, [runs, initial.filters]);
+        const f = initial.filters || {};
+        const q = String(initial.query || '').trim().toLowerCase();
+        return Object.keys(watchFilters(f)).length || f.category != null || f.date || q ? runs.filter((r) => runMatches(r, f, { query: q })) : runs;
+    }, [runs, initial.filters, initial.query]);
     const setups = useMemo(() => setupsOf(scoped), [scoped]);
     const [setupKey, setSetupKey] = useState(() => setups.find((s) => sameSetup(s.key, initial.configKey))?.key || setups[0]?.key || '');
     const [refChoice, setRefChoice] = useState(initial.refCurveId || 'auto');
@@ -133,11 +149,16 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
     const setup = setups.find((s) => s.key === setupKey) || null;
     const rows = useMemo(() => buildRows(setup?.runs || []), [setup]);
     const batches = rows.reduce((n, row) => n + row.repeats.length, 0);
-    const newestBatch = rows.find((row) => row.points.length > 1) || rows[0] || null;
+    // Every batch of this setup, newest first, so any of them can be pinned.
+    const batchList = useMemo(() => batchesOf(rows), [rows]);
+    const newestBatch = batchList.find((b) => b.points.length > 1) || batchList[0] || null;
+    const batchLabel = (b) => batchWhen(b.ts);
     // Only results of this same setup can be its baseline.
     const refs = useMemo(() => referenceCurves.filter((c) => sameSetup(curveConfigKey(c, runsByKey), setupKey)), [referenceCurves, runsByKey, setupKey]);
-    const pinned = newestBatch ? { kind: 'pinned', name: `Pinned batch · ${fmtDay(newestBatch.ts)}`, points: newestBatch.points } : null;
-    const chosen = refs.find((c) => c.id === refChoice) || (refChoice === 'pinned' ? null : refs[0]);
+    const pickedBatch = String(refChoice).startsWith('pinned:') ? batchList.find((b) => `pinned:${b.ts}` === refChoice) || null : null;
+    const pinBatch = pickedBatch || newestBatch;
+    const pinned = pinBatch ? { kind: 'pinned', name: `Pinned batch · ${batchLabel(pinBatch)}`, points: pinBatch.points } : null;
+    const chosen = refs.find((c) => c.id === refChoice) || (String(refChoice).startsWith('pinned') ? null : refs[0]);
     const ref = chosen ? { kind: 'curve', id: chosen.id, name: chosen.name, points: chosen.points.filter((p) => p.included) } : pinned;
     const concs = [...new Set((ref?.points || []).map((p) => p.conc).filter((c) => c != null))].sort((a, b) => a - b);
     // Usable throughput needs a baseline point within the TTFT limit.
@@ -205,7 +226,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                                 </>
                             ) : null}
                             Only repeats of this exact setup are compared, so a different deployment is never flagged.
-                            {scopedByFilters ? ' Showing setups that match your Browse filters.' : ''}
+                            {scopedByFilters ? ' Showing setups that match your Browse search and filters.' : ''}
                         </p>
                     </div>
                 )}
@@ -214,15 +235,28 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         <Label surface="light" htmlFor="rs-watch-ref">
                             Baseline
                         </Label>
-                        <Select surface="light" id="rs-watch-ref" value={ref?.kind === 'curve' ? ref.id : 'pinned'} onChange={(e) => setRefChoice(e.target.value)} disabled={!setup}>
+                        <Select
+                            surface="light"
+                            id="rs-watch-ref"
+                            value={ref?.kind === 'curve' ? ref.id : pickedBatch ? `pinned:${pickedBatch.ts}` : 'pinned'}
+                            onChange={(e) => setRefChoice(e.target.value)}
+                            disabled={!setup}
+                        >
                             {refs.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                    {c.name} ({resultStatusLabel(c.status)})
+                                    {c.name} ({resultStatusLabel(c.status) || (c.status === 'draft' ? 'Draft' : c.status)})
                                 </option>
                             ))}
-                            <option value="pinned" disabled={!pinned}>
-                                {pinned ? `Pin the newest batch of this setup (${fmtDay(newestBatch.ts)})` : 'No batch to pin yet'}
+                            <option value="pinned" disabled={!newestBatch}>
+                                {newestBatch ? `Pin the newest batch of this setup (${batchLabel(newestBatch)})` : 'No batch to pin yet'}
                             </option>
+                            {batchList
+                                .filter((b) => b !== newestBatch)
+                                .map((b) => (
+                                    <option key={b.ts} value={`pinned:${b.ts}`}>
+                                        Pin the batch of {batchLabel(b)}
+                                    </option>
+                                ))}
                         </Select>
                     </div>
                     <div>
@@ -264,7 +298,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         <Checkbox
                             surface="light"
                             checked={guard}
-                            onChange={(v) => setGuard(v)}
+                            onChange={(e) => setGuard(e.target.checked)}
                             label="Also flag TTFT spikes (+20% at the watched point) and failed requests (≥ 5%)"
                         />
                     </div>
@@ -343,11 +377,12 @@ export function AddToDashboardDialog({ isOpen, onClose, curveIds, pending = 0, s
 
 // ------------------------------------------------------------- watch
 
-function WatchTooltip({ active, payload }) {
+// `whenOf` names a batch: its day, plus the time when two batches share one.
+function WatchTooltip({ active, payload, whenOf = fmtDay }) {
     if (!active || !payload?.length) return null;
     const p = payload[0].payload;
     return (
-        <ChartTooltip title={fmtDay(p.ts)} subtitle={p.setup || p.title}>
+        <ChartTooltip title={whenOf(p.ts)} subtitle={p.setup || p.title}>
             <ChartTooltipRow color={p.flagged ? CHART_STATUS.critical : seriesColor(0)} label="vs. baseline" value={fmtPct(p.delta)} />
             <ChartTooltipRow label={p.conc != null ? `Output at c=${p.conc}` : 'Output throughput'} value={fmtTput(p.value)} unit=" tok/s" />
             {p.ttft != null && (
@@ -377,6 +412,13 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const matching = useMemo(() => watchRuns(watch, runs, { getCurve: ws.getCurve, runsByKey }), [watch, runs, ws.getCurve, runsByKey]);
     const matchingRows = useMemo(() => buildRows(matching), [matching]);
     const series = useMemo(() => watchSeries(matchingRows, refPoints, watch), [matchingRows, refPoints, watch]);
+    // Batches are named by day; two on one day also get their time, so the
+    // table and tooltip never show two rows that look the same.
+    const sharedDays = useMemo(() => {
+        const counts = series.reduce((m, s) => m.set(fmtDay(s.ts), (m.get(fmtDay(s.ts)) || 0) + 1), new Map());
+        return new Set([...counts].filter(([, n]) => n > 1).map(([day]) => day));
+    }, [series]);
+    const whenOf = (ts) => (sharedDays.has(fmtDay(ts)) ? batchWhen(ts) : fmtDay(ts));
     const flagged = series.filter((s) => s.flagged);
     // One batch, or only the batch the baseline was made from, shows no trend
     // and proves nothing, so don't present it as a pass.
@@ -386,10 +428,17 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const refConcs = [...new Set(refPoints.map((p) => p.conc).filter((c) => c != null))].sort((a, b) => a - b);
     const usableOk = Boolean(refPoints.length && pricingPoint(refPoints, OPERATING_TTFT_MS).point);
     const currentMetric = watch.limit ? 'usable' : watch.atConc != null ? String(watch.atConc) : '';
-    const newestBatch = matchingRows.find((row) => row.points.length > 1) || matchingRows[0] || null;
+    // Every batch of the watched setup, newest first: Edit can pin any of them.
+    const batchList = useMemo(() => batchesOf(matchingRows), [matchingRows]);
+    const newestBatch = batchList.find((b) => b.points.length > 1) || batchList[0] || null;
+    // Official / Published results of this setup, plus the result the watch
+    // already uses (a draft, when it was started from one), so Edit shows it.
     const refs = useMemo(
-        () => (ws.curves || []).filter((c) => ['official', 'published'].includes(c.status) && sameSetup(curveConfigKey(c, runsByKey), configKey)),
-        [ws.curves, runsByKey, configKey]
+        () =>
+            (ws.curves || []).filter(
+                (c) => (watch.ref?.kind === 'curve' && c.id === watch.ref.id) || (['official', 'published'].includes(c.status) && sameSetup(curveConfigKey(c, runsByKey), configKey))
+            ),
+        [ws.curves, runsByKey, configKey, watch.ref]
     );
     const theme = getChartTheme();
     const metricLabel = watch.limit ? `Output at TTFT ≤ ${secondsLabel(watch.limit)}` : watch.atConc != null ? `Output throughput at c=${watch.atConc}` : 'Peak output throughput';
@@ -480,35 +529,42 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                         <Select
                             surface="light"
                             id="rs-edit-watch-ref"
-                            value={watch.ref?.kind === 'curve' ? watch.ref.id : 'pinned'}
+                            // The current pinned batch stays selected as itself ("current");
+                            // other batches are offered by date and time.
+                            value={watch.ref?.kind === 'curve' ? watch.ref.id : watch.ref?.kind === 'pinned' ? 'current' : ''}
                             onChange={(e) => {
                                 const val = e.target.value;
-                                if (val === 'pinned') {
-                                    if (newestBatch) {
-                                        ws.updateWatch(watch.id, {
-                                            ref: { kind: 'pinned', name: `Pinned batch · ${fmtDay(newestBatch.ts)}`, points: newestBatch.points },
-                                        });
-                                    }
-                                } else {
+                                if (val.startsWith('pinned:')) {
+                                    const batch = batchList.find((b) => `pinned:${b.ts}` === val);
+                                    if (batch) ws.updateWatch(watch.id, { ref: { kind: 'pinned', name: `Pinned batch · ${batchWhen(batch.ts)}`, points: batch.points } });
+                                } else if (val !== 'current') {
                                     const chosen = refs.find((c) => c.id === val);
-                                    if (chosen) {
-                                        ws.updateWatch(watch.id, { ref: { kind: 'curve', id: chosen.id, name: chosen.name } });
-                                    }
+                                    if (chosen) ws.updateWatch(watch.id, { ref: { kind: 'curve', id: chosen.id, name: chosen.name } });
                                 }
                             }}
                         >
+                            {!watch.ref && <option value="">Choose a baseline</option>}
                             {refs.map((c) => (
                                 <option key={c.id} value={c.id}>
-                                    {c.name} ({resultStatusLabel(c.status)})
+                                    {c.name} ({resultStatusLabel(c.status) || (c.status === 'draft' ? 'Draft' : c.status)})
                                 </option>
                             ))}
-                            <option value="pinned" disabled={!newestBatch && watch.ref?.kind !== 'pinned'}>
-                                {watch.ref?.kind === 'pinned'
-                                    ? watch.ref.name
-                                    : newestBatch
-                                      ? `Pin the newest batch of this setup (${fmtDay(newestBatch.ts)})`
-                                      : 'No batch to pin yet'}
-                            </option>
+                            {watch.ref?.kind === 'curve' && !refs.some((c) => c.id === watch.ref.id) && (
+                                <option value={watch.ref.id} disabled>
+                                    {watch.ref.name} (no longer in this browser)
+                                </option>
+                            )}
+                            {watch.ref?.kind === 'pinned' && <option value="current">{watch.ref.name}</option>}
+                            {batchList.length === 0 && watch.ref?.kind !== 'pinned' && (
+                                <option value="none" disabled>
+                                    No batch to pin yet
+                                </option>
+                            )}
+                            {batchList.map((b) => (
+                                <option key={b.ts} value={`pinned:${b.ts}`}>
+                                    {b === newestBatch ? `Pin the newest batch of this setup (${batchWhen(b.ts)})` : `Pin the batch of ${batchWhen(b.ts)}`}
+                                </option>
+                            ))}
                         </Select>
                     </div>
                     <div>
@@ -559,7 +615,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                         <Checkbox
                             surface="light"
                             checked={Boolean(watch.guard)}
-                            onChange={(v) => ws.updateWatch(watch.id, { guard: Boolean(v) })}
+                            onChange={(e) => ws.updateWatch(watch.id, { guard: e.target.checked })}
                             label="Also flag TTFT spikes (+20% at the watched point) and failed requests (≥ 5%)"
                         />
                     </div>
@@ -618,7 +674,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                             strokeDasharray="6 4"
                                             label={{ value: `Threshold ${watch.threshold}%`, position: 'insideBottomRight', fill: theme.label, fontSize: 11 }}
                                         />
-                                        <Tooltip cursor={cursorProps()} content={<WatchTooltip />} isAnimationActive={false} />
+                                        <Tooltip cursor={cursorProps()} content={<WatchTooltip whenOf={whenOf} />} isAnimationActive={false} />
                                         <Line
                                             type="linear"
                                             dataKey="delta"
@@ -660,7 +716,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             <tbody className="divide-y divide-zinc-100">
                                 {[...series].reverse().map((s) => (
                                     <tr key={s.key} className={cn(s.flagged && 'bg-red-50/40')}>
-                                        <td className="px-4 py-2.5 text-zinc-800">{fmtDay(s.ts)}</td>
+                                        <td className="px-4 py-2.5 text-zinc-800">{whenOf(s.ts)}</td>
                                         <td className="px-4 py-2.5">
                                             <button
                                                 type="button"
@@ -789,7 +845,9 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
 
     const exportRows = rows.map((r) => ({
         ...r,
-        status: isOfficial(r.c) ? resultStatusLabel(r.c.status, copy) : `${copy.unofficialLabel} (${STATUS_WORD[r.c.status] || r.c.status})`,
+        // Exports go into customer documents: the plain status, without the
+        // on-screen "· only in this browser" note.
+        status: isOfficial(r.c) ? copy.publishedLabel : `${copy.unofficialLabel} (${STATUS_WORD[r.c.status] || r.c.status})`,
         sourceLabel: r.source === 'entered' ? 'Entered' : PRICE_SOURCE[r.source] || '',
         note: r.point ? '' : r.unpriced.filter(Boolean).join('. ').replace(/\u00a0/g, ' '),
     }));
@@ -1056,6 +1114,8 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
     const ws = useWorkspace();
     // The open watch or report's h2, which names the region it's shown in.
     const viewHeadingId = useId();
+    // The watch or report waiting on "Delete this …?".
+    const [confirmDelete, setConfirmDelete] = useState(null);
     const all = [...ws.watches.map((w) => ({ ...w, kind: 'watch' })), ...ws.showcases.map((s) => ({ ...s, kind: 'showcase' }))];
     const active = all.find((d) => d.id === activeId) || all[0] || null;
 
@@ -1129,11 +1189,40 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                         />
                     </div>
                 ) : active.kind === 'watch' ? (
-                    <WatchView key={active.id} watch={active} runs={runs} runsByKey={runsByKey} nav={nav} onDelete={() => ws.deleteWatch(active.id)} headingId={viewHeadingId} />
+                    <WatchView key={active.id} watch={active} runs={runs} runsByKey={runsByKey} nav={nav} onDelete={() => setConfirmDelete(active)} headingId={viewHeadingId} />
                 ) : (
-                    <ReportView key={active.id} showcase={active} copy={copy} nav={nav} onDelete={() => ws.deleteShowcase(active.id)} headingId={viewHeadingId} />
+                    <ReportView key={active.id} showcase={active} copy={copy} nav={nav} onDelete={() => setConfirmDelete(active)} headingId={viewHeadingId} />
                 )}
             </section>
+            {/* Nothing can bring a deleted watch or report back, so ask first. */}
+            <Modal
+                isOpen={!!confirmDelete}
+                onClose={() => setConfirmDelete(null)}
+                size="sm"
+                title={confirmDelete?.kind === 'watch' ? 'Delete this watch?' : 'Delete this report?'}
+                footer={
+                    <>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(null)}>
+                            Keep it
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => {
+                                if (confirmDelete?.kind === 'watch') ws.deleteWatch(confirmDelete.id);
+                                else if (confirmDelete) ws.deleteShowcase(confirmDelete.id);
+                                setConfirmDelete(null);
+                            }}
+                        >
+                            Delete
+                        </Button>
+                    </>
+                }
+            >
+                <p className="surface-light text-sm text-zinc-700">
+                    “{confirmDelete?.name}” is removed from this browser. The runs and results it uses don’t change.
+                </p>
+            </Modal>
         </div>
     );
 }

@@ -44,8 +44,10 @@ import {
     curveConfigKey,
     curveDraftFromRuns,
     fmtDay,
+    formsSweep,
     handleOf,
     isPublishedState,
+    itemKey,
     loadOrder,
     runKeyOf,
     runsConfig,
@@ -85,14 +87,16 @@ const readParam = (name) => {
 const uniqueRuns = (list = []) => [...new Map(list.filter(Boolean).map((r) => [r.key, r])).values()];
 
 // Compare/share links carry their items in the URL as base64url JSON:
-// { v: 2, i: [[type, value, ref?], …], m: [latency, throughput, stat?] }, where
+// { v: 2, i: [[type, value, ref?], …], m: [latency, throughput, stat?], b? }, where
 //   u = one run (key) · s = a fixed set of runs (keys) · c = a result (id)
 //   r = a Browse row (key; only in links made before v2).
 // Sweeps travel as `s` with their exact runs, so a link doesn't drift to the
-// next nightly batch. ref = 1 marks an added baseline (drawn dashed). Results are
-// saved in one browser for now, so `c` only opens there; the share dialog
-// warns and offers the source runs instead. v1 links were a bare array, and
-// links without a statistic open on the default one.
+// next nightly batch. ref = 1 marks an added baseline (drawn dashed). b is the
+// index in i of the series every Δ is measured against, so the link opens with
+// the baseline the sender chose. Results are saved in one browser for now, so
+// `c` only opens there; the share dialog warns and offers the source runs
+// instead. v1 links were a bare array, and links without a statistic open on
+// the default one.
 const toB64url = (text) => {
     let bin = '';
     new TextEncoder().encode(text).forEach((b) => {
@@ -105,33 +109,85 @@ const fromB64url = (s) => new TextDecoder().decode(Uint8Array.from(atob(s.replac
 // A fixed set of runs: a sweep pinned to one batch, or a result's source runs.
 const runsItem = (keys) => ({ type: 'runs', keys, key: keys.join('+') });
 
-const encodeShare = (list, view) => toB64url(JSON.stringify(view ? { v: 2, i: list, m: [view.latency, view.throughput, view.stat || null] } : { v: 2, i: list }));
+const encodeShare = (list, view, baseIndex = -1) => {
+    const json = view ? { v: 2, i: list, m: [view.latency, view.throughput, view.stat || null] } : { v: 2, i: list };
+    if (baseIndex >= 0) json.b = baseIndex;
+    return toB64url(JSON.stringify(json));
+};
 
 const decodeShare = (s) => {
     try {
         const json = JSON.parse(fromB64url(s));
         const list = Array.isArray(json) ? json : Array.isArray(json?.i) ? json.i : [];
-        const items = list
-            .map((entry) => {
-                const [t, v, ref] = Array.isArray(entry) ? entry : [];
-                let item = null;
-                if (t === 'c' && typeof v === 'string') item = { type: 'curve', id: v };
-                else if (t === 's' && Array.isArray(v) && v.length && v.every((k) => typeof k === 'string')) item = runsItem(v);
-                else if ((t === 'u' || t === 'r') && typeof v === 'string') item = { type: t === 'u' ? 'run' : 'row', key: v };
-                return item && ref ? { ...item, baseline: true } : item;
-            })
-            .filter(Boolean);
+        // Decoded in place first, so `b` still points at the right entry when
+        // an entry this version can't read is dropped.
+        const decoded = list.map((entry) => {
+            const [t, v, ref] = Array.isArray(entry) ? entry : [];
+            let item = null;
+            if (t === 'c' && typeof v === 'string') item = { type: 'curve', id: v };
+            else if (t === 's' && Array.isArray(v) && v.length && v.every((k) => typeof k === 'string')) item = runsItem(v);
+            else if ((t === 'u' || t === 'r') && typeof v === 'string') item = { type: t === 'u' ? 'run' : 'row', key: v };
+            return item && ref ? { ...item, baseline: true } : item;
+        });
+        const items = decoded.filter(Boolean);
+        const baseItem = Number.isInteger(json?.b) ? decoded[json.b] : null;
         const [latency, throughput, stat] = Array.isArray(json?.m) ? json.m : [];
         const view = {
             latency: LATENCY_METRICS.some((m) => m.value === latency) ? latency : null,
             throughput: THROUGHPUT_METRICS.some((m) => m.value === throughput) ? throughput : null,
             stat: LATENCY_STATS.some((m) => m.value === stat) ? stat : null,
+            base: baseItem ? itemKey(baseItem) : null,
         };
-        return { items, view: view.latency || view.throughput || view.stat ? view : null };
+        return { items, view: view.latency || view.throughput || view.stat || view.base ? view : null };
     } catch {
         return { items: [], view: null };
     }
 };
+
+// Browse's search, filters, sort and kind live in the URL too, so a filtered
+// Browse link (or a reload) opens the same list: ?q=gemma&f.hardware=H100%20×16.
+// Each facet holds one value, as the facet pills pick one. Facets carry an
+// "f." prefix so they never collide with another view's parameters (the
+// leaderboard reads `model`, and App keeps it across views).
+const BROWSE_FACETS = ['source', 'harness', 'category', 'model', 'hardware', 'workload'];
+const BROWSE_SORTS = ['newest', 'oldest', 'usable', 'peak', 'model'];
+const BROWSE_KINDS = ['all', 'suggested', 'runs', 'curves'];
+const BROWSE_PARAMS = ['q', 'sort', 'kind', 'f.date', 'f.mine', ...BROWSE_FACETS.map((f) => `f.${f}`)];
+
+function initialBrowse() {
+    const filters = {};
+    BROWSE_FACETS.forEach((f) => {
+        const v = readParam(`f.${f}`);
+        if (v) filters[f] = v;
+    });
+    const date = readParam('f.date');
+    if (date) filters.date = date;
+    if (readParam('f.mine') === '1') filters.mine = true;
+    const sort = readParam('sort');
+    const kind = readParam('kind');
+    return {
+        query: readParam('q') || '',
+        filters,
+        sort: BROWSE_SORTS.includes(sort) ? sort : 'newest',
+        kind: BROWSE_KINDS.includes(kind) ? kind : 'all',
+        selected: new Set(),
+        addTo: null,
+    };
+}
+
+// Writes Browse's state into URL params `p` (only what differs from the defaults).
+function writeBrowseParams(p, browse) {
+    BROWSE_PARAMS.forEach((k) => p.delete(k));
+    if (browse.query) p.set('q', browse.query);
+    if (browse.sort && browse.sort !== 'newest') p.set('sort', browse.sort);
+    if (browse.kind && browse.kind !== 'all') p.set('kind', browse.kind);
+    const f = browse.filters || {};
+    BROWSE_FACETS.forEach((facet) => {
+        if (f[facet] != null && f[facet] !== '') p.set(`f.${facet}`, String(f[facet]));
+    });
+    if (f.date) p.set('f.date', String(f.date));
+    if (f.mine) p.set('f.mine', '1');
+}
 
 function initialStack() {
     const run = readParam('run');
@@ -242,10 +298,13 @@ function AccountMenu({ auth }) {
 
 // Says what the link carries, and warns before sending anything nobody else
 // can open: results (saved in this browser for now) and runs uploaded here.
-function ShareDialog({ target, url, curve, curves = [], localRuns = 0, copy, onClose, onShareRunsInstead }) {
+// `curveLocalRuns` counts the results' source runs that were uploaded only to
+// this browser: sharing those instead wouldn't help either.
+function ShareDialog({ target, url, curve, curves = [], localRuns = 0, curveLocalRuns = 0, copy, onClose, onShareRunsInstead }) {
     const kind = target?.kind;
     const one = curves.length === 1;
     const sourceRuns = new Set(curves.flatMap((c) => c.builtFrom.runKeys || [])).size;
+    const shareableRuns = Math.max(0, sourceRuns - curveLocalRuns);
     const excludes = curves.some((c) => c.points.some((p) => !p.included));
     const subtitle =
         kind === 'run'
@@ -253,7 +312,7 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, copy, onC
                 ? 'This run was uploaded only to this browser, so nobody else can open the link.'
                 : 'Anyone who can open the Results store can open this run.'
             : kind === 'compare'
-              ? 'The link opens the same runs, metric and baselines.'
+              ? 'The link opens the same runs, metric, statistic and baseline.'
               : 'Results are saved in this browser for now, so this link only opens here.';
     return (
         <Modal
@@ -278,13 +337,22 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, copy, onC
                         <p className="font-semibold">
                             {kind === 'curve' ? 'Nobody else can open this link yet.' : `${one ? '1 result' : `${curves.length} results`} in this view won’t open for anyone else.`}
                         </p>
-                        <p className="mt-1">
-                            Share {one ? 'its' : 'their'} {sourceRuns} source run{sourceRuns === 1 ? '' : 's'} instead and the link works for everyone
-                            {excludes ? `, though it shows every point, including the ones ${one ? 'the result excludes' : 'the results exclude'}` : ''}.
-                        </p>
-                        <Button size="xs" variant="secondary" className="mt-3" onClick={onShareRunsInstead}>
-                            Share source runs instead
-                        </Button>
+                        {shareableRuns === 0 ? (
+                            <p className="mt-1">
+                                {one ? 'Its' : 'Their'} source run{sourceRuns === 1 ? ' was' : 's were'} uploaded only to this browser, so nobody else can open {sourceRuns === 1 ? 'it' : 'them'} either. Upload {sourceRuns === 1 ? 'it' : 'them'} first.
+                            </p>
+                        ) : (
+                            <>
+                                <p className="mt-1">
+                                    Share {one ? 'its' : 'their'} {sourceRuns} source run{sourceRuns === 1 ? '' : 's'} instead and the link works for anyone who can open the Results store
+                                    {excludes ? `, though it shows every point, including the ones ${one ? 'the result excludes' : 'the results exclude'}` : ''}.
+                                    {curveLocalRuns > 0 && ` ${curveLocalRuns} of them ${curveLocalRuns === 1 ? 'was' : 'were'} uploaded only to this browser and won’t open for others.`}
+                                </p>
+                                <Button size="xs" variant="secondary" className="mt-3" onClick={onShareRunsInstead}>
+                                    Share source runs instead
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
                 {kind !== 'run' && localRuns > 0 && (
@@ -382,7 +450,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
 
     const [tab, setTab] = useState(initialTab);
     const [stack, setStack] = useState(initialStack);
-    const [browse, setBrowse] = useState(() => ({ query: '', filters: {}, sort: 'newest', kind: 'all', selected: new Set(), addTo: null }));
+    const [browse, setBrowse] = useState(initialBrowse);
     const [dashActive, setDashActive] = useState(null);
     const [share, setShare] = useState(null);
     const [watchDialog, setWatchDialog] = useState(null);
@@ -427,6 +495,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     // Anyone may curate (edit, make sandbox draft results from) catalog runs or
     // sweeps on either instance.
     const canCurate = useCallback((list = []) => list.length > 0, []);
+    // Make result from a hand-picked selection or a comparison: only when the
+    // runs form one curve (one setup, no load level twice), as the spec says.
+    const canMakeResult = useCallback((list = []) => canCurate(list) && formsSweep(list), [canCurate]);
     // Who may publish them in one step: on the internal instance, approvers
     // (see officialBlock); on the public store, only the owner of the uploaded runs.
     const canPublish = useCallback((list = []) => ownsRuns(list) && !officialBlock, [ownsRuns, officialBlock]);
@@ -484,8 +555,23 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         allRows.forEach((row) => row.kind === 'suggested' && row.repeats.forEach((rep) => rep.runs.forEach((r) => m.set(r.key, { ...row, runs: rep.runs, points: rep.runs.map((x) => x.points[0]), ts: rep.ts }))));
         return m;
     }, [allRows]);
+    // Watches keep following their setup when a source is hidden: Show in
+    // Browse decides what Browse lists, not what a watch checks. Built only
+    // while a source is hidden and a watch is in view.
+    const watchAllRuns = useMemo(() => {
+        if (!(tab === 'dashboards' || watchDialog) || !hiddenSources?.size) return null;
+        const shown = data.filter((d) => {
+            const key = d.source || 'local';
+            return String(key).startsWith('brv02:') || !selectedSources || selectedSources.has(key);
+        });
+        return buildRuns(shown, { aliases, submissionsMap });
+    }, [tab, watchDialog, hiddenSources, data, selectedSources, aliases, submissionsMap]);
+    const watchRuns = useMemo(() => (watchAllRuns ? watchAllRuns.filter((r) => !r.isUpload || isPublishedState(r.submissionState)) : browseRuns), [watchAllRuns, browseRuns]);
+    const watchRunsByKey = useMemo(() => (watchAllRuns ? new Map(watchAllRuns.map((r) => [r.key, r])) : runsByKey), [watchAllRuns, runsByKey]);
 
     const publishedCurves = useMemo(() => ws.curves.filter((c) => c.status === copy.publishedStatus), [ws.curves, copy.publishedStatus]);
+    // "Link only" results open from their link and My work, not from Browse.
+    const listedCurves = useMemo(() => publishedCurves.filter((c) => c.visibility !== 'link'), [publishedCurves]);
     const curvedRunKeys = useMemo(() => new Set(ws.curves.flatMap((c) => c.builtFrom.runKeys || [])), [ws.curves]);
     const uploads = useMemo(
         () => runs.filter((r) => r.isUpload && [null, 'staged', 'unlisted'].includes(r.submissionState) && !curvedRunKeys.has(r.key) && ownsRuns([r])),
@@ -527,7 +613,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const runsFromKeys = useCallback((keys = []) => keys.map((k) => runOfKey(k)).filter(Boolean), [runOfKey]);
 
     // Rows go into links as their exact runs, so a shared sweep keeps showing
-    // the batch the sender saw (see encodeShare).
+    // the batch the sender saw (see encodeShare). `view.base` (an item key)
+    // travels as the baseline's position, so the link opens on it.
     const encodeItems = useCallback(
         (items, view) =>
             encodeShare(
@@ -542,7 +629,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     }
                     return i.baseline ? [...entry, 1] : entry;
                 }),
-                view
+                view,
+                view?.base ? items.findIndex((i) => itemKey(i) === view.base) : -1
             ),
         [rowsByKey]
     );
@@ -601,7 +689,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     );
 
     // Everything that can be a baseline, each with what it measured so
-    // Compare can list the closest matches first.
+    // Compare can list the closest matches first. Your own results that
+    // aren't Official / Published yet count too: drafts can still be compared.
     const baselineOptions = useMemo(
         () => [
             ...publishedCurves.map((c) => ({
@@ -613,6 +702,19 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 points: c.points.filter((p) => p.included),
                 config: curveConfig(c),
             })),
+            ...ws.curves
+                .filter((c) => ['draft', 'in_review', 'needs_changes'].includes(c.status))
+                .map((c) => ({
+                    id: c.id,
+                    name: c.name,
+                    note: `${resultStatusLabel(c.status, copy) || 'Draft'} · v${c.version} · ${fmtDay(c.updatedAt)}`,
+                    group: `Your results (not ${copy.publishedLabel.toLowerCase()} yet)`,
+                    item: { type: 'curve', id: c.id },
+                    points: c.points.filter((p) => p.included),
+                    config: curveConfig(c),
+                    // Always offered, however far its setup is from the compared ones.
+                    keep: true,
+                })),
             ...allRows.map((r) => ({
                 id: r.key,
                 name: r.title,
@@ -623,7 +725,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 config: runsConfig(r.runs),
             })),
         ],
-        [publishedCurves, allRows, copy]
+        [publishedCurves, ws.curves, allRows, copy]
     );
 
     const resolveBaseline = useCallback(
@@ -749,7 +851,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         [ws, rowsByKey, runOfKey, runsFromKeys]
     );
 
-    const canCurateItems = useCallback((items) => canCurate(runsFromItems(items)), [canCurate, runsFromItems]);
+    const canMakeResultItems = useCallback((items) => canMakeResult(runsFromItems(items)), [canMakeResult, runsFromItems]);
 
     // The result already published (or in review) from exactly these runs, so
     // a sweep or run is never offered for publishing twice.
@@ -868,21 +970,26 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const onUpload = () => onNavigate('submit-benchmarks', { intent: instance === 'public' ? 'submit-review' : 'stage-locally' });
 
     // Uploaded runs that live on the server move into the review queue too.
-    // Reports how many needed sending and how many the server refused (the
-    // hook's own toast says why).
+    // Reports how many were sent, how many the server refused (the hook's own
+    // toast says why) and how many were already waiting for a reviewer.
     const sendRunsForReview = async (runIds = []) => {
         const serverIds = runIds.filter((id) => ['unlisted', 'rejected'].includes(submissionsMap[id]?.status));
+        const queued = runIds.filter((id) => submissionsMap[id]?.status === 'submitted_pending_review').length;
         let failed = 0;
         for (const id of serverIds) {
             const ok = await updateSubmissionStatus?.(id, 'submitted_pending_review', '', { quiet: true });
             if (ok !== true) failed += 1;
         }
-        return { sent: serverIds.length, failed };
+        return { sent: serverIds.length, failed, queued };
     };
+    // How many of these uploaded runs reviewers would actually get: ones on
+    // the server that aren't public yet (public catalog runs aren't re-sent).
+    const reviewableRuns = (runIds = []) => runIds.filter((id) => ['unlisted', 'rejected', 'submitted_pending_review'].includes(submissionsMap[id]?.status)).length;
 
     // What reached reviewers, in words. Results themselves can't leave this
-    // browser yet; only uploaded runs that live on the server can.
-    const reviewOutcome = (serverRunCount, { sent, failed }) => {
+    // browser yet; only uploaded runs that live on the server can, so success
+    // is only claimed for runs that were sent or were already in the queue.
+    const reviewOutcome = ({ sent, failed, queued = 0 }) => {
         if (failed) {
             return {
                 ok: false,
@@ -892,18 +999,20 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         : `Not submitted: only ${sent - failed} of ${sent} uploaded runs reached the review queue. Try again.`,
             };
         }
+        const reached = sent + queued;
         return {
             ok: true,
-            message: serverRunCount
-                ? 'Submitted for review. Track it in My work.'
+            message: reached
+                ? `Submitted: reviewers can see its ${reached} uploaded run${reached === 1 ? '' : 's'}. The curated result itself stays in this browser until results are stored on the server.`
                 : 'Saved for review in this browser only. Reviewers can’t see it until results are stored on the server.',
         };
     };
 
-    const submitForReview = async (curve, { attribution }) => {
+    const submitForReview = async (curve, { attribution, visibility, dco }) => {
         const serverRunIds = curve.submissionRunIds || [];
-        const outcome = reviewOutcome(serverRunIds.length, await sendRunsForReview(serverRunIds));
-        if (outcome.ok) ws.submitForReview(curve.id, { attribution });
+        const sent = await sendRunsForReview(serverRunIds);
+        const outcome = reviewOutcome(sent);
+        if (outcome.ok) ws.submitForReview(curve.id, { attribution, visibility, dco, reach: sent.sent + sent.queued });
         notify(outcome.message, outcome.ok ? 'success' : 'error');
     };
 
@@ -948,7 +1057,13 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             loadReviewQueue();
             if (ok !== true) return false;
         }
-        notify(decision === 'approve' ? 'Approved and published.' : decision === 'decline' ? 'Declined. The contributor sees your note in My work.' : 'Sent back with your note.');
+        const local = item.kind === 'curve';
+        const message = {
+            approve: local ? 'Approved. It shows as published in this browser only for now.' : 'Approved and published.',
+            decline: local ? 'Declined. Your note is saved with the result in this browser.' : 'Declined. The contributor sees your note in My work.',
+            changes: local ? 'Sent back. Your note is saved with the result in this browser.' : 'Sent back with your note.',
+        };
+        notify(message[decision] || message.changes);
         return true;
     };
 
@@ -1004,6 +1119,16 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         const list = share.kind === 'run' ? runsFromKeys([share.key]) : share.kind === 'compare' ? runsFromItems(share.items.filter((i) => i.type !== 'curve')) : [];
         return uniqueRuns(list).filter((r) => r.isLocalOnly).length;
     }, [share, runsFromKeys, runsFromItems]);
+    // Source runs of the shared results that live only in this browser, so the
+    // dialog doesn't promise that sharing them instead works for everyone.
+    const shareCurveLocalRuns = useMemo(() => {
+        const keys = [...new Set(shareCurves.flatMap((c) => c.builtFrom.runKeys || []))];
+        const localIds = new Set(shareCurves.flatMap((c) => c.localRunIds || []));
+        return keys.filter((k) => {
+            const r = runOfKey(k);
+            return r ? r.isLocalOnly : String(k).startsWith('brv02:') || localIds.has(String(k).replace(/^brv02:/, ''));
+        }).length;
+    }, [shareCurves, runOfKey]);
 
     // Swaps each result in a share for its source runs: a link that works for
     // everyone. Baselines stay baselines.
@@ -1014,21 +1139,47 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             return item.baseline ? { ...runsItem(keys), baseline: true } : runsItem(keys);
         };
         if (share?.kind === 'curve') setShare({ kind: 'compare', items: [swap({ type: 'curve', id: share.id })], title: 'Source runs' });
-        else if (share?.kind === 'compare') setShare({ ...share, items: share.items.map((i) => (i.type === 'curve' ? swap(i) : i)) });
+        else if (share?.kind === 'compare') {
+            // Keep the baseline on the same series after its result becomes runs.
+            const items = share.items.map((i) => (i.type === 'curve' ? swap(i) : i));
+            const baseAt = share.view?.base ? share.items.findIndex((i) => itemKey(i) === share.view.base) : -1;
+            setShare({ ...share, items, view: share.view ? { ...share.view, base: baseAt >= 0 ? itemKey(items[baseAt]) : null } : share.view });
+        }
     };
 
+    // Compare reports what it shows now (series added or removed, metric,
+    // statistic, baseline), so the address bar always reopens that view.
+    // Kept beside the screen's own items, so Compare isn't remounted.
+    const onLiveCompare = useCallback(
+        (live) =>
+            setStack((s) => {
+                const top = s[s.length - 1];
+                if (top?.type !== 'compare') return s;
+                const same =
+                    top.live &&
+                    top.live.items.length === live.items.length &&
+                    top.live.items.every((i, n) => itemKey(i) === itemKey(live.items[n]) && !!i.baseline === !!live.items[n].baseline) &&
+                    ['latency', 'throughput', 'stat', 'base'].every((k) => (top.live.view?.[k] || null) === (live.view?.[k] || null));
+                return same ? s : [...s.slice(0, -1), { ...top, live }];
+            }),
+        []
+    );
+
     // ------------------------------------------------------------ effects
-    // Keep the address bar shareable: tab + whatever screen is open.
+    // Keep the address bar shareable: tab + whatever screen is open, and
+    // Browse's search and filters while Browse is showing.
+    const tabVisible = tab === 'review' ? isReviewer : tab === 'sources' ? isAdmin : TABS.includes(tab);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
         ['tab', 'run', 'curve', 'compare', 'kpiFilter', 'own', 'includeUnlisted'].forEach((k) => p.delete(k));
-        if (tab !== 'browse') p.set('tab', tab);
+        if (tab !== 'browse' && tabVisible) p.set('tab', tab);
         if (screen?.type === 'run') p.set('run', screen.key);
         if (screen?.type === 'curve') p.set('curve', screen.id);
-        if (screen?.type === 'compare') p.set('compare', encodeItems(screen.items, screen.view));
+        if (screen?.type === 'compare') p.set('compare', encodeItems(screen.live?.items || screen.items, screen.live?.view || screen.view));
+        writeBrowseParams(p, !screen && (tab === 'browse' || !tabVisible) ? browse : {});
         const next = `${window.location.pathname}?${p.toString()}`;
         if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(null, '', next);
-    }, [tab, screen, encodeItems]);
+    }, [tab, tabVisible, screen, encodeItems, browse]);
 
     // The upload wizard's hand-back flags have done their job (initialTab).
     useEffect(() => {
@@ -1046,11 +1197,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         }
     }, [isAuthenticated, onNavigate]);
 
-    // Legacy share links (?benchmarks=<uuids>) open straight into Compare.
+    // Legacy share links (?benchmarks=<uuids>) open straight into Compare,
+    // once the catalog has loaded, so runs it holds aren't fetched again.
     const handledShareLink = useRef(false);
     useEffect(() => {
         const param = readParam('benchmarks');
-        if (param === null || handledShareLink.current) return;
+        if (param === null || handledShareLink.current || loading) return;
         handledShareLink.current = true;
         const clear = () => {
             const p = new URLSearchParams(window.location.search);
@@ -1084,6 +1236,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         const res = await fetch(`/api/results/${uuid}`, { headers });
                         if (!res.ok) throw new Error(String(res.status));
                         const payload = await res.json();
+                        // GET /api/results/:id doesn't return the state, and a run
+                        // that isn't in the loaded (public) catalog is almost always
+                        // link-only, so an unknown state reads as unlisted ("not
+                        // reviewed"), never as public.
+                        const state = payload.submission_state || payload.state || 'unlisted';
                         const entries = (payload.entries || [])
                             .map((stage) => {
                                 const parsed = stage.raw_report ? parseReportV02(stage.raw_report, stage.filename) : null;
@@ -1092,7 +1249,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                                     runId: payload.runId,
                                     runLabel: payload.runLabel,
                                     github_author: payload.github_author,
-                                    submission_state: payload.submission_state || 'public',
+                                    submission_state: state,
                                     submitted_at: payload.submitted_at,
                                     well_lit_path: payload.well_lit_path || null,
                                 });
@@ -1102,9 +1259,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                                 entry.source_info = {
                                     type: 'benchmark_report_v02',
                                     origin: 'gcs:llm-d-benchmarks',
-                                    submission_state: payload.submission_state || 'public',
+                                    submission_state: state,
                                     file_identifier: payload.runId,
                                 };
+                                entry.manifests = payload.manifests || null;
+                                entry.evidence = payload.evidence || null;
+                                entry.run_metadata = payload.run_metadata || null;
                                 return entry;
                             })
                             .filter(Boolean);
@@ -1121,7 +1281,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             if (keys.size) setStack([{ type: 'compare', items: [...keys].map((key) => ({ type: 'run', key })) }]);
             clear();
         })();
-    }, [data, addToast, injectDynamicEntries]);
+    }, [data, loading, addToast, injectDynamicEntries]);
 
     // ------------------------------------------------------------ render
     const workCount = ws.curves.filter((c) => c.status === 'draft' || c.status === 'needs_changes').length + uploads.length;
@@ -1162,9 +1322,10 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 resolve={resolve}
                 baselineOptions={baselineOptions}
                 copy={copy}
-                canCurate={canCurate}
+                canMakeResult={canMakeResult}
                 nav={nav}
                 onShare={setShare}
+                onLiveChange={onLiveCompare}
                 onAddToDashboard={openReportDialog}
                 onOpenInBrowser={openInBrowser}
             />
@@ -1172,9 +1333,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     } else if (screen?.type === 'curve') {
         const shownCurve = ws.getCurve(screen.id);
         const curveRuns = shownCurve ? runsFromKeys(shownCurve.builtFrom?.runKeys || []) : [];
-        const ownsCurve =
-            instance !== 'public' ||
-            (shownCurve && ((shownCurve.localRunIds?.length || 0) + (shownCurve.submissionRunIds?.length || 0) > 0 || ownsRuns(curveRuns)));
+        // On the public store only the owner of every source run may submit:
+        // runs uploaded from this browser, or submitted under your GitHub
+        // account. Runs from the community catalog don't count, even though
+        // they arrive as uploads (benchmark reports) too.
+        const ownsCurve = instance !== 'public' || (shownCurve && ownsRuns(curveRuns));
+        const curveLocalRuns = Math.max(curveRuns.filter((r) => r.isLocalOnly).length, shownCurve?.localRunIds?.length || 0);
         content = (
             <CurveEditor
                 key={screen.id}
@@ -1185,6 +1349,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 isReviewer={isReviewer}
                 officialBlock={officialBlock}
                 publicBlock={!ownsCurve ? 'ownership' : null}
+                localRuns={curveLocalRuns}
+                reviewRuns={reviewableRuns(shownCurve?.submissionRunIds || [])}
                 onUpload={onUpload}
                 onSignIn={() => login?.()}
                 signInReady={!!isConfigured}
@@ -1216,8 +1382,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     } else if (activeTab === 'dashboards') {
         content = (
             <DashboardsTab
-                runs={browseRuns}
-                runsByKey={runsByKey}
+                runs={watchRuns}
+                runsByKey={watchRunsByKey}
                 copy={copy}
                 activeId={dashActive}
                 onSelect={setDashActive}
@@ -1234,6 +1400,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 loading={queue.loading}
                 error={queue.error}
                 runsById={runsById}
+                runsFromKeys={runsFromKeys}
                 baselines={publishedCurves}
                 onRefresh={loadReviewQueue}
                 onDecide={decide}
@@ -1256,7 +1423,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 )}
                 <BrowseTab
                     runs={browseRuns}
-                    curves={publishedCurves}
+                    curves={listedCurves}
                     copy={copy}
                     instance={instance}
                     isLoading={loading}
@@ -1265,13 +1432,13 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     nav={nav}
                     mineOf={mineOf}
                     canCurate={canCurate}
-                    canCurateItems={canCurateItems}
+                    canMakeResultItems={canMakeResultItems}
                     canPublish={canPublish}
                     officialBlock={officialBlock}
                     resultOf={resultOf}
                     addTo={addToCurve}
                     onAddToCurve={addSelectionToCurve}
-                    onWatchFilters={(filters) => setWatchDialog({ filters })}
+                    onWatchFilters={(filters, query) => setWatchDialog({ filters, query })}
                     onUpload={onUpload}
                     onOpenClassic={onOpenClassic}
                 />
@@ -1343,6 +1510,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 curve={shareCurve}
                 curves={shareCurves}
                 localRuns={shareLocalRuns}
+                curveLocalRuns={shareCurveLocalRuns}
                 copy={copy}
                 onClose={() => setShare(null)}
                 onShareRunsInstead={shareRunsInstead}
@@ -1359,6 +1527,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     copy={copy}
                     instance={instance}
                     actor={actor}
+                    localRuns={quick.runs.filter((r) => r.isLocalOnly).length}
+                    reviewRuns={reviewableRuns(quick.runs.filter((r) => r.isUpload && !r.isLocalOnly && r.runId).map((r) => r.runId))}
                     onClose={() => setQuick(null)}
                     onEditFirst={() => {
                         const picked = quick.runs;
@@ -1374,13 +1544,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         setQuick(null);
                         notify(`Marked official: ${quickSubject.name}. It’s saved in this browser for now.`);
                     }}
-                    onSubmit={async ({ attribution }) => {
+                    onSubmit={async ({ attribution, visibility, dco }) => {
                         const picked = quick.runs;
                         setQuick(null);
                         const serverRunIds = picked.filter((r) => r.isUpload && !r.isLocalOnly && r.runId).map((r) => r.runId);
-                        const outcome = reviewOutcome(serverRunIds.length, await sendRunsForReview(serverRunIds));
+                        const sent = await sendRunsForReview(serverRunIds);
+                        const outcome = reviewOutcome(sent);
                         if (outcome.ok) {
-                            ws.publishRuns(picked, { attribution });
+                            ws.publishRuns(picked, { attribution, visibility, dco, reach: sent.sent + sent.queued });
                             setBrowse((b) => ({ ...b, selected: new Set() }));
                         }
                         notify(outcome.message, outcome.ok ? 'success' : 'error');
@@ -1398,10 +1569,15 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 <NewWatchDialog
                     isOpen
                     onClose={() => setWatchDialog(null)}
-                    runs={browseRuns}
-                    runsByKey={runsByKey}
+                    runs={watchRuns}
+                    runsByKey={watchRunsByKey}
                     initial={watchDialog}
-                    referenceCurves={publishedCurves}
+                    // A watch started from a draft result can use that draft as its baseline.
+                    referenceCurves={
+                        watchDialog.refCurveId && !publishedCurves.some((c) => c.id === watchDialog.refCurveId)
+                            ? [...publishedCurves, ws.getCurve(watchDialog.refCurveId)].filter(Boolean)
+                            : publishedCurves
+                    }
                     onCreate={(def) => {
                         const id = ws.createWatch(def);
                         setWatchDialog(null);

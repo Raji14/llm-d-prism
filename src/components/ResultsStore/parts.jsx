@@ -15,7 +15,7 @@
 // Small pieces shared by the Results store screens.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Check, CircleAlert, CircleCheck, Copy, Download, Info, Plus, TriangleAlert, X } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, CircleCheck, Copy, Download, ExternalLink, Info, Plus, TriangleAlert, X } from 'lucide-react';
 import { Button, StatusChip, VisibilityChip } from '../ui';
 import { cn } from '../../utils/cn';
 import { downloadText } from './exporters';
@@ -253,5 +253,117 @@ export function HistoryList({ history }) {
                 </li>
             ))}
         </ol>
+    );
+}
+
+// ------------------------------------------------------------ attachments
+
+const TEXT_NAME = /\.(ya?ml|json|txt|log|md|csv|tsv|sh|toml|ini|conf|cfg|env|py)$/i;
+const TEXT_MIME = /^text\/|json|yaml|xml|csv|x-sh|toml/i;
+const PREVIEW_CHARS = 200000;
+
+// "data:application/x-yaml;base64,…" → { mime, base64, bytes } without
+// decoding the body, which can be large.
+function dataUrlInfo(value) {
+    const comma = value.indexOf(',');
+    if (comma < 0) return null;
+    const [mime, ...params] = value.slice(5, comma).split(';');
+    const base64 = params.some((p) => p.toLowerCase() === 'base64');
+    const body = value.length - comma - 1;
+    const padding = base64 ? (value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0) : 0;
+    return { mime: mime || 'text/plain', base64, bytes: base64 ? Math.floor((body * 3) / 4) - padding : body };
+}
+
+function decodeDataUrl(value) {
+    const comma = value.indexOf(',');
+    const body = value.slice(comma + 1);
+    try {
+        if (dataUrlInfo(value)?.base64) return new TextDecoder().decode(Uint8Array.from(atob(body), (ch) => ch.charCodeAt(0)));
+        return decodeURIComponent(body);
+    } catch {
+        return null;
+    }
+}
+
+const fileSize = (bytes) => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`);
+
+// One attached file. A data: URL is the file itself: text files can be
+// previewed, and any of them downloaded. http(s) links open in a new tab.
+// Anything else (a gs:// path, say) is shown as text to copy, never a link.
+function AttachmentRow({ file }) {
+    const [preview, setPreview] = useState(null);
+    const value = file.value;
+    const isData = /^data:/i.test(value);
+    const isLink = /^https?:\/\//i.test(value);
+    const info = isData ? dataUrlInfo(value) : null;
+    const canPreview = Boolean(info) && (TEXT_MIME.test(info.mime) || TEXT_NAME.test(file.name));
+    const baseName = String(file.name).split(/[\\/]/).pop() || 'attachment';
+    const togglePreview = () => {
+        if (preview != null) {
+            setPreview(null);
+            return;
+        }
+        const text = decodeDataUrl(value);
+        setPreview(text == null ? 'This file couldn’t be read as text. Download it instead.' : text.length > PREVIEW_CHARS ? `${text.slice(0, PREVIEW_CHARS)}\n…` : text);
+    };
+    return (
+        <li className="rounded-2xl border border-zinc-200 bg-white">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                <div className="min-w-0">
+                    <span className="break-all font-mono text-xs text-zinc-900">{file.name}</span>
+                    {info && <span className="ml-2 text-micro text-zinc-500">{fileSize(info.bytes)}</span>}
+                    {!isData && <span className="mt-0.5 block break-all font-mono text-micro text-zinc-500">{value}</span>}
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                    {canPreview && (
+                        <Button size="xs" variant="ghost" aria-expanded={preview != null} onClick={togglePreview}>
+                            {preview != null ? 'Hide' : 'Preview'}
+                        </Button>
+                    )}
+                    {isData && (
+                        <Button size="xs" variant="secondary" href={value} download={baseName}>
+                            <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                            Download
+                        </Button>
+                    )}
+                    {isLink && (
+                        <Button size="xs" variant="secondary" href={value} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                            Open
+                        </Button>
+                    )}
+                    {!isData && !isLink && <CopyButton text={value} label="Copy path" />}
+                </div>
+            </div>
+            {preview != null && (
+                <pre className="max-h-96 overflow-auto border-t border-zinc-200 bg-zinc-50 p-4 font-mono text-tiny leading-relaxed text-zinc-800">{preview}</pre>
+            )}
+        </li>
+    );
+}
+
+// Files uploaded with a run (catalog `attachmentsOf`: { group, name, value }),
+// grouped as they were attached: manifests and configs, then evidence and logs.
+export function Attachments({ files }) {
+    if (!files?.length) return null;
+    const groups = [...new Set(files.map((f) => f.group))];
+    return (
+        <div className="space-y-4">
+            {groups.map((g) => {
+                const list = files.filter((f) => f.group === g);
+                return (
+                    <div key={g}>
+                        <div className="label-caps mb-2 text-zinc-500">
+                            {g} · {list.length}
+                        </div>
+                        <ul className="space-y-2">
+                            {list.map((f, i) => (
+                                <AttachmentRow key={`${f.name}-${i}`} file={f} />
+                            ))}
+                        </ul>
+                    </div>
+                );
+            })}
+        </div>
     );
 }

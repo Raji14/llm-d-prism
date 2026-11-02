@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Activity, Github, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, X } from 'lucide-react';
+import { Activity, GitCompareArrows, Github, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, X } from 'lucide-react';
 import { Badge, Button, ChartContainer, Checkbox, EmptyState, Input, Label, Modal, Panel, Select, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
@@ -122,7 +122,7 @@ function PublicOwnershipGate({ copy, onUpload }) {
 // stay locked), check against baselines, then publish. Official/Published
 // curves are read-only; editing opens a new draft version. On the internal
 // instance only approvers publish (officialBlock says why someone can't).
-export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isReviewer, officialBlock, publicBlock, onUpload, onSignIn, signInReady, nav, onShare, onAddToDashboard, onWatch, onSubmitForReview, onContinueUpload, notify }) {
+export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isReviewer, officialBlock, publicBlock, localRuns = 0, reviewRuns, onUpload, onSignIn, signInReady, nav, onShare, onAddToDashboard, onWatch, onSubmitForReview, onContinueUpload, notify }) {
     const ws = useWorkspace();
     const [dialog, setDialog] = useState(null);
     const accelRef = useRef(null);
@@ -137,7 +137,10 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
         return (
             <div className="space-y-4">
                 <BackButton onClick={nav.back}>{nav.backLabel || 'Back'}</BackButton>
-                <EmptyState title="Result not found" message="It may have been discarded. Results are saved in this browser for now." />
+                <EmptyState
+                    title="This result isn’t in this browser"
+                    message="Results are saved in the browser that made them until they’re stored on the server, so a link to someone else’s result can’t open here yet. Ask them to share its source runs instead (Share → Share source runs instead), or check whether it was discarded."
+                />
             </div>
         );
     }
@@ -151,6 +154,8 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
     const supersedes = curve.supersedes ? ws.getCurve(curve.supersedes) : null;
     const supersededBy = curve.supersededBy ? ws.getCurve(curve.supersededBy) : null;
     const published = curve.status === 'official' || curve.status === 'published';
+    // Checks that still need attention, so In review never claims they all passed.
+    const attention = checks.filter((c) => c.level === 'warn' || c.level === 'error').length;
     // Anything live can be shared or put in a report; declined and replaced versions can't.
     const shareable = published || editable || curve.status === 'in_review';
     // Anyone may curate a local sandbox draft on either instance; on the public
@@ -201,19 +206,39 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
         <div className="space-y-6">
             <BackButton onClick={nav.back}>{nav.backLabel || 'Back'}</BackButton>
 
-            {curve.status === 'needs_changes' && curve.feedback && (
+            {(curve.status === 'needs_changes' || curve.status === 'draft') && curve.feedback && (
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                     <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     <div>
-                        <div className="font-semibold">A reviewer asked for changes</div>
+                        <div className="font-semibold">{curve.status === 'draft' ? 'The reviewer’s note from when it was declined' : 'A reviewer asked for changes'}</div>
                         <p className="mt-0.5 text-xs">{curve.feedback}</p>
+                    </div>
+                </div>
+            )}
+            {curve.status === 'declined' && (
+                <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <div>
+                        <div className="font-semibold">Declined{curve.reviewedBy ? ` by ${curve.reviewedBy}` : ''}</div>
+                        <p className="mt-0.5 text-xs">{curve.feedback || 'The reviewer didn’t leave a reason.'}</p>
+                        <p className="mt-1 text-xs">Reopen it as a draft to fix it and submit again, or discard it.</p>
                     </div>
                 </div>
             )}
             {curve.status === 'in_review' && (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-700">
-                    Submitted {curve.submittedAt ? fmtDay(curve.submittedAt) : ''} · Checks passed · <span className="font-semibold">Waiting for a reviewer</span>. You’ll find
-                    the outcome in My work.
+                    Submitted {curve.submittedAt ? fmtDay(curve.submittedAt) : ''} ·{' '}
+                    {attention ? `${attention} check${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} attention` : 'Checks passed'} ·{' '}
+                    {curve.reviewReach > 0 ? (
+                        <>
+                            <span className="font-semibold">Waiting for a reviewer</span>. Reviewers can see its {curve.reviewReach} uploaded run{curve.reviewReach === 1 ? '' : 's'}; the
+                            curated result itself stays in this browser for now.
+                        </>
+                    ) : (
+                        <>
+                            <span className="font-semibold">Saved for review in this browser only</span>. Reviewers can’t see it until results are stored on the server.
+                        </>
+                    )}
                 </div>
             )}
             {supersededBy && (
@@ -363,7 +388,12 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                                 was: curve.meta.accelerator !== curve.original.accelerator ? curve.original.accelerator : undefined,
                             },
                             { label: 'Category', value: curve.meta.category, was: curve.meta.category !== curve.original.category ? curve.original.category : undefined },
-                            { label: 'Workload (ISL/OSL)', value: curve.meta.workload || 'Not recorded', mono: true },
+                            {
+                                label: 'Workload (ISL/OSL)',
+                                value: curve.meta.workload || 'Not recorded',
+                                mono: true,
+                                was: curve.original.workload !== undefined && curve.meta.workload !== curve.original.workload ? curve.original.workload : undefined,
+                            },
                             { label: 'Harness', value: curve.meta.harness },
                             { label: 'Source', value: curve.meta.source || 'Not recorded' },
                             { label: 'Deployment', value: curve.meta.setup || null },
@@ -418,9 +448,23 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                                 ))}
                             </Select>
                         </div>
+                        <div>
+                            <div className="flex items-baseline justify-between gap-2">
+                                <Label surface="light" htmlFor="rs-workload">
+                                    Workload (ISL/OSL)
+                                </Label>
+                                {curve.original.workload !== undefined && <FieldNote was={curve.original.workload} now={curve.meta.workload} />}
+                            </div>
+                            <Input
+                                surface="light"
+                                id="rs-workload"
+                                value={curve.meta.workload || ''}
+                                placeholder="e.g. 1000/1000"
+                                onChange={(e) => ws.setMeta(curve.id, 'workload', e.target.value)}
+                            />
+                        </div>
                         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
                             {[
-                                ['Workload (ISL/OSL)', curve.meta.workload || 'Not recorded'],
                                 ['Harness', curve.meta.harness],
                                 ['Source', curve.meta.source || 'Not recorded'],
                                 ['Deployment', curve.meta.setup || '—'],
@@ -456,7 +500,16 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                     <CheckList checks={checks} onFix={fix} readOnly={readOnly} />
                 </Panel>
                 {/* Each source run is linked from its point in the Points panel above. */}
-                <Panel variant="editorial" title="Lineage" subtitle={`Version ${curve.version}${supersedes ? ` · replaces v${supersedes.version}` : ''}`}>
+                <Panel variant="editorial" title="Lineage" subtitle={`Version ${curve.version}`}>
+                    {supersedes && (
+                        <p className="mb-3 text-xs text-zinc-600">
+                            Replaces{' '}
+                            <button type="button" className="font-semibold text-accent-700 hover:underline" onClick={() => nav.openCurve(supersedes.id)}>
+                                v{supersedes.version}
+                            </button>
+                            .
+                        </p>
+                    )}
                     <HistoryList history={curve.history} />
                 </Panel>
             </div>
@@ -465,18 +518,35 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 Add to report and Share mean the same thing at every status, so they
                 appear once; reports take drafts too (marked Unofficial there). */}
             <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center gap-2 border-t border-zinc-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-                {editable && (
+                {(editable || curve.status === 'declined') && (
                     <Button size="sm" variant="dangerOutline" onClick={() => setDialog('discard')}>
                         Discard
                     </Button>
                 )}
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                    {curve.status === 'declined' && (
+                        <Button
+                            size="sm"
+                            onClick={() => {
+                                ws.reopenCurve(curve.id);
+                                notify('Reopened as a draft. Fix it, then submit it again.');
+                            }}
+                        >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Reopen as draft
+                        </Button>
+                    )}
                     {published && canNewVersion && (
                         <Button size="sm" variant="secondary" onClick={editAsNewVersion}>
                             <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit as new version
                         </Button>
                     )}
-                    {published && onWatch && (
+                    {shareable && (
+                        // Drafts compare too: Compare opens with this result, then Add baseline.
+                        <Button size="sm" variant="secondary" onClick={() => nav.openCompare([{ type: 'curve', id: curve.id }])}>
+                            <GitCompareArrows className="h-3.5 w-3.5" aria-hidden="true" /> Compare with…
+                        </Button>
+                    )}
+                    {shareable && onWatch && (
                         <Button size="sm" variant="secondary" onClick={() => onWatch(curve)}>
                             <Activity className="h-3.5 w-3.5" aria-hidden="true" /> Watch this setup
                         </Button>
@@ -518,6 +588,8 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 copy={copy}
                 instance={instance}
                 actor={ws.actor}
+                localRuns={localRuns}
+                reviewRuns={reviewRuns}
                 onClose={() => setDialog(null)}
                 onMarkOfficial={() => {
                     if (officialBlock) return;
@@ -525,9 +597,9 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                     setDialog(null);
                     notify('Marked official. It’s saved in this browser for now.');
                 }}
-                onSubmit={({ attribution }) => {
+                onSubmit={({ attribution, visibility, dco }) => {
                     setDialog(null);
-                    onSubmitForReview(curve, { attribution });
+                    onSubmitForReview(curve, { attribution, visibility, dco });
                 }}
                 onContinueUpload={({ attribution }) => {
                     setDialog(null);
@@ -539,28 +611,31 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 isOpen={dialog === 'discard'}
                 onClose={() => setDialog(null)}
                 size="sm"
-                title="Discard this draft?"
+                title={curve.status === 'declined' ? 'Discard this declined result?' : 'Discard this draft?'}
                 footer={
                     <>
                         <Button size="sm" variant="ghost" onClick={() => setDialog(null)}>
-                            Keep editing
+                            {curve.status === 'declined' ? 'Keep it' : 'Keep editing'}
                         </Button>
                         <Button
                             size="sm"
                             variant="danger"
                             onClick={() => {
+                                const declined = curve.status === 'declined';
                                 ws.discardCurve(curve.id);
                                 setDialog(null);
                                 nav.back();
-                                notify('Draft discarded. The runs haven’t changed.');
+                                notify(`${declined ? 'Result' : 'Draft'} discarded. The runs haven’t changed.`);
                             }}
                         >
-                            Discard draft
+                            {curve.status === 'declined' ? 'Discard result' : 'Discard draft'}
                         </Button>
                     </>
                 }
             >
-                <p className="surface-light text-sm text-zinc-700">The result and its label edits are deleted. The {curve.builtFrom.runs} source runs don’t change.</p>
+                <p className="surface-light text-sm text-zinc-700">
+                    The result and its label edits are deleted. {curve.builtFrom.runs === 1 ? 'Its source run doesn’t' : `The ${curve.builtFrom.runs} source runs don’t`} change.
+                </p>
             </Modal>
         </div>
     );

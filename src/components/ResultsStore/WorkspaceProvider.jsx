@@ -40,6 +40,18 @@ function load() {
 const newId = (prefix) => `${prefix}-${String(globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2)).slice(0, 8)}`;
 const slugify = (s) => String(s || 'dashboard').toLowerCase().replace(/×/g, 'x').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const log = (curve, by, what) => [...(curve.history || []), { at: Date.now(), by, what }];
+// Label edits arrive one keystroke at a time: consecutive edits of one field by
+// one person within ten minutes make one lineage entry, so history stays readable.
+const EDIT_WINDOW_MS = 10 * 60 * 1000;
+const logEdit = (curve, by, what) => {
+    const history = curve.history || [];
+    const last = history[history.length - 1];
+    if (last && last.by === by && last.what === what && Date.now() - last.at < EDIT_WINDOW_MS) return [...history.slice(0, -1), { ...last, at: Date.now() }];
+    return [...history, { at: Date.now(), by, what }];
+};
+const FIELD_NAMES = { accelerator: 'accelerator', model: 'model', category: 'category', workload: 'workload', notes: 'notes' };
+// How a point is named in lineage: by its load level, else its run.
+const pointLabel = (p) => (p.conc != null ? `c=${p.conc}` : p.rate != null ? `${p.rate} req/s` : `run ${p.idLabel}`);
 
 export function WorkspaceProvider({ instance, actor, children }) {
     const [state, setState] = useState(load);
@@ -126,8 +138,10 @@ export function WorkspaceProvider({ instance, actor, children }) {
 
             // Publishing straight from a sweep or run: the result is created
             // behind the scenes, then marked Official (internal) or sent for
-            // review (public) in the same step.
-            publishRuns(runs, { attribution } = {}) {
+            // review (public) in the same step. `visibility` is who sees it once
+            // approved ('public' or 'link'), `dco` the sign-off as given, and
+            // `reach` how many of its uploaded runs reviewers can actually see.
+            publishRuns(runs, { attribution, visibility, dco, reach = 0 } = {}) {
                 const curve = draftCurve(runs);
                 const now = curve.createdAt;
                 const published =
@@ -136,16 +150,19 @@ export function WorkspaceProvider({ instance, actor, children }) {
                         : {
                               status: 'in_review',
                               visibility: 'reviewers',
+                              publishVisibility: visibility === 'link' ? 'link' : 'public',
                               submittedAt: now,
                               attribution: attribution || actor,
-                              history: [...curve.history, { at: now, by: actor, what: 'Submitted for review' }],
+                              dco: dco || null,
+                              reviewReach: reach,
+                              history: [...curve.history, { at: now, by: actor, what: dco ? `Submitted for review · DCO ${dco.version} signed` : 'Submitted for review' }],
                           };
                 update((w) => ({ ...w, curves: [{ ...curve, ...published }, ...w.curves] }));
                 return curve.id;
             },
 
             renameCurve(id, name) {
-                patchCurve(id, (c) => ({ ...c, name, autoName: false }));
+                patchCurve(id, (c) => ({ ...c, name, autoName: false, history: logEdit(c, actor, 'Renamed') }));
             },
 
             addRunsToCurve(id, runs) {
@@ -175,17 +192,21 @@ export function WorkspaceProvider({ instance, actor, children }) {
                     // Per-chip throughput follows the chip count in the label people
                     // see (and correct). Measured values never change.
                     const points = field === 'accelerator' ? withChips(c.points, chipsOf(meta)) : c.points;
-                    return { ...c, meta, points, name: c.autoName ? autoCurveName(meta) : c.name };
+                    return { ...c, meta, points, name: c.autoName ? autoCurveName(meta) : c.name, history: logEdit(c, actor, `Edited ${FIELD_NAMES[field] || field}`) };
                 });
             },
 
             togglePoint(id, pointKey, reason) {
-                patchCurve(id, (c) => ({
-                    ...c,
-                    points: c.points.map((p) =>
-                        p.key === pointKey ? { ...p, included: !p.included, reason: p.included ? reason || 'Excluded by you' : '' } : p
-                    ),
-                }));
+                patchCurve(id, (c) => {
+                    const target = c.points.find((p) => p.key === pointKey);
+                    if (!target) return c;
+                    const why = target.included ? reason || 'Excluded by you' : '';
+                    return {
+                        ...c,
+                        points: c.points.map((p) => (p.key === pointKey ? { ...p, included: !p.included, reason: why } : p)),
+                        history: log(c, actor, target.included ? `Excluded ${pointLabel(target)}${reason ? ` (${String(reason).split(':')[0].toLowerCase()})` : ''}` : `Included ${pointLabel(target)} again`),
+                    };
+                });
             },
 
             addBaseline(id, baseline) {
@@ -221,15 +242,21 @@ export function WorkspaceProvider({ instance, actor, children }) {
                 });
             },
 
-            submitForReview(id, { attribution } = {}) {
+            // `visibility` is who sees it once approved ('public' or 'link'),
+            // `dco` the sign-off as given ({ version, by, at }), and `reach` how
+            // many of its uploaded runs reviewers can actually see (0 = only here).
+            submitForReview(id, { attribution, visibility, dco, reach = 0 } = {}) {
                 patchCurve(id, (c) => ({
                     ...c,
                     status: 'in_review',
                     visibility: 'reviewers',
+                    publishVisibility: visibility === 'link' ? 'link' : 'public',
                     submittedAt: Date.now(),
                     attribution: attribution || c.attribution || actor,
+                    dco: dco || c.dco || null,
+                    reviewReach: reach,
                     feedback: '',
-                    history: log(c, actor, 'Submitted for review'),
+                    history: log(c, actor, dco ? `Submitted for review · DCO ${dco.version} signed` : 'Submitted for review'),
                 }));
             },
 
@@ -242,7 +269,8 @@ export function WorkspaceProvider({ instance, actor, children }) {
                         const published = {
                             ...target,
                             status: 'published',
-                            visibility: 'public',
+                            // As the author chose when submitting: listed, or link only.
+                            visibility: target.publishVisibility === 'link' ? 'link' : 'public',
                             reviewedBy: actor,
                             markedAt: now,
                             updatedAt: now,
@@ -268,6 +296,12 @@ export function WorkspaceProvider({ instance, actor, children }) {
                         ),
                     };
                 });
+            },
+
+            // A declined result goes back to a draft its owner can fix and submit
+            // again; the reviewer's note stays visible until it's resubmitted.
+            reopenCurve(id) {
+                patchCurve(id, (c) => (c.status === 'declined' ? { ...c, status: 'draft', visibility: 'me', history: log(c, actor, 'Reopened as a draft') } : c));
             },
 
             toggleFeatured(id) {

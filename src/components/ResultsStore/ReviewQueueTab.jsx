@@ -17,7 +17,7 @@ import { Inbox, RefreshCw } from 'lucide-react';
 import { Button, ChartContainer, EmptyState, Label, Panel, Spinner, StatusChip, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { BackButton, CheckList, HistoryList, MetaGrid, ResultStatusChip } from './parts';
+import { Attachments, BackButton, CheckList, HistoryList, MetaGrid, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
 import { closeness, curveChecks, curveConfig, curveDraftFromRuns, fmtDay, seriesPoints } from './catalog';
 
@@ -38,15 +38,23 @@ function toReviewItem(entry, runsById) {
     const curve = draft
         ? { ...draft, id: entry.runId, name: run.title, baselines: [], status: 'in_review', visibility: 'reviewers', history: [], version: 1 }
         : null;
-    return { ...entry, curve, checks: curve ? curveChecks(curve) : [] };
+    return { ...entry, run: run || null, curve, checks: curve ? curveChecks(curve) : [] };
 }
 
-function ReviewDetail({ item, baselines, onBack, onDecide }) {
+// The files uploaded with the runs under review, labelled by run when
+// there's more than one.
+function reviewFiles(runs) {
+    return runs.flatMap((r) => (r.attachments || []).map((f) => (runs.length > 1 ? { ...f, group: `${f.group} · run ${r.idLabel || r.runId}` } : f)));
+}
+
+function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
     const [mode, setMode] = useState(null);
     const [reasons, setReasons] = useState([]);
     const [note, setNote] = useState('');
     const [busy, setBusy] = useState(false);
     const c = item.curve;
+    // What the contributor uploaded with the runs: configs, run metadata, logs.
+    const files = reviewFiles(item.kind === 'curve' ? runsFromKeys(c?.builtFrom?.runKeys || []) : item.run ? [item.run] : []);
     // Published results of the same model, closest setup first (hardware,
     // chips, workload), so the overlay compares like with like.
     const sameModel = c ? baselines.filter((b) => b.meta.model === c.meta.model && b.id !== c.id) : [];
@@ -81,6 +89,21 @@ function ReviewDetail({ item, baselines, onBack, onDecide }) {
                     <p className="mt-1 text-xs text-zinc-600">
                         Submitted {item.submittedAt ? fmtDay(item.submittedAt) : ''} by <span className="font-medium text-zinc-900">{item.by}</span> · {summarize(item.checks)}
                     </p>
+                    {/* Results submitted here record the sign-off and where it goes once approved. */}
+                    {item.kind === 'curve' && c && (
+                        <p className="mt-0.5 text-xs text-zinc-600">
+                            {c.dco ? (
+                                <>
+                                    DCO {c.dco.version} signed by <span className="font-medium text-zinc-900">{c.dco.by}</span>
+                                    {c.dco.at ? ` on ${fmtDay(c.dco.at)}` : ''}
+                                </>
+                            ) : (
+                                <span className="text-amber-700">No DCO sign-off recorded</span>
+                            )}
+                            {' · '}
+                            {c.publishVisibility === 'link' ? 'Link only once approved (not listed in the store)' : 'Listed in the store once approved'}
+                        </p>
+                    )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <Button size="sm" variant="dangerOutline" disabled={busy} onClick={() => setMode('decline')}>
@@ -168,7 +191,7 @@ function ReviewDetail({ item, baselines, onBack, onDecide }) {
                                     { label: 'Model', value: c.meta.model, was: c.meta.model !== c.original.model ? c.original.model : undefined },
                                     { label: 'Accelerator', value: c.meta.accelerator || 'Not recorded', was: c.meta.accelerator !== c.original.accelerator ? c.original.accelerator : undefined },
                                     { label: 'Category', value: c.meta.category, was: c.meta.category !== c.original.category ? c.original.category : undefined },
-                                    { label: 'Workload', value: c.meta.workload, mono: true },
+                                    { label: 'Workload', value: c.meta.workload, mono: true, was: c.original?.workload !== undefined && c.meta.workload !== c.original.workload ? c.original.workload : undefined },
                                     { label: 'Harness', value: c.meta.harness },
                                     { label: 'Points', value: `${included.length} of ${c.points.length} included`, mono: true },
                                     { label: 'Notes', value: c.meta.notes },
@@ -185,6 +208,13 @@ function ReviewDetail({ item, baselines, onBack, onDecide }) {
                         </p>
                         <HistoryList history={c.history} />
                     </Panel>
+                    <Panel
+                        variant="editorial"
+                        title="Configs & logs"
+                        subtitle={files.length ? 'Uploaded with the runs, as submitted.' : 'Nothing was uploaded with these runs, or the runs aren’t loaded here.'}
+                    >
+                        <Attachments files={files} />
+                    </Panel>
                 </>
             ) : (
                 <EmptyState title="Run data isn’t loaded" message="The submission’s files aren’t in this view yet. Approve or request changes from its metadata, or open it in the classic view." />
@@ -194,7 +224,7 @@ function ReviewDetail({ item, baselines, onBack, onDecide }) {
 }
 
 // One queue, oldest first, each with a summary of its automatic checks.
-export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsById, baselines, onRefresh, onDecide }) {
+export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsById, runsFromKeys = () => [], baselines, onRefresh, onDecide }) {
     const [activeId, setActiveId] = useState(null);
     const items = useMemo(() => {
         const local = localCurves.map((c) => ({ kind: 'curve', id: c.id, title: c.name, by: c.attribution || c.owner, submittedAt: c.submittedAt, curve: c }));
@@ -209,6 +239,7 @@ export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsB
                 key={active.id}
                 item={active}
                 baselines={baselines}
+                runsFromKeys={runsFromKeys}
                 onBack={() => setActiveId(null)}
                 onDecide={async (item, decision, feedback) => {
                     const ok = await onDecide(item, decision, feedback);

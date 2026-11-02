@@ -379,6 +379,19 @@ function reportSetupOf(report) {
     return { setup: engines.map((c) => shape(c.standardized)).join(pd ? ' ' : ' + '), detail: null };
 }
 
+// A deployment name from the run label, for stacks that don't label
+// themselves: "run-20260831-tpuv6e-precise-prefix" → "precise-prefix". Tokens
+// with digits (dates, epochs, random suffixes, hardware such as h100 or
+// tpuv6e), a leading "run" and the model's own words are dropped, so nightly
+// repeats of one deployment keep one name and two deployments of one shape
+// ("1 TP1") stop counting as repeats of each other.
+export function variantFromRunLabel(label, model = '') {
+    const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const modelWords = new Set(words(model));
+    const kept = words(label).filter((t, i) => !/\d/.test(t) && !(i === 0 && t === 'run') && !modelWords.has(t));
+    return kept.length ? kept.join('-') : null;
+}
+
 // A run's workload: as configured where the source says, else as measured.
 // Measured averages drift from run to run (models stop before the output
 // cap; shared prefixes add input tokens), so going by them alone splits one
@@ -557,6 +570,25 @@ function setupOf(d) {
 // The experiment / batch folder a run came from, when the source records one.
 const batchOf = (d) => String(d._raw?.source_info?.origin || d.source_info?.origin || '');
 
+// Files attached to an upload, as one list: { group, name, value }, where
+// value is a data: URL (the file itself) or a link. Uploads keep manifests and
+// evidence as { name: value } maps; links added by URL may come as a list.
+function attachmentsOf(d) {
+    const out = [];
+    const add = (group, files) => {
+        if (!files) return;
+        const pairs = Array.isArray(files)
+            ? files.map((f, i) => (typeof f === 'string' ? [f.split(/[/?#]/).filter(Boolean).pop() || `File ${i + 1}`, f] : [f?.name || `File ${i + 1}`, f?.url || f?.data || f?.content]))
+            : Object.entries(files);
+        pairs.forEach(([name, value]) => {
+            if (typeof value === 'string' && value.trim()) out.push({ group, name: String(name), value: value.trim() });
+        });
+    };
+    add('Manifests and configs', d.manifests);
+    add('Evidence and logs', d.evidence);
+    return out;
+}
+
 function runIdOf(d) {
     if (String(d.source || '').startsWith('brv02:')) return d.run_id || String(d.source).slice(6);
     // Loaders re-number `id` by array position, so the original record's id comes first.
@@ -595,7 +627,9 @@ function toPoint(d, runKey, chips = accelCountOf(d)) {
     );
     const output = readOutput(d);
     const input = firstNum(d.metrics?.input_tput, d.input_tput);
-    const total = output == null ? null : output + (input || 0);
+    // Total is input + output. Without a recorded input rate it's unknown, not
+    // equal to output, so the Total toggle switches off instead of mislabelling.
+    const total = output == null || input == null ? null : output + input;
     const point = {
         key: runKey,
         runKey,
@@ -702,7 +736,10 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
         const harness = harnessOf(d0);
         const category = categoryOf(d0);
         const stack = reportSetupOf(d0.rawReport);
-        const setup = setupOf(d0) || stack?.setup || null;
+        // An unlabelled stack is only a shape ("1 TP1"); the run label names
+        // the deployment, e.g. precise-prefix vs standard-k8s on the same shape.
+        const variant = stack && !stack.detail ? variantFromRunLabel(d0.runLabel, model) : null;
+        const setup = setupOf(d0) || (variant ? `${variant} (${stack.setup})` : stack?.setup) || null;
         const engine = engineOf(d0);
         const ts = Math.max(0, ...list.map(entryTs));
         const measuredWorkload = wl.measured.isl && wl.measured.osl ? `${wl.measured.isl}/${wl.measured.osl}` : '';
@@ -735,7 +772,9 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             sourceRaw: String(d0.source || 'local'),
             category,
             setup,
-            setupDetail: setup === stack?.setup ? stack?.detail || null : null,
+            setupDetail: setup === stack?.setup ? stack?.detail || null : variant && setup?.startsWith(variant) ? `${setup}, named from the run label` : null,
+            // The uploader's own name for the run ("run-20260831-h100-standard-k8s").
+            runLabel: d0.runLabel ? String(d0.runLabel) : null,
             batch: batchOf(d0),
             ts,
             author: handleOf(d0.github_author),
@@ -747,9 +786,16 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             title: '',
             benchmarkKey: getBenchmarkKey(d0),
             rawReport: d0.rawReport || null,
+            // Files attached at upload (config.yaml, run_metadata.yaml…) and the
+            // harness arguments the run recorded, so peers and reviewers can read
+            // how it was run (the friction log's P0).
+            attachments: attachmentsOf(d0),
+            runMetadata: d0.run_metadata || null,
             fileId: d0._raw?.source_info?.file_identifier || d0.source_info?.file_identifier || d0.filename || null,
-            rawUrl: d0._raw?.source_info?.raw_url || d0.source_info?.raw_url || null,
-            searchText: [d0.model_name, harness, src.label, category, setup, stack?.detail, engine, runId, measuredWorkload, handleOf(d0.github_author)]
+            // Uploads can set raw_url themselves, so only http(s) and this site's
+            // own paths (/results/…) become a link, never a script URL.
+            rawUrl: [d0._raw?.source_info?.raw_url, d0.source_info?.raw_url, d0.raw_url].find((u) => typeof u === 'string' && /^(https?:\/\/|\/(?!\/))/i.test(u.trim())) || null,
+            searchText: [d0.model_name, harness, src.label, category, setup, stack?.detail, engine, runId, d0.runLabel, measuredWorkload, handleOf(d0.github_author)]
                 .filter(Boolean)
                 .join(' ')
                 .toLowerCase(),
@@ -931,6 +977,28 @@ export function sameSetup(a, b) {
     });
 }
 
+// Whether these runs make one result: one setup, at least two points, and no
+// load level from two different runs (two nightly batches of a sweep are two
+// results, not one). A level repeated inside one run is a data problem the
+// editor's checks flag (some uploads carry report_v0.2.json next to the stage
+// it copies), so it doesn't block the run on its own.
+export function formsSweep(runs = []) {
+    const list = runs.filter(Boolean);
+    if (!list.length) return false;
+    const key = configKeyOf(list[0]);
+    if (!list.every((r) => sameSetup(configKeyOf(r), key))) return false;
+    const levelOf = (p) => (isNum(p.conc) ? `c=${p.conc}` : isNum(p.rate) ? `${p.rate} req/s` : null);
+    const seen = new Set();
+    for (const r of list) {
+        const levels = new Set((r.points || []).map(levelOf).filter(Boolean));
+        for (const level of levels) {
+            if (seen.has(level)) return false;
+            seen.add(level);
+        }
+    }
+    return list.reduce((n, r) => n + (r.points || []).length, 0) >= 2;
+}
+
 // Every setup in these runs, newest first.
 export function setupsOf(runs) {
     const groups = new Map();
@@ -1080,7 +1148,7 @@ export function curveDraftFromRuns(runs) {
         points,
         dropped: droppedStages(runs),
         meta,
-        original: { model: meta.model, modelFull: meta.modelFull, accelerator: meta.accelerator, category: meta.category },
+        original: { model: meta.model, modelFull: meta.modelFull, accelerator: meta.accelerator, category: meta.category, workload: meta.workload },
         builtFrom: {
             runs: runs.length,
             runKeys: runs.map((r) => r.key),
@@ -1601,16 +1669,15 @@ export function closeness(config, target) {
 
 // Baseline options in the order to offer them: up to 8 that share at least
 // the model and hardware with `target` under "Closest matches", then the rest
-// by closeness, keeping their own groups.
+// by closeness, keeping their own groups. Past `limit` only options marked
+// `keep` (your own results) stay, so the filter box can still find them.
 export function rankBaselines(options, target, { limit = 60 } = {}) {
     const ranked = options.map((o, i) => ({ o, i, score: closeness(o.config, target) })).sort((a, b) => b.score - a.score || a.i - b.i);
     const close = ranked.filter((r) => r.score >= 5).slice(0, 8);
+    const rest = ranked.filter((r) => !close.includes(r));
     return [
         ...close.map((r) => ({ ...r.o, group: 'Closest matches' })),
-        ...ranked
-            .filter((r) => !close.includes(r))
-            .slice(0, limit)
-            .map((r) => r.o),
+        ...rest.filter((r, n) => n < limit || r.o.keep).map((r) => r.o),
     ];
 }
 
@@ -1642,10 +1709,34 @@ export const ACCELERATOR_SUGGESTIONS = ['H100', 'H200', 'B200', 'A100', 'L4', 'M
     [1, 2, 4, 8, 16].map((n) => `${hw} ×${n}`)
 );
 
+// The command a run was started with, when its report recorded the harness
+// arguments (run_metadata.harness_args), e.g. "inference-perf --config_file …".
+// Paths in it are from the run's own environment, so an attached config is
+// named next to it.
+export function recordedCommand(run) {
+    const meta = run?.runMetadata || {};
+    const args = typeof meta.harness_args === 'string' ? meta.harness_args.trim() : '';
+    if (!args) return '';
+    const harness = String(meta.harness_name || run.harness || '').trim();
+    const cmd = harness && !args.startsWith(harness) ? `${harness} ${args}` : args;
+    const config = /--config[_-]?file/i.test(args) ? (run.attachments || []).find((f) => /config.*\.(ya?ml|json)$/i.test(f.name)) : null;
+    return [
+        `# ${run.title || 'Benchmark run'}`,
+        '# As recorded by the harness for this run',
+        config ? `# Paths are from the run’s environment; its config is attached as ${config.name}` : null,
+        cmd,
+    ]
+        .filter(Boolean)
+        .join('\n');
+}
+
 // Synthesizes a copy-pasteable CLI command to reproduce a run's workload and
-// concurrency/request-rate stages with its recorded harness and stack.
+// concurrency/request-rate stages with its recorded harness and stack. It's
+// approximate: rebuilt from what the report recorded, not the run's own config.
 export function reproduceCommand(run) {
     if (!run) return '';
+    const recorded = recordedCommand(run);
+    if (recorded) return recorded;
     const model = run.modelFull && run.modelFull !== 'Model not recorded' ? run.modelFull : '<model>';
     const isl = run.isl || run.wl?.measured?.isl || 1000;
     const osl = run.osl || run.wl?.measured?.osl || 1000;
@@ -1655,6 +1746,7 @@ export function reproduceCommand(run) {
     const header = [
         `# ${run.title || 'Benchmark run'}`,
         `# Engine: ${run.engine || 'not recorded'} · Hardware: ${run.hwLabel || 'not recorded'}${run.setupDetail || run.setup ? ` · Deployment: ${run.setupDetail || run.setup}` : ''}`,
+        '# Approximate: rebuilt from the model, workload and load levels this report recorded. The run’s own config may differ.',
     ];
     if (harness.includes('guidellm')) {
         const rateType = concs.length ? 'concurrent' : 'constant';

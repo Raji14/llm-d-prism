@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useId, useMemo, useState } from 'react';
+import React, { useEffect, useId, useMemo, useState } from 'react';
 import { ExternalLink, LayoutDashboard, Share2, Sparkles, X } from 'lucide-react';
 import { Button, ChartContainer, EmptyState, Select, getSeriesShape, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
@@ -115,10 +115,11 @@ function baselineScore(name) {
 // else the one added last with "Add baseline", else an Official result, else
 // the most baseline-like name (baseline, standard, none, default), else the
 // first series.
-export function CompareView({ items, initialView, resolve, baselineOptions, copy, canCurate, nav, onShare, onAddToDashboard, onOpenInBrowser }) {
+export function CompareView({ items, initialView, resolve, baselineOptions, copy, canMakeResult, nav, onShare, onLiveChange, onAddToDashboard, onOpenInBrowser }) {
     const [extra, setExtra] = useState([]);
     const [removed, setRemoved] = useState(() => new Set());
-    const [pickedBase, setPickedBase] = useState(null);
+    // A shared link names the baseline its sender chose; open on it.
+    const [pickedBase, setPickedBase] = useState(() => initialView?.base || null);
     const tableHeadingId = useId();
     const baseSelectId = useId();
     const backLabel = nav.backLabel || 'Back to Browse';
@@ -138,12 +139,18 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const latLabel = latencyLabel(latency, stat);
     const tp = throughputMetric(throughput);
     const present = new Set(all.map(itemKey));
-    // Saving a comparison as a result is curation: only for runs you may curate.
-    const canSave = canCurate(resolved.filter((x) => !x.item.baseline).flatMap((x) => x.s.runs || []));
+    // Saving a comparison as a result is curation: only when the series form
+    // one curve (one setup, no load level twice) of runs you may curate.
+    const canSave = canMakeResult(resolved.filter((x) => !x.item.baseline).flatMap((x) => x.s.runs || []));
+
+    // Two series can share a name (two batches of one setup, a watch's batch
+    // and its baseline): add what tells them apart, so legend and menu differ.
+    const nameCounts = resolved.reduce((m, x) => m.set(x.s.name, (m.get(x.s.name) || 0) + 1), new Map());
+    const label = (s) => (nameCounts.get(s.name) > 1 && s.kindLabel ? `${s.name} (${s.kindLabel})` : s.name);
 
     const series = resolved.map(({ item, s }, i) => ({
         id: itemKey(item),
-        name: s.name,
+        name: label(s),
         color: seriesColor(i),
         shape: getSeriesShape(i),
         lineStyle: item.baseline ? 'dashed' : 'solid',
@@ -157,6 +164,13 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const base = resolved.find((x) => itemKey(x.item) === pickedBase) || addedBase || officialBase || (baselineScore(namedBase?.s.name) > 0 ? namedBase : null) || resolved[0];
     const baseKey = base ? itemKey(base.item) : null;
     const baseIdx = resolved.indexOf(base);
+
+    // What's on screen now, for the address bar: series as added or removed,
+    // the metric and statistic, and the baseline.
+    useEffect(() => {
+        onLiveChange?.({ items: all, view: { latency, stat, throughput, base: baseKey } });
+    }, [onLiveChange, all, latency, stat, throughput, baseKey]);
+
     const rows = resolved.map((x, i) => ({ ...x, i, key: itemKey(x.item), stats: seriesStats(x.s.points, view) }));
     const baseStats = rows.find((r) => r.key === baseKey)?.stats;
     const deltas = (st) => ({
@@ -253,7 +267,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                             Make result
                         </Button>
                     )}
-                    <Button size="sm" variant="secondary" onClick={() => onShare({ kind: 'compare', items: all, title: 'Comparison', view: { latency, stat, throughput } })}>
+                    <Button size="sm" variant="secondary" onClick={() => onShare({ kind: 'compare', items: all, title: 'Comparison', view: { latency, stat, throughput, base: baseKey } })}>
                         <Share2 className="h-3.5 w-3.5" aria-hidden="true" />
                         Share this view
                     </Button>
@@ -280,7 +294,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                     >
                         {rows.map((r) => (
                             <option key={r.key} value={r.key}>
-                                {r.s.name}
+                                {label(r.s)}
                             </option>
                         ))}
                     </Select>
@@ -296,14 +310,16 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
             {resolved.length === 1 && compared.length === 1 && (
                 <Notice>Add a baseline to see what changed. “Add baseline” lists the closest matches first: same model, hardware and workload.</Notice>
             )}
+            {unplotted.length > 0 && (
+                <Notice tone="warning">
+                    {unplotted.length === series.length ? 'None of these series can be plotted' : `${unplotted.length} series can’t be plotted`} with {latLabel} and{' '}
+                    {tp.label.toLowerCase()} throughput: {unplotted.join(', ')}. Try another statistic or metric.
+                </Notice>
+            )}
 
             <ChartContainer
                 title="Throughput vs latency"
-                subtitle={
-                    unplotted.length
-                        ? `${unplotted.length} series can’t be plotted with ${latLabel} and ${tp.label.toLowerCase()} throughput: ${unplotted.join(', ')}. Try another statistic or metric.`
-                        : 'Each line is one run or result, in concurrency order. Baselines you add are dashed.'
-                }
+                subtitle="Each line is one run or result, in concurrency order. Baselines you add are dashed."
                 actions={
                     <>
                         <MetricToggles view={view} />
@@ -364,7 +380,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(r.i) }} aria-hidden="true" />
-                                                <span className="font-medium text-zinc-900">{r.s.name}</span>
+                                                <span className="font-medium text-zinc-900">{label(r.s)}</span>
                                                 {isBase && <span className="text-tiny font-semibold text-accent-700">baseline</span>}
                                                 {r.s.curve && <ResultStatusChip status={r.s.curve.status} copy={copy} size="xs" />}
                                             </div>

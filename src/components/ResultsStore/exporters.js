@@ -72,7 +72,10 @@ export function pointsCsv(series) {
 }
 
 export function downloadText(filename, text, type = 'text/csv') {
-    const url = URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+    // A UTF-8 byte-order mark tells Excel the CSV is UTF-8, so ×, ≤ and · in
+    // labels don't arrive garbled. Other text types go out as written.
+    const body = type === 'text/csv' && !String(text).startsWith('\uFEFF') ? `\uFEFF${text}` : text;
+    const url = URL.createObjectURL(new Blob([body], { type: `${type};charset=utf-8` }));
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;

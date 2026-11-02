@@ -33,8 +33,9 @@ export function plainSyncError(message) {
 
 // Health from what Prism actually knows. A live sync has its last good fetch
 // (`lastSyncedAt`) and its error; a source without a profile is a static
-// archive that isn't synced at all. `newest` is the source's newest run.
-export function sourceHealth({ profile: p, newest }, now) {
+// archive that isn't synced at all. `newest` is the source's newest run and
+// `runs` how many it provided.
+export function sourceHealth({ profile: p, newest, runs }, now) {
     if (p?.loading) return { status: 'processing', label: 'Syncing' };
     const lastGood = p?.lastSyncedAt ? fmtDay(Date.parse(p.lastSyncedAt)) : null;
     if (p?.error) return { status: 'failed', label: 'Sync failed', note: `${plainSyncError(p.error)} · ${lastGood ? `last good sync ${lastGood}` : 'no good sync yet'}` };
@@ -42,6 +43,9 @@ export function sourceHealth({ profile: p, newest }, now) {
     const stale = quietDays != null && quietDays >= STALE_DAYS;
     if (!p) return { status: 'staged', label: 'Not synced', note: stale ? `Static files · newest run ${quietDays} days old` : 'Static files' };
     const synced = lastGood ? `synced ${lastGood}` : null;
+    // It answered, but held nothing Prism could read: usually the wrong
+    // bucket or folder, not a healthy source.
+    if (runs === 0) return { status: 'action', label: 'No runs', note: ['no benchmark reports found', synced].filter(Boolean).join(' · ') };
     if (stale) return { status: 'action', label: 'Stale', note: [`no new runs in ${quietDays} days`, synced].filter(Boolean).join(' · ') };
     return { status: 'verified', label: 'Synced', note: synced };
 }

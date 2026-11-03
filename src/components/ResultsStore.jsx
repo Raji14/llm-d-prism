@@ -700,6 +700,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 group: `${copy.publishedLabel} results`,
                 item: { type: 'curve', id: c.id },
                 points: c.points.filter((p) => p.included),
+                runKeys: c.builtFrom?.runKeys || c.points.map((p) => p.runKey).filter(Boolean),
                 config: curveConfig(c),
             })),
             ...ws.curves
@@ -711,6 +712,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     group: `Your results (not ${copy.publishedLabel.toLowerCase()} yet)`,
                     item: { type: 'curve', id: c.id },
                     points: c.points.filter((p) => p.included),
+                    runKeys: c.builtFrom?.runKeys || c.points.map((p) => p.runKey).filter(Boolean),
                     config: curveConfig(c),
                     // Always offered, however far its setup is from the compared ones.
                     keep: true,
@@ -722,6 +724,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 group: 'Runs and sweeps',
                 item: { type: 'row', key: r.key },
                 points: r.points,
+                runKeys: r.runs.map((x) => x.key),
                 config: runsConfig(r.runs),
             })),
         ],
@@ -1056,6 +1059,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     : await updateSubmissionStatus?.(item.runId, 'rejected', decision === 'decline' ? `Declined: ${feedback}` : feedback, { quiet: true });
             loadReviewQueue();
             if (ok !== true) return false;
+            if (decision === 'approve') {
+                ws.curves
+                    .filter((c) => c.status === 'in_review' && (c.submissionRunIds || []).includes(item.runId))
+                    .forEach((c) => ws.review(c.id, 'approve'));
+            }
         }
         const local = item.kind === 'curve';
         const message = {
@@ -1166,6 +1174,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     );
 
     // ------------------------------------------------------------ effects
+    // Scroll to the top of the workspace when switching tabs or opening/closing detail screens.
+    const navScrollKey = screen ? `${screen.type}:${screen.key || screen.id || ''}` : `tab:${tab}`;
+    useEffect(() => {
+        if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+            window.scrollTo(0, 0);
+        }
+    }, [navScrollKey]);
+
     // Keep the address bar shareable: tab + whatever screen is open, and
     // Browse's search and filters while Browse is showing.
     const tabVisible = tab === 'review' ? isReviewer : tab === 'sources' ? isAdmin : TABS.includes(tab);
@@ -1402,8 +1418,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 runsById={runsById}
                 runsFromKeys={runsFromKeys}
                 baselines={publishedCurves}
+                actor={actor}
+                isPreviewRole={previewing}
                 onRefresh={loadReviewQueue}
                 onDecide={decide}
+                onUndoApprove={(last) => {
+                    if (last.kind === 'curve') ws.unapprove(last.id);
+                    notify('Approval undone. Returned to Review queue.');
+                }}
             />
         );
     } else if (activeTab === 'sources') {

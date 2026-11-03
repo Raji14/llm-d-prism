@@ -22,13 +22,16 @@ import { useChartView } from './useChartView';
 import { mdTable, pointsCsv } from './exporters';
 import {
     OPERATING_TTFT_MS,
+    fmtDate,
     fmtInt,
     fmtPct,
     fmtTput,
+    healthyPoints,
     itemKey,
     latencyLabel,
     latencyValue,
     limitLabel,
+    overloadedKeys,
     parityFraming,
     pctDelta,
     peakPoint,
@@ -42,39 +45,67 @@ import {
 } from './catalog';
 
 const isNum = (n) => typeof n === 'number' && Number.isFinite(n);
-const LIMIT_LABEL = limitLabel();
+const LIMIT_P50_LABEL = limitLabel(OPERATING_TTFT_MS, 'p50');
+const LIMIT_P99_LABEL = limitLabel(OPERATING_TTFT_MS, 'p99');
 const LIMIT_SECONDS = secondsLabel(OPERATING_TTFT_MS);
 
-// What the table shows per series: peak throughput, latency at that peak, the
-// best latency, and the throughput it sustains within the TTFT limit (what a
-// user would actually get; the peak is often an overloaded point).
+// Signature of the underlying run keys for a series or baseline option, so a
+// run/sweep/result is never offered as its own baseline.
+const runSigOf = (keys) => {
+    if (!keys?.length) return '';
+    return [...new Set(keys.filter(Boolean))].sort().join('|');
+};
+
+// What the table shows per series: peak throughput and latency at peak on
+// healthy (non-overloaded) points, best healthy latency, and throughput
+// sustained within the TTFT p50 and p99 limits. When the raw highest-output
+// point is overloaded, `overloadedPeak` records it so the table marks it
+// "not comparable" instead of computing a misleading Δ on a saturated stage.
 function seriesStats(points, { latency, stat, throughput }) {
-    const peak = peakPoint(points, throughput);
-    const lats = points.map((p) => latencyValue(p, latency, stat)).filter(isNum);
-    const usable = pricingPoint(points, OPERATING_TTFT_MS);
+    const satKeys = overloadedKeys(points);
+    const healthy = healthyPoints(points);
+    const rawPeak = peakPoint(points, throughput);
+    const rawPeakOverloaded = Boolean(rawPeak && satKeys.has(rawPeak.key));
+    const peak = healthy.length ? peakPoint(healthy, throughput) : null;
+    const lats = healthy.map((p) => latencyValue(p, latency, stat)).filter(isNum);
+    const usable = pricingPoint(points, OPERATING_TTFT_MS, 'p50');
+    const usableP99 = pricingPoint(points, OPERATING_TTFT_MS, 'p99');
     return {
         peak: peak ? peak[throughput] : null,
+        peakConc: peak?.conc ?? null,
         latAtPeak: peak ? latencyValue(peak, latency, stat) : null,
         best: lats.length ? Math.min(...lats) : null,
+        overloadedPeak: rawPeakOverloaded ? rawPeak : null,
+        allOverloaded: points.length > 0 && healthy.length === 0,
+        satKeys,
         usable: usable.point && isNum(usable.point[throughput]) ? usable.point[throughput] : null,
         usableWhy: usable.reason,
+        usableP99: usableP99.point && isNum(usableP99.point[throughput]) ? usableP99.point[throughput] : null,
+        usableP99Why: usableP99.reason,
     };
 }
 
 // Change against the baseline row. Higher throughput and lower latency are
-// better; under ±0.5% it's left neutral. The direction is spelled out for
-// screen readers, not only shown in color.
+// better; under ±1.0% it's left neutral as run-to-run noise. The direction is
+// shown visibly ("better" / "worse") as well as in color.
 function Delta({ value, higherIsBetter }) {
     if (!isNum(value)) return <span className="text-zinc-400">—</span>;
     const better = higherIsBetter ? value > 0 : value < 0;
-    const flat = Math.abs(value) < 0.5;
+    const flat = Math.abs(value) < 1;
     return (
         <span className={cn(flat ? 'text-zinc-500' : better ? 'text-emerald-700' : 'text-red-700')}>
             {fmtPct(value)}
-            {!flat && <span className="sr-only">{better ? ' (better)' : ' (worse)'}</span>}
+            {!flat && <span className="ml-1 font-sans text-micro opacity-85">{better ? 'better' : 'worse'}</span>}
         </span>
     );
 }
+
+const fmtDeltaMd = (value, higherIsBetter) => {
+    if (!isNum(value)) return '—';
+    const flat = Math.abs(value) < 1;
+    const better = higherIsBetter ? value > 0 : value < 0;
+    return flat ? fmtPct(value) : `${fmtPct(value)} (${better ? 'better' : 'worse'})`;
+};
 
 // "accelerator (H100 vs TPU v6e) and chip count (8 vs 4)".
 const listMismatches = (mismatches) => {
@@ -94,7 +125,7 @@ const listTested = (mismatches, baseIdx) =>
             return { label: `${m.label} (${from} → ${to.join(', ')})` };
         })
     );
-const usableCell = (st) => (isNum(st.usable) ? fmtTput(st.usable) : st.usableWhy === 'over-limit' ? `none ≤ ${LIMIT_SECONDS}` : '—');
+const usableCell = (val, why) => (isNum(val) ? fmtTput(val) : why === 'over-limit' ? `none ≤ ${LIMIT_SECONDS}` : 'not recorded');
 
 // How much a series name says "I'm the baseline": the default baseline is
 // the most baseline-like series when nobody picked one.
@@ -107,14 +138,41 @@ function baselineScore(name) {
     return 0;
 }
 
+// Provenance fields for a resolved series, using "not recorded" wherever a
+// field was missing from the underlying report files.
+function seriesProvenance(s, config) {
+    const runs = s.runs || [];
+    const modelFull = runs.map((r) => r.modelFull).find((m) => m && m !== 'Model not recorded') || s.curve?.meta?.model || config?.model || 'not recorded';
+    const hw =
+        s.curve?.meta?.accelerator ||
+        (config?.accelerator ? `${config.accelerator}${config.chips ? ` ×${config.chips}` : ''}` : '') ||
+        runs.map((r) => r.hwLabel).find((h) => h && h !== 'Accelerator not recorded') ||
+        'not recorded';
+    const setup = config?.setup || s.curve?.meta?.setup || runs.map((r) => r.setup || r.variant || r.runLabel).find(Boolean) || 'not recorded';
+    const workload = config?.workload || s.curve?.meta?.workload || runs.map((r) => r.workload).find(Boolean) || 'not recorded';
+    const harness = config?.harness || s.curve?.meta?.harness || runs.map((r) => r.harness).find(Boolean) || 'not recorded';
+    const engine = config?.engine || s.curve?.meta?.engine || runs.map((r) => r.engine).find((e) => e && e !== 'not recorded') || 'not recorded';
+    const tss = [...new Set(runs.map((r) => r.ts).filter(Boolean))].sort((a, b) => a - b);
+    const measured = tss.length
+        ? tss.length === 1 || fmtDate(tss[0]) === fmtDate(tss[tss.length - 1])
+            ? fmtDate(tss[0])
+            : `${fmtDate(tss[0])} – ${fmtDate(tss[tss.length - 1])}`
+        : s.curve?.createdAt
+          ? fmtDate(s.curve.createdAt)
+          : 'not recorded';
+    const runIds = [...new Set(runs.map((r) => r.runId || r.idLabel || r.key).filter(Boolean))].join(', ') || (s.curve ? `result:${s.curve.id}` : 'not recorded');
+    return { modelId: modelFull, hw, setup, workload, harness, engine, measured, runIds };
+}
+
 // Compare: default axes, a series per run/curve, and added baselines overlaid
 // (dashed). Browsing never publishes; saving turns the selection into a curve.
 // `initialView` ({ latency, stat, throughput }) comes from a shared link.
 //
-// One series is the baseline for the table's Δ columns: the one you pick,
-// else the one added last with "Add baseline", else an Official result, else
-// the most baseline-like name (baseline, standard, none, default), else the
-// first series.
+// One series is the baseline for the table's Δ columns when 2+ series are
+// compared: the one you pick, else the one added last with "Add baseline",
+// else an Official result, else the most baseline-like name (baseline,
+// standard, none, default), else the first series. With only 1 series, no
+// baseline is set until one is added.
 export function CompareView({ items, initialView, resolve, baselineOptions, copy, canMakeResult, nav, onShare, onLiveChange, onAddToDashboard, onOpenInBrowser }) {
     const [extra, setExtra] = useState([]);
     const [removed, setRemoved] = useState(() => new Set());
@@ -139,6 +197,11 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const latLabel = latencyLabel(latency, stat);
     const tp = throughputMetric(throughput);
     const present = new Set(all.map(itemKey));
+    const presentRunSigs = new Set(
+        resolved
+            .map((x) => runSigOf((x.s.runs || []).map((r) => r.key).concat(x.s.points.map((p) => p.runKey))))
+            .filter(Boolean)
+    );
     // Saving a comparison as a result is curation: only when the series form
     // one curve (one setup, no load level twice) of runs you may curate.
     const canSave = canMakeResult(resolved.filter((x) => !x.item.baseline).flatMap((x) => x.s.runs || []));
@@ -153,7 +216,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
         name: label(s),
         color: seriesColor(i),
         shape: getSeriesShape(i),
-        lineStyle: item.baseline ? 'dashed' : 'solid',
+        lineStyle: item.baseline ? 'dashed' : undefined,
         points: seriesPoints(s.points, { latency, stat, throughput }),
     }));
     const unplotted = series.filter((s) => s.points.length === 0).map((s) => s.name);
@@ -161,9 +224,16 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const addedBase = [...resolved].reverse().find((x) => x.item.baseline);
     const officialBase = resolved.find((x) => x.s.curve?.status === copy.publishedStatus);
     const namedBase = resolved.reduce((best, x) => (baselineScore(x.s.name) > baselineScore(best?.s.name) ? x : best), null);
-    const base = resolved.find((x) => itemKey(x.item) === pickedBase) || addedBase || officialBase || (baselineScore(namedBase?.s.name) > 0 ? namedBase : null) || resolved[0];
+    const base =
+        resolved.length < 2
+            ? null
+            : resolved.find((x) => itemKey(x.item) === pickedBase) ||
+              addedBase ||
+              officialBase ||
+              (baselineScore(namedBase?.s.name) > 0 ? namedBase : null) ||
+              resolved[0];
     const baseKey = base ? itemKey(base.item) : null;
-    const baseIdx = resolved.indexOf(base);
+    const baseIdx = base ? resolved.indexOf(base) : 0;
 
     // What's on screen now, for the address bar: series as added or removed,
     // the metric and statistic, and the baseline.
@@ -171,59 +241,152 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
         onLiveChange?.({ items: all, view: { latency, stat, throughput, base: baseKey } });
     }, [onLiveChange, all, latency, stat, throughput, baseKey]);
 
-    const rows = resolved.map((x, i) => ({ ...x, i, key: itemKey(x.item), stats: seriesStats(x.s.points, view) }));
+    const configs = resolved.map((x) => x.s.config || runsConfig(x.s.runs || []));
+    const rows = resolved.map((x, i) => ({
+        ...x,
+        i,
+        key: itemKey(x.item),
+        stats: seriesStats(x.s.points, view),
+        prov: seriesProvenance(x.s, configs[i]),
+    }));
+    const hasP99 = rows.some((r) => r.s.points.some((p) => isNum(p.ttftP99)));
     const baseStats = rows.find((r) => r.key === baseKey)?.stats;
     const deltas = (st) => ({
         peak: pctDelta(st.peak, baseStats?.peak),
         latAtPeak: pctDelta(st.latAtPeak, baseStats?.latAtPeak),
         best: pctDelta(st.best, baseStats?.best),
         usable: pctDelta(st.usable, baseStats?.usable),
+        usableP99: pctDelta(st.usableP99, baseStats?.usableP99),
     });
 
     // What the comparison tests: one thing differing is the variable under
     // test; several differing at once means no gap can be pinned on one.
-    const configs = resolved.map((x) => x.s.config || runsConfig(x.s.runs || []));
+    // When every recorded field matches ('repeat'), check whether throughput
+    // dropped ≤ -5% or latency spiked ≥ +20%: if so, call it a likely
+    // regression or unrecorded change instead of "run-to-run variation".
     const parity = resolved.length > 1 ? seriesParity(configs) : null;
     const framing = parityFraming(parity);
     const perChipHint = framing?.perChip && !tp.perChip ? ' Chip counts differ, so turn on Per chip to compare per accelerator.' : '';
+    const nonBaseDeltas = rows.filter((r) => baseKey && r.key !== baseKey).map((r) => deltas(r.stats));
+    const worstTputDrop = nonBaseDeltas.reduce((min, d) => {
+        const drop = Math.min(isNum(d.usable) ? d.usable : 0, isNum(d.peak) ? d.peak : 0);
+        return drop < min ? drop : min;
+    }, 0);
+    const worstLatSpike = nonBaseDeltas.reduce((max, d) => {
+        const spike = Math.max(isNum(d.latAtPeak) ? d.latAtPeak : 0, isNum(d.best) ? d.best : 0);
+        return spike > max ? spike : max;
+    }, 0);
+    const repeatRegressed = framing?.kind === 'repeat' && (worstTputDrop <= -5 || worstLatSpike >= 20);
+    const repeatReason =
+        worstTputDrop <= -5
+            ? `throughput dropped ${fmtPct(worstTputDrop)} against the baseline`
+            : `latency increased +${worstLatSpike.toFixed(1)}% against the baseline`;
     const framingText = !framing
         ? null
         : framing.kind === 'repeat'
-          ? `Same setup in every series (${listLabels(parity.matched)}), so the differences are run-to-run variation.`
+          ? repeatRegressed
+              ? `Same recorded setup in every series (${listLabels(parity.matched)}), but ${repeatReason} — a likely regression or an unrecorded change.`
+              : `Same setup in every series (${listLabels(parity.matched)}), so small differences are run-to-run variation.`
           : framing.kind === 'test'
             ? `Testing ${listTested(parity.mismatches, Math.max(0, baseIdx))}.${parity.matched.length ? ` Same ${listLabels(parity.matched)}.` : ''}${perChipHint}`
             : `Not like-for-like: these series differ in ${listMismatches(parity.mismatches)}. A gap between them could come from any of these, not only the one you’re testing.${perChipHint}`;
+    const unrecordedNote = parity?.unrecorded?.length ? `Not recorded for every series: ${listLabels(parity.unrecorded)}.` : '';
+    const overloadedCount = rows.filter((r) => r.stats.overloadedPeak || r.stats.allOverloaded).length;
+    const overloadedNote =
+        overloadedCount > 0
+            ? 'Overloaded stages (where latency spiked ≥5× for <25% more throughput) are marked not comparable and excluded from peak and best-latency Δ.'
+            : '';
 
-    // Baseline suggestions closest to what's compared come first.
+    // Baseline suggestions closest to what's compared come first. Never offer
+    // any currently compared series (by key or by underlying run set) as its
+    // own baseline.
     const target = configs.find((c, i) => !resolved[i].item.baseline) || configs[0];
     const pickable = rankBaselines(
-        baselineOptions.filter((o) => !present.has(itemKey(o.item))),
+        baselineOptions.filter((o) => {
+            if (present.has(itemKey(o.item))) return false;
+            const sig = runSigOf(o.runKeys);
+            if (sig && presentRunSigs.has(sig)) return false;
+            return true;
+        }),
         target
     );
 
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const peakCellMd = (st) => {
+        if (st.allOverloaded) return 'not comparable (overloaded)';
+        if (st.overloadedPeak) {
+            const raw = fmtTput(st.overloadedPeak[throughput]);
+            const rawConc = st.overloadedPeak.conc != null ? ` at c=${st.overloadedPeak.conc}` : '';
+            return `${fmtTput(st.peak)} (healthy; overloaded ${raw}${rawConc} not comparable)`;
+        }
+        return fmtTput(st.peak);
+    };
+
+    const summaryHeaders = [
+        'Series',
+        'Points',
+        `${tp.label} at ${LIMIT_P50_LABEL} (tok/s)`,
+        'Δ',
+        ...(hasP99 ? [`${tp.label} at ${LIMIT_P99_LABEL} (tok/s)`, 'Δ p99'] : []),
+        `Peak healthy ${tp.label.toLowerCase()} (tok/s)`,
+        'Δ',
+        `${latLabel} at peak (ms)`,
+        'Δ',
+        `Best ${latLabel} (ms)`,
+        'Δ',
+    ];
+    const summaryAlign = ['l', 'r', 'r', 'r', ...(hasP99 ? ['r', 'r'] : []), 'r', 'r', 'r', 'r', 'r', 'r'];
+
     const markdown = [
         `**Throughput vs latency** · ${latLabel} · ${tp.label.toLowerCase()} throughput`,
-        framingText ? `> ${framingText}` : null,
+        shareUrl ? `Share link: ${shareUrl}` : null,
+        framingText || unrecordedNote ? `> ${[framingText, unrecordedNote].filter(Boolean).join(' ')}` : null,
+        overloadedNote ? `> ${overloadedNote}` : null,
         mdTable(
-            ['Series', 'Points', `${tp.label} at ${LIMIT_LABEL} (tok/s)`, 'Δ', `Peak ${tp.label.toLowerCase()} (tok/s)`, 'Δ', `${latLabel} at peak (ms)`, 'Δ', `Best ${latLabel} (ms)`, 'Δ'],
+            summaryHeaders,
             rows.map((r) => {
-                const d = r.key === baseKey ? null : deltas(r.stats);
+                const d = !baseKey || r.key === baseKey ? null : deltas(r.stats);
                 return [
-                    `${r.s.name}${r.key === baseKey ? ' · baseline' : ''}`,
+                    `${label(r.s)}${r.key === baseKey ? ' · baseline' : ''}`,
                     r.s.points.length,
-                    usableCell(r.stats),
-                    d ? fmtPct(d.usable) : '',
-                    fmtTput(r.stats.peak),
-                    d ? fmtPct(d.peak) : '',
-                    fmtInt(r.stats.latAtPeak),
-                    d ? fmtPct(d.latAtPeak) : '',
-                    fmtInt(r.stats.best),
-                    d ? fmtPct(d.best) : '',
+                    usableCell(r.stats.usable, r.stats.usableWhy),
+                    d ? fmtDeltaMd(d.usable, true) : '—',
+                    ...(hasP99
+                        ? [
+                              usableCell(r.stats.usableP99, r.stats.usableP99Why),
+                              d ? fmtDeltaMd(d.usableP99, true) : '—',
+                          ]
+                        : []),
+                    peakCellMd(r.stats),
+                    d && !r.stats.allOverloaded ? fmtDeltaMd(d.peak, true) : '—',
+                    r.stats.allOverloaded ? 'not comparable' : fmtInt(r.stats.latAtPeak),
+                    d && !r.stats.allOverloaded ? fmtDeltaMd(d.latAtPeak, false) : '—',
+                    r.stats.allOverloaded ? 'not comparable' : fmtInt(r.stats.best),
+                    d && !r.stats.allOverloaded ? fmtDeltaMd(d.best, false) : '—',
                 ];
             }),
-            ['l', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r']
+            summaryAlign
         ),
-        base ? `Δ is against ${base.s.name}. Higher throughput and lower latency are better. “At ${LIMIT_LABEL}” is the most throughput with a first token within ${LIMIT_SECONDS}.` : null,
+        `**Provenance**`,
+        mdTable(
+            ['Series', 'Role', 'Model ID', 'Hardware', 'Deployment', 'Workload (ISL/OSL)', 'Harness', 'Serving engine', 'Measured', 'Run IDs'],
+            rows.map((r) => [
+                label(r.s),
+                !baseKey ? 'compared (no baseline)' : r.key === baseKey ? 'baseline' : 'compared',
+                r.prov.modelId,
+                r.prov.hw,
+                r.prov.setup,
+                r.prov.workload,
+                r.prov.harness,
+                r.prov.engine,
+                r.prov.measured,
+                r.prov.runIds,
+            ]),
+            ['l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l']
+        ),
+        base
+            ? `Δ is against ${label(base.s)}. Higher throughput and lower latency are better (±1% is treated as neutral run-to-run noise). “At ${LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 ≤ ${LIMIT_SECONDS}.`
+            : `No baseline selected — add a baseline in Compare to include Δ columns.`,
     ]
         .filter(Boolean)
         .join('\n\n');
@@ -302,11 +465,12 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                 </div>
             )}
             {framingText && (
-                <Notice tone={framing.kind === 'mixed' ? 'warning' : 'info'}>
+                <Notice tone={framing.kind === 'mixed' || repeatRegressed ? 'warning' : 'info'}>
                     {framingText}
-                    {framing.kind !== 'mixed' && parity.unrecorded.length > 0 && ` Not recorded for every series: ${listLabels(parity.unrecorded)}.`}
+                    {framing.kind !== 'mixed' && unrecordedNote ? ` ${unrecordedNote}` : ''}
                 </Notice>
             )}
+            {overloadedNote && <Notice tone="warning">{overloadedNote}</Notice>}
             {resolved.length === 1 && compared.length === 1 && (
                 <Notice>Add a baseline to see what changed. “Add baseline” lists the closest matches first: same model, hardware and workload.</Notice>
             )}
@@ -345,12 +509,37 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                         </h3>
                         <p className="mt-0.5 text-micro text-zinc-500">
                             {/* The Baseline menu above and the row's tag already name the baseline. */}
-                            Higher throughput and lower latency are better. “At {LIMIT_LABEL}” is the most throughput with a first token within {LIMIT_SECONDS}, which is what users get.
+                            Higher throughput and lower latency are better. “At {LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 within {LIMIT_SECONDS}.
                         </p>
                     </div>
                     <ExportActions
                         filename="prism-comparison.csv"
-                        csv={() => pointsCsv(resolved.map(({ item, s }) => ({ name: s.name, role: itemKey(item) === baseKey ? 'baseline' : 'compared', points: s.points })))}
+                        warnMessage={
+                            resolved.length < 2
+                                ? 'No baseline is selected yet — this export only has 1 series and no Δ comparison. Add a baseline first, or export anyway?'
+                                : null
+                        }
+                        csv={() =>
+                            pointsCsv(
+                                rows.map((r) => ({
+                                    name: label(r.s),
+                                    role: !baseKey ? 'compared (no baseline)' : r.key === baseKey ? 'baseline' : 'compared',
+                                    points: r.s.points,
+                                    ...r.prov,
+                                    overloadedKeys: r.stats.satKeys,
+                                    caveats: [
+                                        framingText,
+                                        unrecordedNote,
+                                        r.stats.overloadedPeak
+                                            ? `Overloaded peak ${fmtTput(r.stats.overloadedPeak[throughput])}${r.stats.overloadedPeak.conc != null ? ` at c=${r.stats.overloadedPeak.conc}` : ''} not comparable`
+                                            : null,
+                                    ]
+                                        .filter(Boolean)
+                                        .join(' '),
+                                    shareUrl,
+                                }))
+                            )
+                        }
                         markdown={markdown}
                     />
                 </div>
@@ -361,8 +550,13 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                 <th className="px-4 py-3 font-semibold">Series</th>
                                 <th className="px-4 py-3 font-semibold">Points</th>
                                 <th className="px-4 py-3 text-right font-semibold">
-                                    {tp.label} at {LIMIT_LABEL} (tok/s)
+                                    {tp.label} at {LIMIT_P50_LABEL} (tok/s)
                                 </th>
+                                {hasP99 && (
+                                    <th className="px-4 py-3 text-right font-semibold">
+                                        {tp.label} at {LIMIT_P99_LABEL} (tok/s)
+                                    </th>
+                                )}
                                 <th className="px-4 py-3 text-right font-semibold">Peak {tp.label.toLowerCase()} (tok/s)</th>
                                 <th className="px-4 py-3 text-right font-semibold">{latLabel} at peak (ms)</th>
                                 <th className="px-4 py-3 text-right font-semibold">Best {latLabel} (ms)</th>
@@ -373,8 +567,8 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
                             {rows.map((r) => {
-                                const isBase = r.key === baseKey;
-                                const d = isBase ? null : deltas(r.stats);
+                                const isBase = Boolean(baseKey && r.key === baseKey);
+                                const d = !baseKey || isBase ? null : deltas(r.stats);
                                 return (
                                     <tr key={r.key} className={cn(isBase && 'bg-accent-50/40')}>
                                         <td className="px-4 py-3">
@@ -384,42 +578,82 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                                 {isBase && <span className="text-tiny font-semibold text-accent-700">baseline</span>}
                                                 {r.s.curve && <ResultStatusChip status={r.s.curve.status} copy={copy} size="xs" />}
                                             </div>
-                                            <div className="mt-0.5 pl-4 text-tiny text-zinc-500">{r.s.kindLabel}</div>
+                                            <div className="mt-0.5 pl-4 text-tiny text-zinc-500">
+                                                {r.s.kindLabel}
+                                                {r.prov.setup && r.prov.setup !== 'not recorded' ? ` · ${r.prov.setup}` : ''}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 font-mono tabular-nums text-zinc-700">{r.s.points.length}</td>
                                         <td
                                             className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900"
-                                            title={r.stats.usableWhy === 'no-ttft' ? 'TTFT wasn’t recorded' : undefined}
+                                            title={r.stats.usableWhy === 'no-ttft' ? 'TTFT p50 wasn’t recorded' : undefined}
                                         >
-                                            <div>{usableCell(r.stats)}</div>
+                                            <div>{usableCell(r.stats.usable, r.stats.usableWhy)}</div>
                                             {d && (
                                                 <div className="text-tiny">
                                                     <Delta value={d.usable} higherIsBetter />
                                                 </div>
                                             )}
                                         </td>
+                                        {hasP99 && (
+                                            <td
+                                                className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900"
+                                                title={r.stats.usableP99Why === 'no-ttft' ? 'TTFT p99 wasn’t recorded' : undefined}
+                                            >
+                                                <div>{usableCell(r.stats.usableP99, r.stats.usableP99Why)}</div>
+                                                {d && (
+                                                    <div className="text-tiny">
+                                                        <Delta value={d.usableP99} higherIsBetter />
+                                                    </div>
+                                                )}
+                                            </td>
+                                        )}
                                         <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900">
-                                            <div>{fmtTput(r.stats.peak)}</div>
-                                            {d && (
-                                                <div className="text-tiny">
-                                                    <Delta value={d.peak} higherIsBetter />
-                                                </div>
+                                            {r.stats.allOverloaded ? (
+                                                <span className="font-sans text-tiny font-medium text-amber-800">not comparable (overloaded)</span>
+                                            ) : (
+                                                <>
+                                                    <div>{fmtTput(r.stats.peak)}</div>
+                                                    {d && (
+                                                        <div className="text-tiny">
+                                                            <Delta value={d.peak} higherIsBetter />
+                                                        </div>
+                                                    )}
+                                                    {r.stats.overloadedPeak && (
+                                                        <div className="mt-0.5 font-sans text-micro text-amber-800">
+                                                            overloaded peak ({fmtTput(r.stats.overloadedPeak[throughput])}
+                                                            {r.stats.overloadedPeak.conc != null ? ` at c=${r.stats.overloadedPeak.conc}` : ''}) not comparable
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">
-                                            <div>{fmtInt(r.stats.latAtPeak)}</div>
-                                            {d && (
-                                                <div className="text-tiny">
-                                                    <Delta value={d.latAtPeak} />
-                                                </div>
+                                            {r.stats.allOverloaded ? (
+                                                <span className="font-sans text-tiny text-amber-800">not comparable</span>
+                                            ) : (
+                                                <>
+                                                    <div>{fmtInt(r.stats.latAtPeak)}</div>
+                                                    {d && (
+                                                        <div className="text-tiny">
+                                                            <Delta value={d.latAtPeak} />
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">
-                                            <div>{fmtInt(r.stats.best)}</div>
-                                            {d && (
-                                                <div className="text-tiny">
-                                                    <Delta value={d.best} />
-                                                </div>
+                                            {r.stats.allOverloaded ? (
+                                                <span className="font-sans text-tiny text-amber-800">not comparable</span>
+                                            ) : (
+                                                <>
+                                                    <div>{fmtInt(r.stats.best)}</div>
+                                                    {d && (
+                                                        <div className="text-tiny">
+                                                            <Delta value={d.best} />
+                                                        </div>
+                                                    )}
+                                                </>
                                             )}
                                         </td>
                                         {/* The Baseline menu above picks the baseline; rows only remove. */}

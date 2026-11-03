@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React from 'react';
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, ZAxis } from 'recharts';
+import React, { useState } from 'react';
+import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, ZAxis } from 'recharts';
 import {
     ChartLegend,
     ChartTooltip,
@@ -26,11 +26,12 @@ import {
     cursorProps,
     getAxisConfig,
     getChartTheme,
+    getSeriesShape,
     gridProps,
     seriesColor,
 } from '../ui';
 import { Notice } from './parts';
-import { LATENCY_METRICS, LATENCY_STATS, THROUGHPUT_METRICS, fmtInt, latencyAxis, throughputMetric } from './catalog';
+import { LATENCY_METRICS, LATENCY_STATS, OPERATING_TTFT_MS, THROUGHPUT_METRICS, fmtInt, fmtMs, latencyAxis, limitLabel, secondsLabel, throughputMetric } from './catalog';
 
 function PointTooltip({ active, payload, xLabel, yLabel }) {
     if (!active || !payload?.length) return null;
@@ -39,7 +40,8 @@ function PointTooltip({ active, payload, xLabel, yLabel }) {
     return (
         <ChartTooltip title={p.seriesName} subtitle={subtitle}>
             <ChartTooltipRow color={p.color} label={xLabel} value={fmtInt(p.x)} />
-            <ChartTooltipRow label={yLabel} value={fmtInt(p.y)} />
+            <ChartTooltipRow label={yLabel} value={fmtInt(p.showY ?? p.y)} />
+            {p.clipped && <div className="pt-1 text-tiny text-amber-700">Above focus ceiling ({fmtMs(p.showY)})</div>}
             {p.statUnknown && <div className="pt-1 text-tiny text-zinc-600">p50 or mean: not recorded</div>}
             {p.excluded && <div className="pt-1 text-tiny text-zinc-600">Excluded{p.reason ? `: ${p.reason}` : ''}</div>}
         </ChartTooltip>
@@ -80,7 +82,7 @@ function PointsTable({ caption, series, xLabel, yLabel }) {
                             <td>{name}</td>
                             <td>{p.conc != null ? `c=${p.conc}` : p.idLabel ? `Run ${p.idLabel}` : '—'}</td>
                             <td>{fmtInt(p.x)}</td>
-                            <td>{fmtInt(p.y)}</td>
+                            <td>{fmtInt(p.showY ?? p.y)}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -89,27 +91,33 @@ function PointsTable({ caption, series, xLabel, yLabel }) {
     );
 }
 
+const CYCLE_LINE_STYLES = ['solid', 'dashed', 'dotted'];
+
 // Throughput (x) vs latency (y), one line per series, drawn as connected
 // points in concurrency order. Baselines are dashed with a different marker
-// shape, and excluded points stay visible as hollow, muted marks. The y axis
-// names the statistic (`stat`: 'mean' | 'p50' | 'p99') it plots.
+// shape, and past 7 series each cycle gets a distinct marker shape and dash
+// pattern so series 8+ never collide with series 1..7. Excluded points stay
+// visible as hollow, muted marks. The y axis names the statistic
+// (`stat`: 'mean' | 'p50' | 'p99') it plots.
 //
 // series: [{ id, name, color?, shape?, lineStyle?: 'solid'|'dashed'|'dotted',
 //            points: [{ x, y, conc, idLabel, statUnknown? }], excluded?: [{ x, y, conc, reason }] }]
-export function CurveChart({ series, latency = 'ttft', stat = null, throughput = 'output', height = 340, showLegend = true, emptyMessage }) {
+export function CurveChart({ series, latency = 'ttft', stat = null, throughput = 'output', sloMs = OPERATING_TTFT_MS, height = 340, showLegend = true, emptyMessage }) {
     const theme = getChartTheme();
+    const [yMode, setYMode] = useState('focus');
     const resolved = series.map((s, i) => ({
         ...s,
         color: s.color || seriesColor(i),
-        shape: s.shape || 'circle',
-        lineStyle: s.lineStyle || 'solid',
+        shape: s.shape || getSeriesShape(i),
+        lineStyle: s.lineStyle || CYCLE_LINE_STYLES[Math.floor(i / 7) % CYCLE_LINE_STYLES.length],
     }));
     const all = resolved.flatMap((s) => [...s.points, ...(s.excluded || [])]);
     // Points saved before Prism kept each statistic show their typical value.
     // When that's every point, the axis can't name a statistic at all.
     const unknown = all.filter((p) => p.statUnknown).length;
+    const effectiveStat = unknown && unknown === all.length ? null : stat || 'p50';
     const xLabel = throughputMetric(throughput).axis;
-    const yLabel = latencyAxis(latency, unknown && unknown === all.length ? null : stat);
+    const yLabel = latencyAxis(latency, effectiveStat);
 
     if (!all.length) {
         return (
@@ -119,8 +127,31 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
         );
     }
 
+    const ys = all.map((p) => p.y).filter(Number.isFinite).sort((a, b) => a - b);
+    const maxY = ys[ys.length - 1] || 0;
+    const medianY = ys[Math.floor(ys.length / 2)] || 0;
+    // When extreme tail / overloaded points stretch the y-axis far past the
+    // usable region (e.g. a 52 s TTFT point flattening the 0–2 s curve along
+    // the x-axis), offer a Focus ceiling (≤ 5 s for TTFT, or 3× median) by
+    // default with a 1-click toggle to show the full unclipped tail.
+    const defaultCap = latency === 'ttft' ? Math.max((sloMs || OPERATING_TTFT_MS) * 2.5, 5000) : Math.max(medianY * 3, 500);
+    const underCap = ys.filter((v) => v <= defaultCap);
+    const canClip = maxY > defaultCap * 2 && underCap.length >= 2 && underCap.length < ys.length;
+    const clipCeiling = canClip && yMode === 'focus' ? defaultCap : null;
+    const clippedCount = canClip ? ys.length - underCap.length : 0;
+
+    const plotPoint = (p) =>
+        clipCeiling != null && p.y > clipCeiling
+            ? { ...p, showY: p.y, y: clipCeiling, clipped: true }
+            : { ...p, showY: p.y, clipped: false };
+
     const xCfg = getAxisConfig(all.map((p) => p.x), false, { includeZero: true });
-    const yCfg = getAxisConfig(all.map((p) => p.y), false, { includeZero: true });
+    const showSlo = latency === 'ttft' && Number.isFinite(sloMs) && sloMs > 0 && maxY >= sloMs * 0.4 && (clipCeiling == null || sloMs <= clipCeiling);
+    const yValues = clipCeiling != null ? [...underCap, clipCeiling] : showSlo ? [...ys, sloMs] : ys;
+    const yCfg = getAxisConfig(yValues, false, { includeZero: true });
+    const sloText = limitLabel(sloMs, effectiveStat || 'p50');
+    const allUnderSlo = latency === 'ttft' && Number.isFinite(sloMs) && sloMs > 0 && maxY > 0 && maxY < sloMs * 0.4;
+    const capLabel = latency === 'ttft' ? `≤ ${secondsLabel(defaultCap)}` : `≤ ${fmtMs(defaultCap)}`;
     // Recharts' keyboard layer makes the plot a focusable role="application",
     // so name it (aria-label, not an svg <title>, which would also pop a native
     // hover tooltip over the chart's own) and summarize it (svg <desc>).
@@ -128,6 +159,30 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
 
     return (
         <div>
+            {allUnderSlo && (
+                <p className="mb-2 text-micro text-zinc-500">
+                    All plotted points sit below the <span className="font-medium text-zinc-700">{sloText}</span> target (highest: {fmtMs(maxY)}).
+                </p>
+            )}
+            {canClip && (
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/70 px-3 py-1.5 text-xs text-zinc-600">
+                    <span>
+                        {yMode === 'focus'
+                            ? `Y-axis focused on ${capLabel} so ${clippedCount} overloaded tail point${clippedCount === 1 ? '' : 's'} (up to ${fmtMs(maxY)}) don’t flatten the curve.`
+                            : `Showing full y-axis up to ${fmtMs(maxY)} (${clippedCount} tail point${clippedCount === 1 ? '' : 's'} above ${capLabel}).`}
+                    </span>
+                    <ToggleGroup
+                        size="xs"
+                        aria-label="Y-axis range"
+                        value={yMode}
+                        onChange={setYMode}
+                        options={[
+                            { value: 'focus', label: `Focus (${capLabel})` },
+                            { value: 'all', label: `All points (up to ${fmtMs(maxY)})` },
+                        ]}
+                    />
+                </div>
+            )}
             <div style={{ height }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart aria-label={chartTitle} desc={describeSeries(resolved)} margin={{ top: 10, right: 24, bottom: 45, left: 60 }}>
@@ -136,11 +191,27 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
                         <ChartYAxis type="number" dataKey="y" name={yLabel} domain={yCfg.domain} ticks={yCfg.ticks} label={yLabel} />
                         <ZAxis range={[48, 48]} />
                         <Tooltip cursor={cursorProps()} content={<PointTooltip xLabel={xLabel} yLabel={yLabel} />} isAnimationActive={false} />
+                        {showSlo && (
+                            <ReferenceLine
+                                y={sloMs}
+                                stroke={theme.axis}
+                                strokeDasharray="4 4"
+                                strokeWidth={1.25}
+                                ifOverflow="extendDomain"
+                                label={{
+                                    value: sloText,
+                                    position: 'insideTopRight',
+                                    fill: theme.axis,
+                                    fontSize: 11,
+                                    fontWeight: 500,
+                                }}
+                            />
+                        )}
                         {resolved.map((s) => (
                             <Scatter
                                 key={s.id}
                                 name={s.name}
-                                data={s.points.map((p) => ({ ...p, seriesName: s.name, color: s.color }))}
+                                data={s.points.map((p) => ({ ...plotPoint(p), seriesName: s.name, color: s.color }))}
                                 fill={s.color}
                                 line={{
                                     strokeWidth: s.lineStyle === 'solid' ? 2 : 1.5,
@@ -159,7 +230,7 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
                                 <Scatter
                                     key={`${s.id}-excluded`}
                                     name={`${s.name} · excluded`}
-                                    data={s.excluded.map((p) => ({ ...p, seriesName: s.name, color: theme.muted, excluded: true }))}
+                                    data={s.excluded.map((p) => ({ ...plotPoint(p), seriesName: s.name, color: theme.muted, excluded: true }))}
                                     fill={theme.surface}
                                     stroke={theme.muted}
                                     strokeWidth={1.5}

@@ -298,6 +298,42 @@ export function WorkspaceProvider({ instance, actor, children }) {
                 });
             },
 
+            // Undo an accidental approval right from the review queue: returns the
+            // result to `in_review` and restores any prior version it superseded.
+            unapprove(id) {
+                update((w) => {
+                    const target = w.curves.find((c) => c.id === id);
+                    if (!target) return w;
+                    const now = Date.now();
+                    return {
+                        ...w,
+                        curves: w.curves.map((c) => {
+                            if (c.id === id) {
+                                return {
+                                    ...c,
+                                    status: 'in_review',
+                                    visibility: 'reviewers',
+                                    reviewedBy: null,
+                                    markedAt: null,
+                                    updatedAt: now,
+                                    history: log(c, actor, 'Approval undone · returned to review'),
+                                };
+                            }
+                            if (target.supersedes && c.id === target.supersedes && c.supersededBy === id) {
+                                return {
+                                    ...c,
+                                    status: 'published',
+                                    supersededBy: null,
+                                    updatedAt: now,
+                                    history: log(c, actor, 'Restored after approval was undone'),
+                                };
+                            }
+                            return c;
+                        }),
+                    };
+                });
+            },
+
             // A declined result goes back to a draft its owner can fix and submit
             // again; the reviewer's note stays visible until it's resubmitted.
             reopenCurve(id) {

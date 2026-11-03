@@ -524,11 +524,32 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-3">
                         <p className="text-xs text-zinc-600">
-                            <span className="font-mono tabular-nums text-zinc-900">{filteredRuns.length}</span> run{filteredRuns.length === 1 ? '' : 's'}
-                            {resultCount > 0 && (
+                            {kind === 'curves' ? (
                                 <>
+                                    <span className="font-mono tabular-nums text-zinc-900">{rows.length}</span> {copy.publishedLabel.toLowerCase()} result{rows.length === 1 ? '' : 's'}
+                                </>
+                            ) : kind === 'suggested' ? (
+                                <>
+                                    <span className="font-mono tabular-nums text-zinc-900">{rows.length}</span> sweep{rows.length === 1 ? '' : 's'} (
+                                    <span className="font-mono tabular-nums text-zinc-900">{rows.reduce((n, r) => n + r.runs.length, 0)}</span> run
+                                    {rows.reduce((n, r) => n + r.runs.length, 0) === 1 ? '' : 's'})
+                                </>
+                            ) : kind === 'runs' ? (
+                                <>
+                                    <span className="font-mono tabular-nums text-zinc-900">{rows.length}</span> run row{rows.length === 1 ? '' : 's'} (
+                                    <span className="font-mono tabular-nums text-zinc-900">{filteredRuns.length}</span> run{filteredRuns.length === 1 ? '' : 's'})
+                                </>
+                            ) : (
+                                <>
+                                    <span className="font-mono tabular-nums text-zinc-900">{filteredRuns.length}</span> run{filteredRuns.length === 1 ? '' : 's'}
                                     {' · '}
-                                    <span className="font-mono tabular-nums text-zinc-900">{resultCount}</span> {copy.publishedLabel.toLowerCase()} result{resultCount === 1 ? '' : 's'}
+                                    <span className="font-mono tabular-nums text-zinc-900">{allSweeps.length}</span> sweep{allSweeps.length === 1 ? '' : 's'}
+                                    {resultCount > 0 && (
+                                        <>
+                                            {' · '}
+                                            <span className="font-mono tabular-nums text-zinc-900">{resultCount}</span> {copy.publishedLabel.toLowerCase()} result{resultCount === 1 ? '' : 's'}
+                                        </>
+                                    )}
                                 </>
                             )}
                         </p>
@@ -561,16 +582,44 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                 </div>
                 {rows.length === 0 ? (
                     <div className="rounded-3xl border border-zinc-200 bg-white">
-                        <EmptyState
-                            icon={<Search className="h-8 w-8" />}
-                            title="Nothing matches"
-                            message="Try fewer filters or a different search."
-                            action={
-                                <Button size="xs" variant="secondary" onClick={() => setState((s) => ({ ...s, filters: {}, query: '', kind: 'all' }))}>
-                                    Clear search and filters
-                                </Button>
-                            }
-                        />
+                        {kind === 'curves' && curves.length === 0 ? (
+                            <EmptyState
+                                icon={<Search className="h-8 w-8" />}
+                                title={`No ${copy.publishedLabel.toLowerCase()} results yet`}
+                                message={
+                                    instance === 'internal'
+                                        ? 'Open a sweep or run and choose Mark official to publish the first official result.'
+                                        : 'Submit a result for review and approve it in Review queue to publish the first result.'
+                                }
+                                action={
+                                    <Button size="xs" variant="secondary" onClick={() => setState((s) => ({ ...s, kind: 'all' }))}>
+                                        Show all runs and sweeps
+                                    </Button>
+                                }
+                            />
+                        ) : kind === 'suggested' && allSweeps.length === 0 && !narrowed ? (
+                            <EmptyState
+                                icon={<Search className="h-8 w-8" />}
+                                title="No multi-stage sweeps yet"
+                                message="Runs of the same setup across 2 or more concurrency levels are automatically grouped into sweeps here."
+                                action={
+                                    <Button size="xs" variant="secondary" onClick={() => setState((s) => ({ ...s, kind: 'all' }))}>
+                                        Show all runs
+                                    </Button>
+                                }
+                            />
+                        ) : (
+                            <EmptyState
+                                icon={<Search className="h-8 w-8" />}
+                                title="Nothing matches"
+                                message="Try fewer filters or a different search."
+                                action={
+                                    <Button size="xs" variant="secondary" onClick={() => setState((s) => ({ ...s, filters: {}, query: '', kind: 'all' }))}>
+                                        Clear search and filters
+                                    </Button>
+                                }
+                            />
+                        )}
                     </div>
                 ) : (
                     <ul className="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200 bg-white">

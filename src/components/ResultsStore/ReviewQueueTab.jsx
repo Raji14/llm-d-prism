@@ -13,15 +13,31 @@
 // limitations under the License.
 
 import React, { useMemo, useState } from 'react';
-import { Inbox, RefreshCw } from 'lucide-react';
-import { Button, ChartContainer, EmptyState, Label, Panel, Spinner, StatusChip, Textarea, seriesColor } from '../ui';
+import { Inbox, RefreshCw, RotateCcw } from 'lucide-react';
+import { Badge, Button, ChartContainer, EmptyState, Label, Panel, Spinner, StatusChip, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { Attachments, BackButton, CheckList, HistoryList, MetaGrid, ResultStatusChip } from './parts';
+import { Attachments, BackButton, CheckList, HistoryList, MetaGrid, Notice, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
 import { closeness, curveChecks, curveConfig, curveDraftFromRuns, fmtDay, seriesPoints } from './catalog';
 
-const REASONS = ['Failed requests over 5%', 'Hardware or labels look wrong', 'Configs or logs missing', 'Too few points', 'Duplicates a published result'];
+const CHANGE_REASONS = [
+    'Hardware or model label looks wrong',
+    'Exclude overloaded or failed stage',
+    'Configs or logs missing',
+    'Add more concurrency points',
+    'Clarify setup or notes',
+];
+
+const DECLINE_REASONS = [
+    'Duplicates an already-published result',
+    'Failed requests over 5% across the sweep',
+    'Synthetic or incomplete run data',
+    'Wrong benchmark harness or unverified source',
+    'Withdrawn by contributor',
+];
+
+const cleanHandle = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
 
 const summarize = (checks) => {
     const bad = checks.filter((c) => c.level === 'warn' || c.level === 'error').length;
@@ -29,16 +45,50 @@ const summarize = (checks) => {
     return bad ? `${ok} checks passed · ${bad} need${bad === 1 ? 's' : ''} attention` : `${ok} checks passed`;
 };
 
+// Which metadata fields were edited away from what the run files recorded.
+function editedFieldsOf(curve) {
+    if (!curve?.meta || !curve?.original) return [];
+    const out = [];
+    if (curve.meta.model !== curve.original.model) out.push(`Model (${curve.original.model || 'missing'} → ${curve.meta.model})`);
+    if (curve.meta.accelerator !== curve.original.accelerator) out.push(`Accelerator (${curve.original.accelerator || 'missing'} → ${curve.meta.accelerator})`);
+    if (curve.meta.category !== curve.original.category) out.push(`Category (${curve.original.category} → ${curve.meta.category})`);
+    if (curve.original.workload !== undefined && curve.meta.workload !== curve.original.workload) {
+        out.push(`Workload (${curve.original.workload || 'missing'} → ${curve.meta.workload})`);
+    }
+    return out;
+}
+
+// Published results that already include any of the same underlying runs.
+function duplicatePublishedOf(curve, baselines) {
+    const keys = new Set(curve?.builtFrom?.runKeys || []);
+    if (!keys.size || !baselines?.length) return [];
+    return baselines.filter(
+        (b) => b.id !== curve.id && b.id !== curve.supersedes && (b.builtFrom?.runKeys || []).some((k) => keys.has(k))
+    );
+}
+
 // A server submission becomes a curve-shaped object so the reviewer sees the
 // same evidence either way. Runs that aren't loaded show metadata only.
-function toReviewItem(entry, runsById) {
-    if (entry.kind === 'curve') return { ...entry, checks: curveChecks(entry.curve) };
+function toReviewItem(entry, runsById, baselines) {
+    if (entry.kind === 'curve') {
+        const checks = curveChecks(entry.curve);
+        const editedFields = editedFieldsOf(entry.curve);
+        const duplicates = duplicatePublishedOf(entry.curve, baselines);
+        return { ...entry, checks, editedFields, duplicates };
+    }
     const run = runsById.get(entry.runId);
     const draft = run ? curveDraftFromRuns([run]) : null;
     const curve = draft
         ? { ...draft, id: entry.runId, name: run.title, baselines: [], status: 'in_review', visibility: 'reviewers', history: [], version: 1 }
         : null;
-    return { ...entry, run: run || null, curve, checks: curve ? curveChecks(curve) : [] };
+    return {
+        ...entry,
+        run: run || null,
+        curve,
+        checks: curve ? curveChecks(curve) : [],
+        editedFields: curve ? editedFieldsOf(curve) : [],
+        duplicates: curve ? duplicatePublishedOf(curve, baselines) : [],
+    };
 }
 
 // The files uploaded with the runs under review, labelled by run when
@@ -47,7 +97,7 @@ function reviewFiles(runs) {
     return runs.flatMap((r) => (r.attachments || []).map((f) => (runs.length > 1 ? { ...f, group: `${f.group} · run ${r.idLabel || r.runId}` } : f)));
 }
 
-function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
+function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }) {
     const [mode, setMode] = useState(null);
     const [reasons, setReasons] = useState([]);
     const [note, setNote] = useState('');
@@ -69,6 +119,20 @@ function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
     // Open on a latency (and statistic) the submission recorded, not always TTFT.
     const view = useChartView(c ? [c.points] : [], { extraLists: overlaid.map((b) => b.points.filter((p) => p.included)) });
     const { latency, stat, throughput } = view;
+
+    const actorHandle = cleanHandle(actor);
+    const submitterHandles = [cleanHandle(item.by), cleanHandle(c?.owner), cleanHandle(c?.attribution)].filter(Boolean);
+    const isSameNamedUser = Boolean(actorHandle && actorHandle !== 'you' && submitterHandles.includes(actorHandle));
+    const isPreviewSelf = Boolean(actorHandle === 'you' && submitterHandles.includes('you'));
+    const blockingErrors = (item.checks || []).filter((chk) => chk.level === 'error');
+    const warnings = (item.checks || []).filter((chk) => chk.level === 'warn');
+
+    const switchMode = (nextMode) => {
+        setMode((prev) => (prev === nextMode ? null : nextMode));
+        setReasons([]);
+        setNote('');
+    };
+
     // One decision at a time: the buttons stay disabled until the server answers.
     const decide = async (decision, text) => {
         setBusy(true);
@@ -78,6 +142,8 @@ function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
             setBusy(false);
         }
     };
+
+    const activeReasons = mode === 'decline' ? DECLINE_REASONS : CHANGE_REASONS;
 
     return (
         <div className="space-y-6">
@@ -104,24 +170,130 @@ function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
                             {c.publishVisibility === 'link' ? 'Link only once approved (not listed in the store)' : 'Listed in the store once approved'}
                         </p>
                     )}
+                    {(item.editedFields?.length > 0 || item.duplicates?.length > 0) && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            {item.editedFields?.length > 0 && (
+                                <Badge tone="warning" size="xs">
+                                    Labels edited: {item.editedFields.join(' · ')}
+                                </Badge>
+                            )}
+                            {item.duplicates?.length > 0 && (
+                                <Badge tone="warning" size="xs">
+                                    Shares runs with published: {item.duplicates.map((d) => d.name).join(', ')}
+                                </Badge>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="dangerOutline" disabled={busy} onClick={() => setMode('decline')}>
+                    <Button size="sm" variant="dangerOutline" disabled={busy} onClick={() => switchMode('decline')}>
                         Decline
                     </Button>
-                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => setMode('changes')}>
+                    <Button size="sm" variant="secondary" disabled={busy} onClick={() => switchMode('changes')}>
                         Request changes
                     </Button>
-                    <Button size="sm" disabled={busy} onClick={() => decide('approve')}>
-                        Approve
+                    <Button
+                        size="sm"
+                        disabled={busy || isSameNamedUser || blockingErrors.length > 0}
+                        title={
+                            isSameNamedUser
+                                ? 'You cannot approve your own submission'
+                                : blockingErrors.length > 0
+                                  ? 'Fix blocking validation errors before approving'
+                                  : undefined
+                        }
+                        onClick={() => switchMode('approve')}
+                    >
+                        Approve…
                     </Button>
                 </div>
             </header>
 
-            {mode && (
-                <Panel variant="editorial" title={mode === 'decline' ? 'Decline this submission' : 'Request changes'} subtitle="The contributor sees this note in My work.">
+            {isSameNamedUser && (
+                <Notice tone="warning">
+                    You submitted this result (<span className="font-medium">{item.by}</span>), so another reviewer must approve it. You can still request changes or decline it.
+                </Notice>
+            )}
+            {blockingErrors.length > 0 && (
+                <Notice tone="warning">
+                    This submission has {blockingErrors.length} blocking validation error{blockingErrors.length === 1 ? '' : 's'} ({blockingErrors.map((e) => e.text).join(' ')}) and cannot be approved until resolved. Request changes so the contributor can fix it.
+                </Notice>
+            )}
+
+            {mode === 'approve' && (
+                <Panel
+                    variant="editorial"
+                    title="Confirm approval & publication"
+                    subtitle={
+                        c?.publishVisibility === 'link'
+                            ? `Marks this result Published (link-only) attributed to ${item.by}. You can undo right after approving.`
+                            : `Publishes this result to the store attributed to ${item.by}. You can undo right after approving.`
+                    }
+                >
+                    <div className="space-y-3 text-xs text-zinc-700">
+                        <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 sm:grid-cols-3">
+                            <div>
+                                <div className="label-caps text-zinc-500">Attribution</div>
+                                <div className="mt-0.5 font-medium text-zinc-900">{item.by || 'Not recorded'}</div>
+                            </div>
+                            <div>
+                                <div className="label-caps text-zinc-500">DCO sign-off</div>
+                                <div className="mt-0.5 font-medium text-zinc-900">
+                                    {c?.dco ? `${c.dco.version} signed by ${c.dco.by}` : 'Not recorded'}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="label-caps text-zinc-500">Visibility once approved</div>
+                                <div className="mt-0.5 font-medium text-zinc-900">
+                                    {c?.publishVisibility === 'link' ? 'Anyone with the link' : 'Listed in the store'}
+                                </div>
+                            </div>
+                        </div>
+                        {isPreviewSelf && (
+                            <Notice tone="warning">
+                                Preview mode note: both contributor and reviewer are <span className="font-mono">@you</span> in this browser preview. In production, a submission requires a second reviewer to approve.
+                            </Notice>
+                        )}
+                        {item.editedFields?.length > 0 && (
+                            <Notice tone="warning">
+                                Contributor edited recorded labels: <span className="font-medium">{item.editedFields.join(', ')}</span>. Verify against the attached config files before publishing.
+                            </Notice>
+                        )}
+                        {item.duplicates?.length > 0 && (
+                            <Notice tone="warning">
+                                Shares underlying runs with already-published result{item.duplicates.length === 1 ? '' : 's'}:{' '}
+                                <span className="font-medium">{item.duplicates.map((d) => d.name).join(', ')}</span>.
+                            </Notice>
+                        )}
+                        {warnings.length > 0 && (
+                            <Notice tone="warning">
+                                {warnings.length} validation warning{warnings.length === 1 ? '' : 's'} still open: {warnings.map((w) => w.text).join(' ')}
+                            </Notice>
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                            <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
+                                Cancel
+                            </Button>
+                            <Button size="sm" disabled={busy || isSameNamedUser || blockingErrors.length > 0} onClick={() => decide('approve')}>
+                                Confirm & publish
+                            </Button>
+                        </div>
+                    </div>
+                </Panel>
+            )}
+
+            {(mode === 'changes' || mode === 'decline') && (
+                <Panel
+                    variant="editorial"
+                    title={mode === 'decline' ? 'Decline this submission' : 'Request changes from contributor'}
+                    subtitle={
+                        mode === 'decline'
+                            ? 'Closes this review and marks the submission “Declined” in the contributor’s My work. Use this when the benchmark itself isn’t suitable to publish.'
+                            : 'Sends the submission back to the contributor in My work as “Needs changes” so they can fix labels, points or attachments and resubmit.'
+                    }
+                >
                     <div className="flex flex-wrap gap-2">
-                        {REASONS.map((r) => (
+                        {activeReasons.map((r) => (
                             <button
                                 key={r}
                                 type="button"
@@ -138,16 +310,28 @@ function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
                     </div>
                     <div className="mt-4">
                         <Label surface="light" htmlFor="rs-review-note">
-                            Note
+                            {mode === 'decline' ? 'Why is this submission being declined?' : 'What should the contributor change?'}
                         </Label>
-                        <Textarea surface="light" id="rs-review-note" rows={3} className="font-sans text-sm" value={note} onChange={(e) => setNote(e.target.value)} placeholder="What should change?" />
+                        <Textarea
+                            surface="light"
+                            id="rs-review-note"
+                            rows={3}
+                            className="font-sans text-sm"
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            placeholder={
+                                mode === 'decline'
+                                    ? 'Explain why this benchmark cannot be published (shown to the contributor in My work)…'
+                                    : 'Describe the label, stage or config fixes needed before resubmitting…'
+                            }
+                        />
                     </div>
                     <div className="mt-4 flex justify-end gap-2">
                         <Button size="sm" variant="ghost" onClick={() => setMode(null)}>
                             Cancel
                         </Button>
                         <Button size="sm" variant={mode === 'decline' ? 'danger' : 'primary'} disabled={!feedback || busy} onClick={() => decide(mode, feedback)}>
-                            {mode === 'decline' ? 'Decline' : 'Send to contributor'}
+                            {mode === 'decline' ? 'Decline submission' : 'Send back for changes'}
                         </Button>
                     </div>
                 </Panel>
@@ -224,13 +408,14 @@ function ReviewDetail({ item, baselines, runsFromKeys, onBack, onDecide }) {
 }
 
 // One queue, oldest first, each with a summary of its automatic checks.
-export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsById, runsFromKeys = () => [], baselines, onRefresh, onDecide }) {
+export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error, runsById, runsFromKeys = () => [], baselines, onRefresh, onDecide, onUndoApprove }) {
     const [activeId, setActiveId] = useState(null);
+    const [lastApproved, setLastApproved] = useState(null);
     const items = useMemo(() => {
         const local = localCurves.map((c) => ({ kind: 'curve', id: c.id, title: c.name, by: c.attribution || c.owner, submittedAt: c.submittedAt, curve: c }));
         const remote = serverItems.map((s) => ({ kind: 'server', id: s.runId, runId: s.runId, title: s.title, by: s.by, submittedAt: s.submittedAt, state: s.state }));
-        return [...local, ...remote].map((e) => toReviewItem(e, runsById)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0));
-    }, [localCurves, serverItems, runsById]);
+        return [...local, ...remote].map((e) => toReviewItem(e, runsById, baselines)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0));
+    }, [localCurves, serverItems, runsById, baselines]);
     const active = items.find((i) => i.id === activeId);
 
     if (active) {
@@ -238,13 +423,18 @@ export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsB
             <ReviewDetail
                 key={active.id}
                 item={active}
+                actor={actor}
                 baselines={baselines}
                 runsFromKeys={runsFromKeys}
                 onBack={() => setActiveId(null)}
                 onDecide={async (item, decision, feedback) => {
                     const ok = await onDecide(item, decision, feedback);
                     // A refused decision keeps the reviewer on the item, note intact.
-                    if (ok !== false) setActiveId(null);
+                    if (ok !== false) {
+                        if (decision === 'approve') setLastApproved({ id: item.id, kind: item.kind, title: item.title });
+                        else setLastApproved(null);
+                        setActiveId(null);
+                    }
                 }}
             />
         );
@@ -253,6 +443,27 @@ export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsB
     return (
         <div className="space-y-4">
             <h2 className="sr-only">Review queue</h2>
+            {lastApproved && onUndoApprove && (
+                <Notice onDismiss={() => setLastApproved(null)}>
+                    <span className="flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                            Approved <span className="font-medium text-zinc-900">“{lastApproved.title}”</span> and published it.
+                        </span>
+                        <Button
+                            size="xs"
+                            variant="secondary"
+                            onClick={() => {
+                                onUndoApprove(lastApproved);
+                                setActiveId(lastApproved.id);
+                                setLastApproved(null);
+                            }}
+                        >
+                            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                            Undo approval
+                        </Button>
+                    </span>
+                </Notice>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-zinc-600">
                     <span className="font-mono tabular-nums text-zinc-900">{items.length}</span> waiting · oldest first
@@ -284,6 +495,16 @@ export function ReviewQueueTab({ localCurves, serverItems, loading, error, runsB
                                         <ResultStatusChip status={item.curve.status} size="xs" />
                                     ) : (
                                         <StatusChip status={item.state === 'submitted_pending_processing' ? 'checks_running' : 'in_review'} size="xs" />
+                                    )}
+                                    {item.editedFields?.length > 0 && (
+                                        <Badge tone="warning" size="xs">
+                                            Labels edited
+                                        </Badge>
+                                    )}
+                                    {item.duplicates?.length > 0 && (
+                                        <Badge tone="warning" size="xs">
+                                            Duplicate runs
+                                        </Badge>
                                     )}
                                 </div>
                                 <p className="mt-0.5 text-micro text-zinc-500">

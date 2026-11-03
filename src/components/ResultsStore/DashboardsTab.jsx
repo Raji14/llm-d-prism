@@ -43,6 +43,7 @@ import {
     cursorProps,
     getAxisConfig,
     getChartTheme,
+    getSeriesShape,
     gridProps,
     seriesColor,
 } from '../ui';
@@ -64,6 +65,7 @@ import {
     costPerMillion,
     curveConfigKey,
     fmtCount,
+    fmtDate,
     fmtDay,
     fmtMoney,
     fmtMs,
@@ -71,8 +73,10 @@ import {
     fmtPct,
     fmtTput,
     latencyLabel,
+    limitLabel as catalogLimitLabel,
     listPrice,
     loadOrder,
+    peakPoint,
     pricingPoint,
     runMatches,
     sameSetup,
@@ -92,8 +96,9 @@ const THRESHOLDS = [-3, -5, -10, -15];
 
 // Where a report prices each result: its highest throughput within a TTFT
 // limit (ms), or its peak however slow. Saved with the report as `priceAt`.
-const PRICE_AT_OPTIONS = [
-    ...[...new Set([1000, 2000, 3000, 5000, OPERATING_TTFT_MS])].sort((a, b) => a - b).map((ms) => ({ value: ms, label: `TTFT ≤ ${ms / 1000} s` })),
+const PRICE_AT_MS = [...new Set([1000, 2000, 3000, 5000, OPERATING_TTFT_MS])].sort((a, b) => a - b);
+const priceAtOptions = (stat = 'p50') => [
+    ...PRICE_AT_MS.map((ms) => ({ value: ms, label: catalogLimitLabel(ms, stat) })),
     { value: 'peak', label: 'Peak' },
 ];
 
@@ -106,13 +111,20 @@ const withoutModel = (label, model) => (label.startsWith(`${model} · `) ? label
 // "c=1, 8, 32, 64, 128", or "c=1–512" when there are too many to list.
 const levelsLabel = (concs) => (concs.length <= 8 ? `c=${concs.join(', ')}` : `c=${concs[0]}–${concs[concs.length - 1]}`);
 
-// Keeps "TTFT ≤ 2 s" or "TTFT 2.64 s" together when a narrow cell wraps.
+// Keeps "TTFT p50 ≤ 2 s" or "TTFT p50 2.64 s" together when a narrow cell wraps.
 const nobreak = (s) => s.replace(/ /g, '\u00a0');
 
-// "TTFT p50 2.64 s": a point's TTFT, naming the statistic it is.
-const ttftLabel = (p) => (Number.isFinite(p.ttft) ? `${latencyLabel('ttft', typicalStat(p, 'ttft'))} ${fmtMs(p.ttft)}` : 'TTFT not recorded');
+// "TTFT p50 1.27 s · p99 12.84 s": a point's TTFT, showing p50 and p99 side by side when both are recorded.
+const ttftLabel = (p) => {
+    if (!p) return 'TTFT not recorded';
+    const parts = [];
+    if (Number.isFinite(p.ttftP50)) parts.push(`TTFT p50 ${fmtMs(p.ttftP50)}`);
+    else if (Number.isFinite(p.ttft)) parts.push(`${latencyLabel('ttft', typicalStat(p, 'ttft'))} ${fmtMs(p.ttft)}`);
+    if (Number.isFinite(p.ttftP99)) parts.push(`${parts.length ? 'p99' : 'TTFT p99'} ${fmtMs(p.ttftP99)}`);
+    return parts.length ? parts.join(' · ') : 'TTFT not recorded';
+};
 
-// "c=128 · TTFT p50 2.64 s": the point a price was worked out at.
+// "c=128 · TTFT p50 1.27 s · p99 12.84 s": the point a price was worked out at.
 const pointLabel = (p) => [p.conc != null ? `c=${p.conc}` : null, nobreak(ttftLabel(p))].filter(Boolean).join('\u00a0· ');
 
 // Every batch of a setup's rows, newest first, so any of them can be pinned
@@ -126,6 +138,33 @@ const batchesOf = (rows) =>
 
 // "Sep 23, 2025, 09:41": two batches can land on one day.
 const batchWhen = (ts) => `${fmtDay(ts)}, ${new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+// Representative output throughput for a batch, used to pick the median of
+// earlier batches and to summarize each batch in the Baseline picker.
+function batchRepOutput(batch) {
+    if (!batch?.points?.length) return 0;
+    const usable = pricingPoint(batch.points, OPERATING_TTFT_MS, 'p50').point;
+    const pk = peakPoint(batch.points, 'output');
+    return usable?.output ?? pk?.output ?? 0;
+}
+
+function batchSummaryLabel(batch) {
+    if (!batch?.points?.length) return batchWhen(batch?.ts);
+    const usable = pricingPoint(batch.points, OPERATING_TTFT_MS, 'p50').point;
+    const pk = peakPoint(batch.points, 'output');
+    const tput = usable ? `${fmtTput(usable.output)} tok/s at TTFT p50 ≤ 2 s` : pk ? `peak ${fmtTput(pk.output)} tok/s` : '';
+    return tput ? `${batchWhen(batch.ts)} (${tput})` : batchWhen(batch.ts);
+}
+
+// Median batch among earlier batches (excluding the newest batch), so a new
+// watch without an Official result compares the newest batch against earlier
+// history instead of against itself.
+function medianEarlierBatchOf(batchList) {
+    if (!batchList || batchList.length < 2) return null;
+    const earlier = batchList.slice(1);
+    const sorted = [...earlier].sort((a, b) => batchRepOutput(a) - batchRepOutput(b) || a.ts - b.ts);
+    return sorted[Math.floor(sorted.length / 2)] || earlier[0];
+}
 
 // ------------------------------------------------------------- dialogs
 
@@ -152,17 +191,52 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
     // Every batch of this setup, newest first, so any of them can be pinned.
     const batchList = useMemo(() => batchesOf(rows), [rows]);
     const newestBatch = batchList.find((b) => b.points.length > 1) || batchList[0] || null;
+    const medianEarlier = useMemo(() => medianEarlierBatchOf(batchList), [batchList]);
     const batchLabel = (b) => batchWhen(b.ts);
-    // Only results of this same setup can be its baseline.
-    const refs = useMemo(() => referenceCurves.filter((c) => sameSetup(curveConfigKey(c, runsByKey), setupKey)), [referenceCurves, runsByKey, setupKey]);
-    const pickedBatch = String(refChoice).startsWith('pinned:') ? batchList.find((b) => `pinned:${b.ts}` === refChoice) || null : null;
-    const pinBatch = pickedBatch || newestBatch;
-    const pinned = pinBatch ? { kind: 'pinned', name: `Pinned batch · ${batchLabel(pinBatch)}`, points: pinBatch.points } : null;
-    const chosen = refs.find((c) => c.id === refChoice) || (String(refChoice).startsWith('pinned') ? null : refs[0]);
+    // Only results of this same setup can be its baseline; Official/Published results come first.
+    const refs = useMemo(
+        () =>
+            referenceCurves
+                .filter((c) => sameSetup(curveConfigKey(c, runsByKey), setupKey))
+                .sort((a, b) => (['official', 'published'].includes(b.status) ? 1 : 0) - (['official', 'published'].includes(a.status) ? 1 : 0)),
+        [referenceCurves, runsByKey, setupKey]
+    );
+    const pickedBatch =
+        refChoice === 'earlier-median'
+            ? medianEarlier
+            : refChoice === 'pinned-newest'
+              ? newestBatch
+              : String(refChoice).startsWith('pinned:')
+                ? batchList.find((b) => `pinned:${b.ts}` === refChoice) || null
+                : null;
+    const defaultPinBatch = medianEarlier || newestBatch;
+    const pinBatch = pickedBatch || defaultPinBatch;
+    const isMedianPin = Boolean(medianEarlier && pinBatch === medianEarlier && (refChoice === 'auto' || refChoice === 'earlier-median'));
+    const pinned = pinBatch
+        ? {
+              kind: 'pinned',
+              name: isMedianPin ? `Median of earlier batches (${batchLabel(pinBatch)})` : `Pinned batch · ${batchLabel(pinBatch)}`,
+              points: pinBatch.points,
+          }
+        : null;
+    const chosen =
+        refs.find((c) => c.id === refChoice) ||
+        (refChoice === 'auto' ? refs[0] || null : null);
     const ref = chosen ? { kind: 'curve', id: chosen.id, name: chosen.name, points: chosen.points.filter((p) => p.included) } : pinned;
+    const isNewestPinned = Boolean(ref?.kind === 'pinned' && newestBatch && pinBatch === newestBatch);
+    const selectRefValue =
+        ref?.kind === 'curve'
+            ? ref.id
+            : isMedianPin
+              ? 'earlier-median'
+              : pinBatch === newestBatch
+                ? 'pinned-newest'
+                : pinBatch
+                  ? `pinned:${pinBatch.ts}`
+                  : 'pinned-newest';
     const concs = [...new Set((ref?.points || []).map((p) => p.conc).filter((c) => c != null))].sort((a, b) => a - b);
-    // Usable throughput needs a baseline point within the TTFT limit.
-    const usableOk = Boolean(ref && pricingPoint(ref.points, OPERATING_TTFT_MS).point);
+    // Usable throughput needs a baseline point within the TTFT p50 limit.
+    const usableOk = Boolean(ref && pricingPoint(ref.points, OPERATING_TTFT_MS, 'p50').point);
     const picked = metricChoice ?? (usableOk ? 'usable' : '');
     const metric = (picked === 'usable' && !usableOk) || (picked !== 'usable' && picked !== '' && !concs.includes(Number(picked))) ? '' : picked;
     const byModel = setups.reduce((m, s) => m.set(s.model, [...(m.get(s.model) || []), s]), new Map());
@@ -208,7 +282,15 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         <Label surface="light" htmlFor="rs-watch-setup">
                             Setup
                         </Label>
-                        <Select surface="light" id="rs-watch-setup" value={setupKey} onChange={(e) => setSetupKey(e.target.value)}>
+                        <Select
+                            surface="light"
+                            id="rs-watch-setup"
+                            value={setupKey}
+                            onChange={(e) => {
+                                setSetupKey(e.target.value);
+                                setRefChoice('auto');
+                            }}
+                        >
                             {[...byModel.entries()].map(([model, list]) => (
                                 <optgroup key={model} label={model}>
                                     {list.map((s) => (
@@ -238,7 +320,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         <Select
                             surface="light"
                             id="rs-watch-ref"
-                            value={ref?.kind === 'curve' ? ref.id : pickedBatch ? `pinned:${pickedBatch.ts}` : 'pinned'}
+                            value={selectRefValue}
                             onChange={(e) => setRefChoice(e.target.value)}
                             disabled={!setup}
                         >
@@ -247,17 +329,29 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                                     {c.name} ({resultStatusLabel(c.status) || (c.status === 'draft' ? 'Draft' : c.status)})
                                 </option>
                             ))}
-                            <option value="pinned" disabled={!newestBatch}>
-                                {newestBatch ? `Pin the newest batch of this setup (${batchLabel(newestBatch)})` : 'No batch to pin yet'}
-                            </option>
+                            {medianEarlier && (
+                                <option value="earlier-median">
+                                    {`Median of earlier batches — ${batchSummaryLabel(medianEarlier)} (recommended)`}
+                                </option>
+                            )}
                             {batchList
                                 .filter((b) => b !== newestBatch)
                                 .map((b) => (
                                     <option key={b.ts} value={`pinned:${b.ts}`}>
-                                        Pin the batch of {batchLabel(b)}
+                                        {`Pin earlier batch · ${batchSummaryLabel(b)}`}
                                     </option>
                                 ))}
+                            <option value="pinned-newest" disabled={!newestBatch}>
+                                {newestBatch ? `Pin newest batch · ${batchSummaryLabel(newestBatch)}` : 'No batch to pin yet'}
+                            </option>
                         </Select>
+                        {isNewestPinned && (
+                            <Notice tone="warning" className="mt-2">
+                                {batchList.length > 1
+                                    ? `This pins the newest batch (${batchLabel(newestBatch)}) as the baseline. Comparing the newest batch with itself shows 0.0% and can hide a drop that already happened — choose an Official result or the median of earlier batches above.`
+                                    : `This setup has only 1 batch (${batchLabel(newestBatch)}) so far. Pinning it sets the baseline for future batches; comparing it with itself shows 0.0% until a second batch arrives.`}
+                            </Notice>
+                        )}
                     </div>
                     <div>
                         <Label surface="light" htmlFor="rs-watch-metric">
@@ -265,7 +359,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         </Label>
                         <Select surface="light" id="rs-watch-metric" value={metric} onChange={(e) => setMetricChoice(e.target.value)}>
                             <option value="usable" disabled={!usableOk}>
-                                {`Output at TTFT ≤ ${secondsLabel(OPERATING_TTFT_MS)}${usableOk ? '' : ' (baseline has no point that fast)'}`}
+                                {`Output at ${catalogLimitLabel(OPERATING_TTFT_MS, 'p50')}${usableOk ? '' : ' (baseline has no point that fast)'}`}
                             </option>
                             <option value="">Peak output throughput</option>
                             {concs.map((c) => (
@@ -276,7 +370,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                         </Select>
                         <p className="mt-2 text-micro text-zinc-500">
                             {metric === 'usable'
-                                ? 'What users get: the most output with a first token within the limit. An overloaded tail can’t hide a drop.'
+                                ? 'The highest output with TTFT p50 within the limit. An overloaded tail can’t hide a drop.'
                                 : metric === ''
                                   ? 'The highest output, however slow. An overloaded point can set it.'
                                   : 'Output at one load level.'}
@@ -299,7 +393,7 @@ export function NewWatchDialog({ isOpen, onClose, runs, runsByKey, initial = {},
                             surface="light"
                             checked={guard}
                             onChange={(e) => setGuard(e.target.checked)}
-                            label="Also flag TTFT spikes (+20% at the watched point) and failed requests (≥ 5%)"
+                            label="Also flag TTFT p50 spikes (+20% at the watched point) and track failed requests (≥ 5%)"
                         />
                     </div>
                     <div className="sm:col-span-2">
@@ -383,22 +477,39 @@ function WatchTooltip({ active, payload, whenOf = fmtDay }) {
     const p = payload[0].payload;
     return (
         <ChartTooltip title={whenOf(p.ts)} subtitle={p.setup || p.title}>
-            <ChartTooltipRow color={p.flagged ? CHART_STATUS.critical : seriesColor(0)} label="vs. baseline" value={fmtPct(p.delta)} />
+            <ChartTooltipRow color={p.regressed ? CHART_STATUS.critical : seriesColor(0)} label="vs. baseline" value={fmtPct(p.delta)} />
             <ChartTooltipRow label={p.conc != null ? `Output at c=${p.conc}` : 'Output throughput'} value={fmtTput(p.value)} unit=" tok/s" />
             {p.ttft != null && (
                 <ChartTooltipRow
-                    label="TTFT"
+                    label="TTFT p50"
                     value={`${fmtMs(p.ttft)}${p.ttftDelta != null ? ` (${fmtPct(p.ttftDelta)})` : ''}`}
                 />
             )}
-            {p.flagged && (
+            {p.regressed && (
                 <div className="pt-1 text-tiny font-semibold text-red-700">
-                    Flagged: {p.flagReasons?.length ? p.flagReasons.join(' · ') : 'past the threshold'}
+                    Regression: {p.regressionReasons?.length ? p.regressionReasons.join(' · ') : 'past the threshold'}
                 </div>
             )}
-            {p.isRef && !p.flagged && <div className="pt-1 text-tiny text-zinc-600">The batch the baseline was made from</div>}
+            {p.errFlagged && (
+                <div className="pt-1 text-tiny font-semibold text-amber-700">
+                    Unhealthy batch: {p.healthReasons?.join(' · ')}
+                </div>
+            )}
+            {p.isRef && !p.regressed && <div className="pt-1 text-tiny text-zinc-600">The batch the baseline was made from</div>}
         </ChartTooltip>
     );
+}
+
+// Live status summary of a watch for its header chip and the left sidebar.
+function watchSummary(watch, runs, runsByKey, getCurve) {
+    const refPoints = watchRefPoints(watch, getCurve);
+    const matching = watchRuns(watch, runs, { getCurve, runsByKey });
+    const matchingRows = buildRows(matching);
+    const series = watchSeries(matchingRows, refPoints, watch);
+    const regressed = series.filter((s) => s.regressed);
+    const unhealthy = series.filter((s) => s.unhealthy);
+    const waiting = !regressed.length && !unhealthy.length && (series.length < 2 || series.every((s) => s.isRef));
+    return { series, regressedCount: regressed.length, unhealthyCount: unhealthy.length, waiting };
 }
 
 function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
@@ -419,18 +530,28 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
         return new Set([...counts].filter(([, n]) => n > 1).map(([day]) => day));
     }, [series]);
     const whenOf = (ts) => (sharedDays.has(fmtDay(ts)) ? batchWhen(ts) : fmtDay(ts));
-    const flagged = series.filter((s) => s.flagged);
+    const regressed = series.filter((s) => s.regressed);
+    const unhealthy = series.filter((s) => s.unhealthy);
     // One batch, or only the batch the baseline was made from, shows no trend
     // and proves nothing, so don't present it as a pass.
-    const waiting = !flagged.length && (series.length < 2 || series.every((s) => s.isRef));
+    const waiting = !regressed.length && !unhealthy.length && (series.length < 2 || series.every((s) => s.isRef));
     const refHit = watchValue(refPoints, watch);
     const ref = refHit?.point;
     const refConcs = [...new Set(refPoints.map((p) => p.conc).filter((c) => c != null))].sort((a, b) => a - b);
-    const usableOk = Boolean(refPoints.length && pricingPoint(refPoints, OPERATING_TTFT_MS).point);
+    const usableOk = Boolean(refPoints.length && pricingPoint(refPoints, OPERATING_TTFT_MS, 'p50').point);
     const currentMetric = watch.limit ? 'usable' : watch.atConc != null ? String(watch.atConc) : '';
     // Every batch of the watched setup, newest first: Edit can pin any of them.
     const batchList = useMemo(() => batchesOf(matchingRows), [matchingRows]);
     const newestBatch = batchList.find((b) => b.points.length > 1) || batchList[0] || null;
+    const medianEarlier = medianEarlierBatchOf(batchList);
+    // Check whether the currently pinned baseline is the newest batch.
+    const newestRunKeys = new Set((newestBatch?.points || []).map((p) => p.runKey).filter(Boolean));
+    const refRunKeys = new Set(refPoints.map((p) => p.runKey).filter(Boolean));
+    const pinnedIsNewest =
+        watch.ref?.kind === 'pinned' &&
+        newestRunKeys.size > 0 &&
+        newestRunKeys.size === refRunKeys.size &&
+        [...newestRunKeys].every((k) => refRunKeys.has(k));
     // Official / Published results of this setup, plus the result the watch
     // already uses (a draft, when it was started from one), so Edit shows it.
     const refs = useMemo(
@@ -441,7 +562,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
         [ws.curves, runsByKey, configKey, watch.ref]
     );
     const theme = getChartTheme();
-    const metricLabel = watch.limit ? `Output at TTFT ≤ ${secondsLabel(watch.limit)}` : watch.atConc != null ? `Output throughput at c=${watch.atConc}` : 'Peak output throughput';
+    const metricLabel = watch.limit ? `Output at ${catalogLimitLabel(watch.limit, 'p50')}` : watch.atConc != null ? `Output throughput at c=${watch.atConc}` : 'Peak output throughput';
     const setupLabel = matching[0] ? configLabelOf(matching[0]) : watch.setupLabel || null;
     const fromFilters = !watch.configKey;
     // The batch's runs next to the baseline, to see what changed.
@@ -465,10 +586,63 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const waitingMessage = series.every((s) => s.isRef)
         ? `So far this setup has only the batch${series.length === 1 ? '' : 'es'} the baseline was made from, so there’s nothing to compare yet. Each new batch is compared with the baseline, and drops of ${watch.threshold}% or worse are flagged.`
         : `This setup has one batch so far (${fmtPct(series[0]?.delta)} against the baseline). It takes a second batch to show a trend. Drops of ${watch.threshold}% or worse are flagged.`;
+    const statusChipStatus = regressed.length ? 'misses_slo' : unhealthy.length ? 'needs_changes' : waiting ? 'waiting' : 'verified';
+    const statusChipLabel = regressed.length
+        ? `${regressed.length} regression${regressed.length === 1 ? '' : 's'}${unhealthy.length ? ` · ${unhealthy.length} unhealthy` : ''}`
+        : unhealthy.length
+          ? `No regressions · ${unhealthy.length} unhealthy batch${unhealthy.length === 1 ? '' : 'es'}`
+          : waiting
+            ? 'Waiting for the next batch'
+            : 'No regressions';
     // The chart's accessible summary; the table under it lists every batch.
     const chartDesc = `${series.length} batch${series.length === 1 ? '' : 'es'}, ${
-        flagged.length ? `${flagged.length} flagged at ${watch.threshold}% or worse` : `none past the ${watch.threshold}% threshold`
-    }. The table below the chart lists every batch.`;
+        regressed.length ? `${regressed.length} regression${regressed.length === 1 ? '' : 's'} at ${watch.threshold}% or worse` : `no regressions past the ${watch.threshold}% threshold`
+    }${unhealthy.length ? `, ${unhealthy.length} unhealthy batch${unhealthy.length === 1 ? '' : 'es'} with ≥5% failed requests` : ''}. The table below the chart lists every batch.`;
+
+    const watchCsv = () =>
+        toCsv(
+            [
+                { label: 'Watch', get: () => watch.name },
+                { label: 'Setup', get: () => setupLabel || watch.setupLabel || 'not recorded' },
+                { label: 'Baseline', get: () => watch.ref?.name || 'not recorded' },
+                { label: 'Metric', get: () => metricLabel },
+                { label: 'Date', get: (s) => whenOf(s.ts) },
+                { label: 'Run IDs', get: (s) => s.runs.map((r) => r.runId || r.idLabel || r.key).join(', ') || 'not recorded' },
+                { label: 'Concurrency', get: (s) => s.conc },
+                { label: `${metricLabel} (tok/s)`, get: (s) => (s.overLimit ? 0 : s.value) },
+                { label: 'Baseline (tok/s)', get: (s) => s.ref },
+                { label: 'Change (%)', get: (s) => s.delta },
+                { label: 'TTFT p50 (ms)', get: (s) => s.ttft },
+                { label: 'Failed requests (%)', get: (s) => s.maxErrPct },
+                { label: 'Status', get: (s) => (s.regressed ? 'Regression' : s.unhealthy ? 'Unhealthy (failed requests)' : s.isRef ? 'Baseline batch' : 'OK') },
+                { label: 'Notes', get: (s) => [...(s.flagReasons || []), ...(s.missing?.length ? [`Missing ${levelsLabel(s.missing)}`] : [])].join(' · ') },
+            ],
+            [...series].reverse()
+        );
+
+    const watchMarkdown = [
+        `**Watch: ${watch.name}** · ${statusChipLabel}`,
+        `Setup: ${setupLabel || watch.setupLabel || 'not recorded'} · Baseline: ${watch.ref?.name || 'not recorded'} · ${metricLabel} · threshold ${watch.threshold}%`,
+        mdTable(
+            ['Date', 'Run IDs', `${metricLabel} (tok/s)`, 'Baseline (tok/s)', 'Change', 'TTFT p50', 'Status'],
+            [...series].reverse().map((s) => [
+                whenOf(s.ts),
+                s.runs.map((r) => r.runId || r.idLabel || r.key).join(', ') || 'not recorded',
+                s.overLimit ? `none ≤ ${secondsLabel(watch.limit)}` : `${fmtTput(s.value)}${s.conc != null ? ` (c=${s.conc})` : ''}`,
+                fmtTput(s.ref),
+                fmtPct(s.delta),
+                s.ttft != null ? fmtMs(s.ttft) : 'not recorded',
+                s.regressed
+                    ? `Regression (${s.regressionReasons.join(', ')})`
+                    : s.unhealthy
+                      ? `Unhealthy (${s.healthReasons.join(', ')})`
+                      : s.isRef
+                        ? 'Baseline batch'
+                        : 'OK',
+            ]),
+            ['l', 'l', 'r', 'r', 'r', 'r', 'l']
+        ),
+    ].join('\n\n');
 
     return (
         <div className="space-y-5">
@@ -486,7 +660,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                     )}
                     <p className="mt-2 text-xs text-zinc-600">
                         Baseline: <span className="font-medium text-zinc-900">{watch.ref?.name}</span> · {metricLabel} · flag drops of {watch.threshold}% or worse
-                        {watch.guard ? ' · TTFT +20% & error ≥ 5% guard' : ''}
+                        {watch.guard ? ' · TTFT p50 +20% & error ≥ 5% guard' : ''}
                     </p>
                     {watch.atConc == null && refConcs.length > 1 && (
                         <p className="mt-1 text-micro text-zinc-500">
@@ -496,10 +670,8 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                     )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <StatusChip
-                        status={flagged.length ? 'misses_slo' : waiting ? 'waiting' : 'verified'}
-                        label={flagged.length ? `${flagged.length} flagged` : waiting ? 'Waiting for the next batch' : 'No drops past threshold'}
-                    />
+                    <StatusChip status={statusChipStatus} label={statusChipLabel} />
+                    {series.length > 0 && <ExportActions filename={`${fileSlug(watch.name)}-watch.csv`} csv={watchCsv} markdown={watchMarkdown} />}
                     <Button size="xs" variant="secondary" onClick={() => setEditing((v) => !v)}>
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> {editing ? 'Done' : 'Edit'}
                     </Button>
@@ -508,6 +680,29 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                     </Button>
                 </div>
             </header>
+
+            {pinnedIsNewest && batchList.length > 1 && (
+                <Notice tone="warning">
+                    This watch’s baseline is pinned to the newest batch ({batchWhen(newestBatch.ts)}), so the newest batch compares with itself (0.0%).{' '}
+                    {medianEarlier && (
+                        <button
+                            type="button"
+                            onClick={() =>
+                                ws.updateWatch(watch.id, {
+                                    ref: {
+                                        kind: 'pinned',
+                                        name: `Median of earlier batches (${batchWhen(medianEarlier.ts)})`,
+                                        points: medianEarlier.points,
+                                    },
+                                })
+                            }
+                            className="font-semibold underline hover:text-amber-950"
+                        >
+                            Switch to the median of earlier batches ({batchWhen(medianEarlier.ts)})
+                        </button>
+                    )}
+                </Notice>
+            )}
 
             {editing && (
                 <div className="grid gap-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 sm:grid-cols-2">
@@ -530,11 +725,15 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             surface="light"
                             id="rs-edit-watch-ref"
                             // The current pinned batch stays selected as itself ("current");
-                            // other batches are offered by date and time.
+                            // other batches are offered by date, time and throughput.
                             value={watch.ref?.kind === 'curve' ? watch.ref.id : watch.ref?.kind === 'pinned' ? 'current' : ''}
                             onChange={(e) => {
                                 const val = e.target.value;
-                                if (val.startsWith('pinned:')) {
+                                if (val === 'earlier-median' && medianEarlier) {
+                                    ws.updateWatch(watch.id, {
+                                        ref: { kind: 'pinned', name: `Median of earlier batches (${batchWhen(medianEarlier.ts)})`, points: medianEarlier.points },
+                                    });
+                                } else if (val.startsWith('pinned:')) {
                                     const batch = batchList.find((b) => `pinned:${b.ts}` === val);
                                     if (batch) ws.updateWatch(watch.id, { ref: { kind: 'pinned', name: `Pinned batch · ${batchWhen(batch.ts)}`, points: batch.points } });
                                 } else if (val !== 'current') {
@@ -555,6 +754,11 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                 </option>
                             )}
                             {watch.ref?.kind === 'pinned' && <option value="current">{watch.ref.name}</option>}
+                            {medianEarlier && (
+                                <option value="earlier-median">
+                                    {`Median of earlier batches — ${batchSummaryLabel(medianEarlier)}`}
+                                </option>
+                            )}
                             {batchList.length === 0 && watch.ref?.kind !== 'pinned' && (
                                 <option value="none" disabled>
                                     No batch to pin yet
@@ -562,7 +766,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             )}
                             {batchList.map((b) => (
                                 <option key={b.ts} value={`pinned:${b.ts}`}>
-                                    {b === newestBatch ? `Pin the newest batch of this setup (${batchWhen(b.ts)})` : `Pin the batch of ${batchWhen(b.ts)}`}
+                                    {b === newestBatch ? `Pin newest batch · ${batchSummaryLabel(b)}` : `Pin earlier batch · ${batchSummaryLabel(b)}`}
                                 </option>
                             ))}
                         </Select>
@@ -584,7 +788,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             }}
                         >
                             <option value="usable" disabled={!usableOk}>
-                                {`Output at TTFT ≤ ${secondsLabel(OPERATING_TTFT_MS)}${usableOk ? '' : ' (baseline has no point that fast)'}`}
+                                {`Output at ${catalogLimitLabel(OPERATING_TTFT_MS, 'p50')}${usableOk ? '' : ' (baseline has no point that fast)'}`}
                             </option>
                             <option value="">Peak output throughput</option>
                             {refConcs.map((c) => (
@@ -616,7 +820,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             surface="light"
                             checked={Boolean(watch.guard)}
                             onChange={(e) => ws.updateWatch(watch.id, { guard: e.target.checked })}
-                            label="Also flag TTFT spikes (+20% at the watched point) and failed requests (≥ 5%)"
+                            label="Also flag TTFT p50 spikes (+20% at the watched point) and track failed requests (≥ 5%)"
                         />
                     </div>
                 </div>
@@ -634,7 +838,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                     title="The baseline is gone"
                     message={
                         watch.limit
-                            ? 'Its result was discarded, or no longer has a point within the TTFT limit. Choose another baseline with Edit, or delete this watch.'
+                            ? 'Its result was discarded, or no longer has a point within the TTFT p50 limit. Choose another baseline with Edit, or delete this watch.'
                             : 'Its result was discarded or has no point at this concurrency. Choose another baseline with Edit, or delete this watch.'
                     }
                 />
@@ -686,8 +890,14 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                                     key={props.payload.key}
                                                     cx={props.cx}
                                                     cy={props.cy}
-                                                    r={props.payload.flagged ? 5 : 3.5}
-                                                    fill={props.payload.flagged ? CHART_STATUS.critical : seriesColor(0)}
+                                                    r={props.payload.regressed || props.payload.unhealthy ? 5 : 3.5}
+                                                    fill={
+                                                        props.payload.regressed
+                                                            ? CHART_STATUS.critical
+                                                            : props.payload.unhealthy
+                                                              ? CHART_STATUS.warning || '#d97706'
+                                                              : seriesColor(0)
+                                                    }
                                                     stroke={theme.surface}
                                                     strokeWidth={1.5}
                                                 />
@@ -704,7 +914,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                 <tr className="label-caps text-zinc-500">
                                     <th className="px-4 py-3 font-semibold">Date</th>
                                     <th className="px-4 py-3 font-semibold">Runs</th>
-                                    <th className="px-4 py-3 text-right font-semibold">{watch.limit ? `Output at TTFT ≤ ${secondsLabel(watch.limit)}` : 'Output'} (tok/s)</th>
+                                    <th className="px-4 py-3 text-right font-semibold">{watch.limit ? `Output at ${catalogLimitLabel(watch.limit, 'p50')}` : 'Output'} (tok/s)</th>
                                     <th className="px-4 py-3 text-right font-semibold">Baseline</th>
                                     <th className="px-4 py-3 text-right font-semibold">Change</th>
                                     <th className="px-4 py-3 font-semibold">Status</th>
@@ -715,7 +925,7 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                             </thead>
                             <tbody className="divide-y divide-zinc-100">
                                 {[...series].reverse().map((s) => (
-                                    <tr key={s.key} className={cn(s.flagged && 'bg-red-50/40')}>
+                                    <tr key={s.key} className={cn(s.regressed ? 'bg-red-50/40' : s.unhealthy ? 'bg-amber-50/30' : undefined)}>
                                         <td className="px-4 py-2.5 text-zinc-800">{whenOf(s.ts)}</td>
                                         <td className="px-4 py-2.5">
                                             <button
@@ -732,21 +942,31 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                                             {watch.atConc == null && s.conc != null && <span className="ml-1 font-sans text-tiny text-zinc-500">c={s.conc}</span>}
                                         </td>
                                         <td className="px-4 py-2.5 text-right font-mono tabular-nums text-zinc-600">{fmtTput(s.ref)}</td>
-                                        <td className={cn('px-4 py-2.5 text-right font-mono tabular-nums', s.flagged ? 'font-semibold text-red-700' : 'text-zinc-700')}>{fmtPct(s.delta)}</td>
+                                        <td
+                                            className={cn(
+                                                'px-4 py-2.5 text-right font-mono tabular-nums',
+                                                s.regressed ? 'font-semibold text-red-700' : s.delta > 1 && !s.isRef ? 'text-emerald-700' : 'text-zinc-700'
+                                            )}
+                                        >
+                                            {fmtPct(s.delta)}
+                                        </td>
                                         <td className="px-4 py-2.5">
                                             <StatusChip
-                                                status={s.flagged ? 'failed' : s.isRef ? 'waiting' : 'verified'}
+                                                status={s.regressed ? 'failed' : s.unhealthy ? 'needs_changes' : s.isRef ? 'waiting' : 'verified'}
                                                 size="xs"
-                                                label={s.flagged ? 'Flagged' : s.isRef ? 'Baseline batch' : 'OK'}
+                                                label={s.regressed ? 'Regression' : s.unhealthy ? 'Unhealthy' : s.isRef ? 'Baseline batch' : 'OK'}
                                             />
-                                            {s.flagged && s.flagReasons?.length > 0 && (
-                                                <div className="mt-1 text-tiny text-red-700">{s.flagReasons.join(' · ')}</div>
+                                            {s.regressionReasons?.length > 0 && (
+                                                <div className="mt-1 text-tiny text-red-700">{s.regressionReasons.join(' · ')}</div>
+                                            )}
+                                            {s.healthReasons?.length > 0 && (
+                                                <div className="mt-1 text-tiny text-amber-800">{s.healthReasons.join(' · ')}</div>
                                             )}
                                             {s.missing?.length > 0 && <div className="mt-1 text-tiny text-amber-700">No {levelsLabel(s.missing)} in this batch</div>}
                                         </td>
                                         <td className="px-4 py-2.5 text-right">
                                             {!s.isRef && (
-                                                <Button size="xs" variant={s.flagged ? 'secondary' : 'ghost'} onClick={() => compareWithBaseline(s)}>
+                                                <Button size="xs" variant={s.regressed || s.unhealthy ? 'secondary' : 'ghost'} onClick={() => compareWithBaseline(s)}>
                                                     Compare with baseline
                                                 </Button>
                                             )}
@@ -811,11 +1031,14 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
         return listPrice(type, customRates) || { price: null, source: null };
     };
     const mixed = curves.length > 1 ? mixedSummary(curves) : '';
+    const priceStat = showcase.priceStat === 'p99' ? 'p99' : 'p50';
+    const hasAnyP99 = curves.some((c) => c.points.some((p) => p.included && Number.isFinite(p.ttftP99)));
+    const priceOptions = priceAtOptions(priceStat);
     // Price each result at a usable point by default: its peak can be an
     // overloaded one (a 53 s TTFT) that makes the hardware look cheaper.
-    const priceAt = PRICE_AT_OPTIONS.some((o) => o.value === showcase.priceAt) ? showcase.priceAt : OPERATING_TTFT_MS;
+    const priceAt = priceOptions.some((o) => o.value === showcase.priceAt) ? showcase.priceAt : OPERATING_TTFT_MS;
     const atPeak = priceAt === 'peak';
-    const limitLabel = atPeak ? 'Peak' : `TTFT ≤ ${priceAt / 1000} s`;
+    const limitLabel = atPeak ? 'Peak' : catalogLimitLabel(priceAt, priceStat);
     const perChip = Boolean(showcase.perChip);
     const tputColLabel = perChip
         ? atPeak
@@ -829,7 +1052,8 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
     const rows = curves.map((c, i) => {
         const type = accelTypeOf(c.meta.accelerator);
         const { price, source } = priceOf(type);
-        const { point, reason, fastest } = pricingPoint(c.points.filter((p) => p.included), priceAt);
+        const included = c.points.filter((p) => p.included);
+        const { point, reason, fastest } = pricingPoint(included, priceAt, atPeak ? null : priceStat);
         // The count in the result's label: what people see, and may have corrected.
         const chips = chipsOf(c.meta);
         const cpm = costPerMillion(price, chips, point?.output);
@@ -838,9 +1062,29 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
             reason === 'over-limit'
                 ? [`${nobreak('No point with')} ${nobreak(limitLabel)}`, fastest ? `Fastest:\u00a0${pointLabel(fastest)}` : '']
                 : reason === 'no-ttft'
-                  ? ['TTFT not recorded', 'Choose Peak to price its peak instead.']
+                  ? [`TTFT ${priceStat} not recorded`, 'Choose Peak or P50 to price instead.']
                   : ['No points to price', ''];
-        return { c, i, type, price, source, point, chips, cpm, unpriced };
+        const runIds = [...new Set(included.map((p) => p.runId || p.idLabel || p.runKey).filter(Boolean))].join(', ') || `result:${c.id}`;
+        const tss = [...new Set(included.map((p) => p.ts).filter(Boolean))].sort((a, b) => a - b);
+        const measured = tss.length ? fmtDate(tss[tss.length - 1]) : c.createdAt ? fmtDate(c.createdAt) : 'not recorded';
+        return {
+            c,
+            i,
+            type,
+            price,
+            source,
+            point,
+            chips,
+            cpm,
+            unpriced,
+            runIds,
+            measured,
+            setup: c.meta.setup || 'not recorded',
+            workload: c.meta.workload || 'not recorded',
+            harness: c.meta.harness || 'not recorded',
+            engine: c.meta.engine || 'not recorded',
+            modelId: c.meta.model || 'not recorded',
+        };
     });
 
     const exportRows = rows.map((r) => ({
@@ -848,7 +1092,7 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
         // Exports go into customer documents: the plain status, without the
         // on-screen "· only in this browser" note.
         status: isOfficial(r.c) ? copy.publishedLabel : `${copy.unofficialLabel} (${STATUS_WORD[r.c.status] || r.c.status})`,
-        sourceLabel: r.source === 'entered' ? 'Entered' : PRICE_SOURCE[r.source] || '',
+        sourceLabel: r.source === 'entered' ? 'Entered' : PRICE_SOURCE[r.source] || 'not recorded',
         note: r.point ? '' : r.unpriced.filter(Boolean).join('. ').replace(/\u00a0/g, ' '),
     }));
     const csv = () =>
@@ -856,11 +1100,21 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
             [
                 { label: 'Result', get: (r) => r.c.name },
                 { label: 'Status', get: (r) => r.status },
+                { label: 'Price limit', get: () => limitLabel },
+                { label: 'Model ID', get: (r) => r.modelId },
                 { label: 'Accelerator', get: (r) => r.type },
                 { label: 'Chips', get: (r) => r.chips },
+                { label: 'Deployment', get: (r) => r.setup },
+                { label: 'Workload (ISL/OSL)', get: (r) => r.workload },
+                { label: 'Harness', get: (r) => r.harness },
+                { label: 'Serving engine', get: (r) => r.engine },
+                { label: 'Measured', get: (r) => r.measured },
+                { label: 'Run IDs', get: (r) => r.runIds },
                 { label: 'Priced at concurrency', get: (r) => r.point?.conc },
-                { label: 'TTFT (ms)', get: (r) => r.point?.ttft },
-                { label: 'TTFT statistic', get: (r) => (r.point ? typicalStat(r.point, 'ttft') || 'not recorded' : '') },
+                { label: 'TTFT p50 (ms)', get: (r) => r.point?.ttftP50 ?? r.point?.ttft },
+                { label: 'TTFT p99 (ms)', get: (r) => r.point?.ttftP99 },
+                { label: 'TPOT p50 (ms)', get: (r) => r.point?.tpotP50 ?? r.point?.tpot },
+                { label: 'E2E p50 (ms)', get: (r) => r.point?.e2eP50 ?? r.point?.e2e },
                 { label: 'Output (tok/s)', get: (r) => r.point?.output },
                 { label: 'Output per chip (tok/s)', get: (r) => (r.point?.output != null ? r.point.output / (r.chips || 1) : null) },
                 { label: '$ per chip-hour', get: (r) => r.price },
@@ -868,31 +1122,39 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                 { label: '$ per 1M output tokens', get: (r) => r.cpm },
                 { label: 'Tokens per $', get: (r) => (r.cpm != null ? 1e6 / r.cpm : null) },
                 { label: 'Not priced because', get: (r) => r.note },
+                { label: 'Caveats', get: () => [mixed ? `Not like-for-like: ${mixed}` : null, unofficialNote].filter(Boolean).join(' ') },
             ],
             exportRows
         );
     const markdown = [
         `**${showcase.name}** · cost at ${atPeak ? 'peak throughput' : limitLabel}`,
         showcase.description ? showcase.description : null,
+        mixed ? `> **Not like-for-like:** these results use different ${mixed}.` : null,
+        unofficial ? `> _${copy.unofficialLabel}: not ${copy.publishedLabel} yet, so its points and labels can still change._` : null,
         mdTable(
-            ['Result', 'Accelerator', 'Chips', tputColLabel, 'Priced at', '$ / chip-hour', '$ / 1M output tokens', 'Tokens per $'],
+            ['Result', 'Deployment', 'Accelerator', 'Chips', tputColLabel, 'Priced at', '$ / chip-hour', '$ / 1M output tokens', 'Tokens per $'],
             exportRows.map((r) => [
                 isOfficial(r.c) ? r.c.name : `${r.c.name} (${copy.unofficialLabel})`,
+                r.setup,
                 r.type,
                 r.chips,
                 fmtTput(shownTput(r.point, r.chips)),
                 r.point ? pointLabel(r.point).replace(/\u00a0/g, ' ') : r.note,
-                r.price ? `${fmtMoney(r.price)}${r.sourceLabel && r.source !== 'entered' ? ` (${r.sourceLabel})` : ''}` : '',
-                r.cpm != null ? fmtMoney(r.cpm) : '',
-                r.cpm != null ? fmtCount(1e6 / r.cpm) : '',
+                r.price ? `${fmtMoney(r.price)}${r.sourceLabel && r.source !== 'entered' ? ` (${r.sourceLabel})` : ''}` : 'not recorded',
+                r.cpm != null ? fmtMoney(r.cpm) : '—',
+                r.cpm != null ? fmtCount(1e6 / r.cpm) : '—',
             ]),
-            ['l', 'l', 'r', 'r', 'l', 'r', 'r', 'r']
+            ['l', 'l', 'l', 'r', 'r', 'l', 'r', 'r', 'r']
+        ),
+        `**Provenance**`,
+        mdTable(
+            ['Result', 'Model ID', 'Workload (ISL/OSL)', 'Harness', 'Serving engine', 'Measured', 'Run IDs'],
+            exportRows.map((r) => [r.c.name, r.modelId, r.workload, r.harness, r.engine, r.measured, r.runIds]),
+            ['l', 'l', 'l', 'l', 'l', 'l', 'l']
         ),
         atPeak
             ? 'Each result is priced at its highest throughput, however slow that point is.'
-            : `Each result is priced at its highest throughput with ${limitLabel} (TTFT is the p50 where the harness reported one, otherwise the mean).`,
-        mixed ? `> **Not like-for-like:** these results use different ${mixed}.` : null,
-        unofficial ? `_${copy.unofficialLabel}: not ${copy.publishedLabel} yet, so its points and labels can still change._` : null,
+            : `Each result is priced at its highest throughput with ${limitLabel}.`,
     ]
         .filter(Boolean)
         .join('\n\n');
@@ -965,11 +1227,13 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                 // The legend travels with screenshots, so it carries the label too.
                                 name: isOfficial(c) ? c.name : `${c.name} · ${copy.unofficialLabel}`,
                                 color: seriesColor(i),
+                                shape: getSeriesShape(i),
                                 points: seriesPoints(c.points.filter((p) => p.included), { latency, stat, throughput }),
                             }))}
                             latency={latency}
                             stat={stat}
                             throughput={throughput}
+                            sloMs={atPeak ? OPERATING_TTFT_MS : priceAt}
                         />
                     </ChartContainer>
                     <Panel
@@ -979,7 +1243,7 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                         subtitle={`${
                             atPeak
                                 ? 'Each result is priced at its highest throughput, however slow that point is.'
-                                : `Each result is priced at its highest throughput with ${limitLabel} (the p50 where the harness reported one, otherwise the mean), so an overloaded point can’t make it look cheaper.`
+                                : `Each result is priced at its highest throughput with ${limitLabel}, so an overloaded point can’t make it look cheaper.`
                         } Your prices and this choice are saved with the report.`}
                         actions={
                             <div className="flex flex-wrap items-center gap-4">
@@ -990,9 +1254,21 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                     onChange={(v) => ws.updateShowcase(showcase.id, { perChip: v })}
                                     label="Per chip"
                                 />
+                                {!atPeak && hasAnyP99 && (
+                                    <ToggleGroup
+                                        size="xs"
+                                        aria-label="Pricing TTFT statistic"
+                                        value={priceStat}
+                                        onChange={(st) => ws.updateShowcase(showcase.id, { priceStat: st })}
+                                        options={[
+                                            { value: 'p50', label: 'P50' },
+                                            { value: 'p99', label: 'P99' },
+                                        ]}
+                                    />
+                                )}
                                 <div className="flex items-center gap-2">
                                     <span className="text-micro text-zinc-500">Price at</span>
-                                    <ToggleGroup size="xs" aria-label="Price at" value={priceAt} onChange={(v) => ws.updateShowcase(showcase.id, { priceAt: v })} options={PRICE_AT_OPTIONS} />
+                                    <ToggleGroup size="xs" aria-label="Price at" value={priceAt} onChange={(v) => ws.updateShowcase(showcase.id, { priceAt: v })} options={priceOptions} />
                                 </div>
                             </div>
                         }
@@ -1116,27 +1392,54 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
     const viewHeadingId = useId();
     // The watch or report waiting on "Delete this …?".
     const [confirmDelete, setConfirmDelete] = useState(null);
-    const all = [...ws.watches.map((w) => ({ ...w, kind: 'watch' })), ...ws.showcases.map((s) => ({ ...s, kind: 'showcase' }))];
+    // Summarize each watch and sort watches with regressions first so operators
+    // see broken setups at the top of the sidebar.
+    const watchesWithStatus = useMemo(
+        () =>
+            ws.watches
+                .map((w) => ({ ...w, kind: 'watch', summary: watchSummary(w, runs, runsByKey, ws.getCurve) }))
+                .sort((a, b) => b.summary.regressedCount - a.summary.regressedCount || b.summary.unhealthyCount - a.summary.unhealthyCount),
+        [ws.watches, runs, runsByKey, ws.getCurve]
+    );
+    const all = [...watchesWithStatus, ...ws.showcases.map((s) => ({ ...s, kind: 'showcase' }))];
     const active = all.find((d) => d.id === activeId) || all[0] || null;
 
-    const item = (d) => (
-        <li key={d.id}>
-            <button
-                type="button"
-                onClick={() => onSelect(d.id)}
-                aria-current={active?.id === d.id ? 'true' : undefined}
-                className={cn(
-                    'w-full rounded-2xl px-3 py-2 text-left transition-colors',
-                    active?.id === d.id ? 'bg-accent-50 text-accent-700' : 'text-zinc-700 hover:bg-zinc-50'
-                )}
-            >
-                <span className="block truncate text-xs font-medium">{d.name}</span>
-                <span className="block text-tiny text-zinc-500">
-                    {d.kind === 'watch' ? 'Re-checks when you open it' : `${d.curveIds.length} result${d.curveIds.length === 1 ? '' : 's'}`}
-                </span>
-            </button>
-        </li>
-    );
+    const item = (d) => {
+        const reg = d.summary?.regressedCount || 0;
+        const unh = d.summary?.unhealthyCount || 0;
+        const subText =
+            d.kind === 'watch'
+                ? reg > 0
+                    ? `${reg} regression${reg === 1 ? '' : 's'}${unh > 0 ? ` · ${unh} unhealthy` : ''}`
+                    : unh > 0
+                      ? `No regressions · ${unh} unhealthy`
+                      : d.summary?.waiting
+                        ? 'Waiting for next batch'
+                        : 'No regressions'
+                : `${d.curveIds.length} result${d.curveIds.length === 1 ? '' : 's'}`;
+        return (
+            <li key={d.id}>
+                <button
+                    type="button"
+                    onClick={() => onSelect(d.id)}
+                    aria-current={active?.id === d.id ? 'true' : undefined}
+                    className={cn(
+                        'w-full rounded-2xl px-3 py-2 text-left transition-colors',
+                        active?.id === d.id ? 'bg-accent-50 text-accent-700' : 'text-zinc-700 hover:bg-zinc-50'
+                    )}
+                >
+                    <span className="flex items-center justify-between gap-2">
+                        <span className="block truncate text-xs font-medium">{d.name}</span>
+                        {reg > 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />}
+                        {!reg && unh > 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />}
+                    </span>
+                    <span className={cn('block text-tiny', reg > 0 ? 'font-medium text-red-700' : unh > 0 ? 'text-amber-700' : 'text-zinc-500')}>
+                        {subText}
+                    </span>
+                </button>
+            </li>
+        );
+    };
 
     return (
         <div className="grid gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -1149,8 +1452,8 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                             <Plus className="h-3.5 w-3.5" aria-hidden="true" /> New
                         </Button>
                     </div>
-                    {ws.watches.length ? (
-                        <ul className="space-y-1">{all.filter((d) => d.kind === 'watch').map(item)}</ul>
+                    {watchesWithStatus.length ? (
+                        <ul className="space-y-1">{watchesWithStatus.map(item)}</ul>
                     ) : (
                         <p className="px-3 text-micro text-zinc-500">Follows one setup and flags drops against a baseline.</p>
                     )}

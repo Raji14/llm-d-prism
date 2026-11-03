@@ -155,14 +155,50 @@ export function CopyButton({ text, label = 'Copy link', copiedLabel = 'Copied', 
 
 // "Download CSV" and "Copy as Markdown" for a table (Compare, Reports).
 // `csv` is a function, so the file is only built when someone asks for it.
-export function ExportActions({ filename, csv, markdown }) {
+// When `warnMessage` is given (e.g. exporting Compare without a baseline),
+// clicking either export button prompts for confirmation first.
+export function ExportActions({ filename, csv, markdown, warnMessage = null }) {
+    const [pendingAction, setPendingAction] = useState(null);
+    const [copied, setCopied] = useState(false);
+    const timer = useRef(null);
+    useEffect(() => () => clearTimeout(timer.current), []);
+
+    const doCsv = () => {
+        downloadText(filename, csv());
+        setPendingAction(null);
+    };
+    const doMd = () => {
+        navigator.clipboard?.writeText(typeof markdown === 'function' ? markdown() : markdown);
+        setCopied(true);
+        setPendingAction(null);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 1800);
+    };
+
     return (
-        <div className="flex flex-wrap items-center gap-2">
-            <Button size="xs" variant="secondary" onClick={() => downloadText(filename, csv())}>
-                <Download className="h-3.5 w-3.5" aria-hidden="true" />
-                Download CSV
-            </Button>
-            <CopyButton text={markdown} label="Copy as Markdown" />
+        <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+                <Button size="xs" variant="secondary" onClick={() => (warnMessage ? setPendingAction('csv') : doCsv())}>
+                    <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                    Download CSV
+                </Button>
+                <Button size="xs" variant="secondary" onClick={() => (warnMessage ? setPendingAction('md') : doMd())}>
+                    {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {copied ? 'Copied' : 'Copy as Markdown'}
+                </Button>
+            </div>
+            {warnMessage && pendingAction && (
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />
+                    <span>{warnMessage}</span>
+                    <Button size="xs" variant="primary" onClick={pendingAction === 'csv' ? doCsv : doMd}>
+                        {pendingAction === 'csv' ? 'Download anyway' : 'Copy anyway'}
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={() => setPendingAction(null)}>
+                        Cancel
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

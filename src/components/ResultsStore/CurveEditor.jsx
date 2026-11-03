@@ -339,7 +339,18 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                             {!readOnly && (
                                 <BaselinePicker
                                     options={rankBaselines(
-                                        baselineOptions.filter((o) => o.id !== curve.id && o.id !== curve.supersedes && !curve.baselines.some((b) => b.id === o.id)),
+                                        (() => {
+                                            const curveRunSig = [...new Set((curve.builtFrom?.runKeys || []).concat(curve.points.map((p) => p.runKey)).filter(Boolean))].sort().join('|');
+                                            const baselineRunSigs = new Set(
+                                                curve.baselines.map((b) => [...new Set((b.points || []).map((p) => p.runKey).filter(Boolean))].sort().join('|')).filter(Boolean)
+                                            );
+                                            return baselineOptions.filter((o) => {
+                                                if (o.id === curve.id || o.id === curve.supersedes || curve.baselines.some((b) => b.id === o.id)) return false;
+                                                const sig = [...new Set((o.runKeys || (o.points || []).map((p) => p.runKey)).filter(Boolean))].sort().join('|');
+                                                if (sig && (sig === curveRunSig || baselineRunSigs.has(sig))) return false;
+                                                return true;
+                                            });
+                                        })(),
                                         curveConfig(curve)
                                     )}
                                     onPick={(o) => ws.addBaseline(curve.id, { id: o.id, name: o.name, note: o.note, ref: o.item, points: o.points })}

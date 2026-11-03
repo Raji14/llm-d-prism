@@ -47,17 +47,27 @@ export const fileSlug = (s) =>
         .replace(/^-|-$/g, '')
         .slice(0, 60) || 'export';
 
-// Every point of every series, one row each, with all recorded statistics.
-// series: [{ name, role, points }]. A point saved before Prism kept each
-// statistic has only its typical value, exported in its own column.
+// Every point of every series, one row each, with all recorded statistics
+// and provenance. series: [{ name, role, points, modelId, hw, setup, workload,
+// harness, engine, measured, caveats, shareUrl }]. A point saved before Prism
+// kept each statistic has only its typical value, exported in its own column.
 export function pointsCsv(series) {
     const rows = series.flatMap((s) => s.points.map((p) => ({ s, p })));
     const legacy = rows.some(({ p }) => !(latencyKey('ttft', 'p50') in p));
     const columns = [
         { label: 'Series', get: ({ s }) => s.name },
         { label: 'Role', get: ({ s }) => s.role },
-        { label: 'Run', get: ({ p }) => p.runId || p.idLabel || p.runKey },
+        { label: 'Run ID', get: ({ p, s }) => p.runId || p.idLabel || p.runKey || s.runIds || 'not recorded' },
+        { label: 'Measured', get: ({ p, s }) => (p.ts ? new Date(p.ts).toISOString().slice(0, 10) : s.measured || 'not recorded') },
+        { label: 'Model ID', get: ({ p, s }) => s.modelId || p.model || 'not recorded' },
+        { label: 'Hardware', get: ({ p, s }) => s.hw || p.hwLabel || 'not recorded' },
+        { label: 'Deployment', get: ({ p, s }) => s.setup || p.setup || 'not recorded' },
+        { label: 'Workload (ISL/OSL)', get: ({ p, s }) => s.workload || p.workload || 'not recorded' },
+        { label: 'Harness', get: ({ p, s }) => s.harness || p.harness || 'not recorded' },
+        { label: 'Serving engine', get: ({ p, s }) => s.engine || p.engine || 'not recorded' },
         { label: 'Concurrency', get: ({ p }) => p.conc },
+        { label: 'Request rate (req/s)', get: ({ p }) => p.rate },
+        { label: 'Stage status', get: ({ p, s }) => (s.overloadedKeys?.has(p.key) ? 'overloaded (not comparable for peak)' : 'healthy') },
         { label: 'Output (tok/s)', get: ({ p }) => p.output },
         { label: 'Total (tok/s)', get: ({ p }) => p.total },
         { label: 'Chips', get: ({ p }) => p.chips },
@@ -67,6 +77,8 @@ export function pointsCsv(series) {
             ...(legacy ? [{ label: `${m.label}, p50 or mean (ms)`, get: ({ p }) => (latencyKey(m.value, 'p50') in p ? null : p[m.value]) }] : []),
         ]),
         { label: 'Failed requests (%)', get: ({ p }) => p.errPct },
+        { label: 'Caveats', get: ({ s }) => s.caveats || '' },
+        { label: 'Share link', get: ({ s }) => s.shareUrl || '' },
     ];
     return toCsv(columns, rows);
 }

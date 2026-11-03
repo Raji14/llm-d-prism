@@ -101,7 +101,7 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
     // The tail of a sweep often runs past saturation; say so before anyone
     // quotes its peak.
     const warnings = single ? [] : loadChecks(run.points);
-    const usable = single ? null : pricingPoint(run.points, OPERATING_TTFT_MS);
+    const usable = single ? null : pricingPoint(run.points, OPERATING_TTFT_MS, 'p50');
 
     // A run that's part of a sweep publishes the whole sweep, and says so.
     const subjectRuns = parentRow ? parentRow.runs : [run];
@@ -131,7 +131,8 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
                         {run.category !== 'Uncategorized' && <Badge size="xs">{run.category}</Badge>}
                         {!run.hwLabel && <StatusChip status="action" size="xs" label="Hardware not recorded" />}
                         <span className="text-micro text-zinc-500">
-                            {fmtDateTime(run.ts)} · run <span className="font-mono">{run.idLabel}</span>
+                            {fmtDateTime(run.ts)}
+                            {run.submittedAt && Math.abs(run.submittedAt - run.ts) > 86400000 ? ` · uploaded ${fmtDateTime(run.submittedAt)}` : ''} · run <span className="font-mono">{run.idLabel}</span>
                         </span>
                     </div>
                 </div>
@@ -196,7 +197,7 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
                                   `${run.points.length} stages`,
                                   concRange(run.points) || 'concurrency not recorded',
                                   `peak ${fmtTput(peakOutput(run.points))} tok/s`,
-                                  usable?.point ? `${fmtTput(usable.point.output)} tok/s at ${limitLabel()}` : null,
+                                  usable?.point ? `${fmtTput(usable.point.output)} tok/s at ${limitLabel(OPERATING_TTFT_MS, 'p50')}` : null,
                               ]
                                   .filter(Boolean)
                                   .join(' · ')
@@ -234,6 +235,7 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
                                 { label: 'Category', value: run.category },
                                 { label: 'Source', value: run.source },
                                 { label: 'Measured', value: fmtDateTime(run.ts) },
+                                ...(run.submittedAt && Math.abs(run.submittedAt - run.ts) > 86400000 ? [{ label: 'Uploaded', value: fmtDateTime(run.submittedAt) }] : []),
                                 { label: 'Run ID', value: run.runId, mono: true },
                                 { label: 'Run label', value: run.runLabel, mono: true },
                                 { label: 'Submitted by', value: run.author ? `@${run.author}` : null },

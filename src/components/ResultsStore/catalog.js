@@ -80,6 +80,12 @@ export function fmtShortDay(ts) {
     return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
+export function fmtDate(ts) {
+    if (!ts) return 'Date unknown';
+    const d = new Date(ts);
+    return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 export function fmtDateTime(ts) {
     if (!ts) return 'Date unknown';
     const d = new Date(ts);
@@ -300,13 +306,21 @@ export function parseTimestamp(ts) {
 
 // --------------------------------------------------------- entry → run fields
 
-// When a report carries no timestamp the parser stamps it with "now"; fall back
-// to when the run was submitted instead of calling it "Today".
+// Prefer the harness's own measurement timestamp when recorded; when a report
+// carries no timestamp the parser stamps it with "now", so fall back to when
+// the run was submitted instead of calling it "Today".
 function entryTs(d) {
+    const harnessTs = parseTimestamp(
+        d.run_metadata?.harness_start ||
+            d.run_metadata?.harness_end ||
+            d.rawReport?.metadata?.timestamp ||
+            d.rawReport?.scenario?.metadata?.timestamp
+    );
+    if (harnessTs) return harnessTs;
     const measured = parseTimestamp(d.timestamp || d.metadata?.timestamp);
     const submitted = parseTimestamp(d.source_info?.submitted_at);
-    if (submitted && (!measured || LOADED_AT - measured < 10 * 60 * 1000)) return Math.min(submitted, measured || submitted);
-    return measured;
+    if (submitted && (!measured || Math.abs(LOADED_AT - measured) < 10 * 60 * 1000)) return Math.min(submitted, measured || submitted);
+    return measured || submitted;
 }
 
 const GENERIC_HW = new Set(['', 'unknown', 'unknown hardware', 'detected hardware', 'tpu', 'gpu', 'n/a', 'none']);
@@ -380,15 +394,28 @@ function reportSetupOf(report) {
 }
 
 // A deployment name from the run label, for stacks that don't label
-// themselves: "run-20260831-tpuv6e-precise-prefix" → "precise-prefix". Tokens
-// with digits (dates, epochs, random suffixes, hardware such as h100 or
-// tpuv6e), a leading "run" and the model's own words are dropped, so nightly
-// repeats of one deployment keep one name and two deployments of one shape
-// ("1 TP1") stop counting as repeats of each other.
+// themselves or whose component labels collide:
+//   "Gemma-4-26B-A4B 1k-1k: llm-d-KV-Events" → "llm-d-KV-Events"
+//   "Gemma-4-26B-A4B 1k-1k autoscaling: Dynamo-SLA" → "autoscaling · Dynamo-SLA"
+//   "run-20260831-tpuv6e-precise-prefix" → "precise-prefix"
+// Date/epoch numbers, workload tokens (1k, 8k), hardware tokens (h100, tpuv6e)
+// and the model's own words are dropped so nightly repeats of one deployment
+// keep one name while distinct stacks never collapse into repeats.
+const NOISE_LABEL_TOKEN = /^(\d+|\d+k|[bhla]\d+|tpu\w*|gpu\w*|mi\d+\w*|gb\d+\w*|tp\d+|pp\d+|dp\d+|ep\d+|[0-9a-f]{7,})$/;
 export function variantFromRunLabel(label, model = '') {
+    const raw = String(label || '').trim();
+    if (!raw) return null;
+    const colon = raw.indexOf(':');
+    if (colon >= 0) {
+        const before = raw.slice(0, colon).trim();
+        const after = raw.slice(colon + 1).trim();
+        if (after) {
+            return /\bautoscal\w*/i.test(before) && !/\bautoscal\w*/i.test(after) ? `autoscaling · ${after}` : after;
+        }
+    }
     const words = (s) => String(s || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
     const modelWords = new Set(words(model));
-    const kept = words(label).filter((t, i) => !/\d/.test(t) && !(i === 0 && t === 'run') && !modelWords.has(t));
+    const kept = words(raw).filter((t, i) => !NOISE_LABEL_TOKEN.test(t) && !(i === 0 && t === 'run') && !modelWords.has(t));
     return kept.length ? kept.join('-') : null;
 }
 
@@ -736,12 +763,20 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
         const harness = harnessOf(d0);
         const category = categoryOf(d0);
         const stack = reportSetupOf(d0.rawReport);
-        // An unlabelled stack is only a shape ("1 TP1"); the run label names
-        // the deployment, e.g. precise-prefix vs standard-k8s on the same shape.
-        const variant = stack && !stack.detail ? variantFromRunLabel(d0.runLabel, model) : null;
-        const setup = setupOf(d0) || (variant ? `${variant} (${stack.setup})` : stack?.setup) || null;
+        const rawRunLabel = d0.runLabel || d0.metadata?.label || d0.rawReport?.metadata?.label || null;
+        const variant = variantFromRunLabel(rawRunLabel, model);
+        const explicitSetup = setupOf(d0);
+        const baseSetup = explicitSetup || stack?.setup || null;
+        const normToken = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const hasColonVariant = Boolean(variant && String(rawRunLabel || '').includes(':') && (!baseSetup || !normToken(baseSetup).includes(normToken(variant))));
+        // An unlabelled stack is only a shape ("1 TP1"), and a colon run label
+        // ("Model 1k-1k: llm-d-KV-Events") names the variant under test even
+        // when the stack component label is generic ("vllm-gemma-4-26b-a4b").
+        const useVariantNow = Boolean(variant && ((!explicitSetup && stack && !stack.detail) || hasColonVariant));
+        const setup = explicitSetup || (useVariantNow ? (baseSetup ? `${variant} (${baseSetup})` : variant) : baseSetup || variant) || null;
         const engine = engineOf(d0);
         const ts = Math.max(0, ...list.map(entryTs));
+        const submittedAt = parseTimestamp(d0.source_info?.submitted_at) || null;
         const measuredWorkload = wl.measured.isl && wl.measured.osl ? `${wl.measured.isl}/${wl.measured.osl}` : '';
 
         runs.push({
@@ -772,11 +807,13 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             sourceRaw: String(d0.source || 'local'),
             category,
             setup,
+            variant,
             setupDetail: setup === stack?.setup ? stack?.detail || null : variant && setup?.startsWith(variant) ? `${setup}, named from the run label` : null,
             // The uploader's own name for the run ("run-20260831-h100-standard-k8s").
-            runLabel: d0.runLabel ? String(d0.runLabel) : null,
+            runLabel: rawRunLabel ? String(rawRunLabel) : null,
             batch: batchOf(d0),
             ts,
+            submittedAt,
             author: handleOf(d0.github_author),
             submissionState,
             feedback: sub?.feedback || '',
@@ -795,13 +832,32 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
             // Uploads can set raw_url themselves, so only http(s) and this site's
             // own paths (/results/…) become a link, never a script URL.
             rawUrl: [d0._raw?.source_info?.raw_url, d0.source_info?.raw_url, d0.raw_url].find((u) => typeof u === 'string' && /^(https?:\/\/|\/(?!\/))/i.test(u.trim())) || null,
-            searchText: [d0.model_name, harness, src.label, category, setup, stack?.detail, engine, runId, d0.runLabel, measuredWorkload, handleOf(d0.github_author)]
+            searchText: [d0.model_name, harness, src.label, category, setup, variant, stack?.detail, engine, runId, rawRunLabel, measuredWorkload, handleOf(d0.github_author)]
                 .filter(Boolean)
                 .join(' ')
                 .toLowerCase(),
         });
     });
     unifyWorkloads(runs);
+    // When deployment labels collide across runs of one model, hardware and
+    // workload while their run labels carry distinct variants, disambiguate
+    // the setup from the run label so different stacks don't collapse into repeats.
+    const bySetupSlot = new Map();
+    runs.forEach((r) => {
+        const slot = [r.model.toLowerCase(), r.hwLabel.toLowerCase(), r.workload, r.harness.toLowerCase(), (r.setup || '').toLowerCase()].join('|');
+        if (!bySetupSlot.has(slot)) bySetupSlot.set(slot, []);
+        bySetupSlot.get(slot).push(r);
+    });
+    bySetupSlot.forEach((group) => {
+        const variants = new Set(group.map((r) => (r.variant || '').toLowerCase()).filter(Boolean));
+        if (variants.size > 1) {
+            group.forEach((r) => {
+                if (!r.variant || String(r.setup || '').toLowerCase().startsWith(r.variant.toLowerCase())) return;
+                r.setup = r.setup ? `${r.variant} (${r.setup})` : r.variant;
+                r.setupDetail = `${r.setup}, named from the run label`;
+            });
+        }
+    });
     // Titles name the setup too: two setups of one model, hardware and
     // workload (a baseline and the optimization under test) never share one.
     runs.forEach((r) => {
@@ -1274,6 +1330,27 @@ export function loadChecks(included) {
     return out;
 }
 
+// Point keys flagged as overloaded (saturation or error rate >= ERROR_LIMIT_PCT),
+// so Compare and reports can compute healthy peaks and mark overloaded peaks "not comparable".
+export function overloadedKeys(points) {
+    const keys = new Set(
+        loadChecks(points)
+            .filter((c) => c.id?.startsWith('sat-') && c.fix?.pointKey)
+            .map((c) => c.fix.pointKey)
+    );
+    points.forEach((p) => {
+        const pct = isNum(p.errPct) ? p.errPct : isNum(p.errRate) ? p.errRate * 100 : 0;
+        if (pct >= ERROR_LIMIT_PCT && p.key) keys.add(p.key);
+    });
+    return keys;
+}
+
+export function healthyPoints(points) {
+    const sat = overloadedKeys(points);
+    if (!sat.size) return points;
+    return points.filter((p) => !sat.has(p.key));
+}
+
 export function curveChecks(curve) {
     const out = [];
     const included = curve.points.filter((p) => p.included);
@@ -1441,9 +1518,10 @@ export function watchValue(points, watch) {
 export const WATCH_TTFT_SPIKE_PCT = 20;
 
 // One value per batch (newest sweep, nightly repeat, …) against the pinned
-// baseline. A drop past the threshold (e.g. -5%) is flagged; when `watch.guard`
-// is enabled, a TTFT spike (+20% at the watched point) or request failure rate
-// ≥ 5% is also flagged.
+// baseline. A drop past the threshold (e.g. -5%) or a TTFT spike (+20% at the
+// watched point) is a regression; request failure rate ≥ 5% is tracked
+// separately as an unhealthy batch so a healthy-throughput run with failed
+// requests isn't counted as a throughput regression.
 //
 // Batches are measured over the concurrency levels the baseline includes.
 // Otherwise excluding an overloaded c=256 from the baseline would make every
@@ -1473,11 +1551,14 @@ export function watchSeries(rows, refPoints, watch) {
             const tputFlagged = !isRef && delta <= watch.threshold;
             const ttftFlagged = !isRef && guard && isNum(ttftDelta) && ttftDelta >= ttftLimitPct;
             const errFlagged = !isRef && guard && maxErrPct >= ERROR_LIMIT_PCT;
-            const flagReasons = [
+            const regressed = tputFlagged || ttftFlagged;
+            const unhealthy = errFlagged && !regressed;
+            const regressionReasons = [
                 tputFlagged ? `output ${fmtPct(delta)}` : null,
-                ttftFlagged ? `TTFT +${ttftDelta.toFixed(1)}%` : null,
-                errFlagged ? `${maxErrPct.toFixed(1)}% failed` : null,
+                ttftFlagged ? `TTFT p50 +${ttftDelta.toFixed(1)}%` : null,
             ].filter(Boolean);
+            const healthReasons = errFlagged ? [`${maxErrPct.toFixed(1)}% failed`] : [];
+            const flagReasons = [...regressionReasons, ...healthReasons];
             out.push({
                 key: `${row.key}#${i}`,
                 ts: rep.ts,
@@ -1495,8 +1576,13 @@ export function watchSeries(rows, refPoints, watch) {
                 tputFlagged,
                 ttftFlagged,
                 errFlagged,
+                regressed,
+                unhealthy,
+                regressionReasons,
+                healthReasons,
                 flagReasons,
-                flagged: tputFlagged || ttftFlagged || errFlagged,
+                // `flagged` tracks true performance regressions (throughput drop or TTFT spike).
+                flagged: regressed,
                 isRef,
                 // Baseline levels this batch didn't measure (e.g. a sweep that stopped early).
                 missing: watch.atConc == null ? [...refConcs].filter((c) => !all.some((q) => q.conc === c)).sort((a, b) => a - b) : [],
@@ -1574,14 +1660,15 @@ const PLACEHOLDERS = new Set(['model not recorded', 'not recorded', 'benchmark r
 const recorded = (v) => (v == null || PLACEHOLDERS.has(String(v).trim().toLowerCase()) ? '' : v);
 
 // What a series measured, for checking a comparison is like-for-like. ''
-// where it wasn't recorded.
+// where it wasn't recorded. Falls back to the run's variant / label when
+// deployment labels aren't recorded or collide.
 export function runsConfig(runs) {
     const pick = (get) => mostCommon(runs.map((r) => recorded(get(r)))) ?? '';
     return {
         model: pick((r) => r.model),
         accelerator: pick((r) => r.hardware),
         chips: pick((r) => (r.hardware ? r.accelCount : null)),
-        setup: pick((r) => r.setup),
+        setup: pick((r) => r.setup || r.variant || r.runLabel),
         workload: pick((r) => r.workload),
         harness: pick((r) => r.harness),
         engine: pick((r) => r.engine),
@@ -1682,27 +1769,35 @@ export function rankBaselines(options, target, { limit = 60 } = {}) {
 }
 
 // Reports price a result where it's usable, not at an overloaded peak: by
-// default at the highest-throughput point whose TTFT is at most this.
+// default at the highest-throughput point whose TTFT p50 is at most this.
 export const OPERATING_TTFT_MS = 2000;
 
-// A limit as people say it: 2000 → "2 s", 1500 → "1.5 s". "TTFT ≤ 2 s" reads
-// the same in Browse, Compare, Watches and a report's Price at.
+// A limit as people say it: 2000 → "2 s", 1500 → "1.5 s". "TTFT p50 ≤ 2 s"
+// names the statistic explicitly in Browse, Compare, Watches and Price at.
 export const secondsLabel = (ms) => `${Number((ms / 1000).toFixed(2))} s`;
-export const limitLabel = (ms = OPERATING_TTFT_MS) => `TTFT ≤ ${secondsLabel(ms)}`;
+export const limitLabel = (ms = OPERATING_TTFT_MS, stat = 'p50') => `TTFT${stat ? ` ${stat}` : ''} ≤ ${secondsLabel(ms)}`;
 
 // The point a report prices. `limit` is a TTFT limit in ms, or 'peak' for the
-// highest throughput however slow. Returns { point, reason, fastest }: with no
-// point, reason is 'no-points', 'no-ttft' (nothing recorded TTFT) or
+// highest throughput however slow. `stat` defaults to null (p50 with mean/p99
+// fallback via p.ttft) or a specific statistic ('p50', 'p99', 'mean').
+// Returns { point, reason, fastest, statUsed }: with no point, reason is
+// 'no-points', 'no-ttft' (nothing recorded that TTFT statistic) or
 // 'over-limit' (every point is slower, and `fastest` is the quickest one).
-export function pricingPoint(points, limit = OPERATING_TTFT_MS) {
+export function pricingPoint(points, limit = OPERATING_TTFT_MS, stat = null) {
     const usable = points.filter((p) => isNum(p.output));
-    if (!usable.length) return { point: null, reason: 'no-points', fastest: null };
-    if (limit === 'peak') return { point: nearestPoint(usable, null), reason: null, fastest: null };
-    const timed = usable.filter((p) => isNum(p.ttft));
-    if (!timed.length) return { point: null, reason: 'no-ttft', fastest: null };
-    const within = timed.filter((p) => p.ttft <= limit);
-    if (!within.length) return { point: null, reason: 'over-limit', fastest: timed.reduce((a, b) => (b.ttft < a.ttft ? b : a)) };
-    return { point: nearestPoint(within, null), reason: null, fastest: null };
+    if (!usable.length) return { point: null, reason: 'no-points', fastest: null, statUsed: stat || 'p50' };
+    if (limit === 'peak') return { point: nearestPoint(usable, null), reason: null, fastest: null, statUsed: stat || 'p50' };
+    const valOf = (p) => (stat ? latencyValue(p, 'ttft', stat) : p.ttft);
+    const timed = usable.filter((p) => isNum(valOf(p)));
+    if (!timed.length) return { point: null, reason: 'no-ttft', fastest: null, statUsed: stat || 'p50' };
+    const within = timed.filter((p) => valOf(p) <= limit);
+    if (!within.length) {
+        const fastest = timed.reduce((a, b) => (valOf(b) < valOf(a) ? b : a));
+        return { point: null, reason: 'over-limit', fastest, statUsed: stat || 'p50' };
+    }
+    const chosen = nearestPoint(within, null);
+    const statUsed = stat || (chosen && isNum(chosen.ttftP50) ? 'p50' : chosen && isNum(chosen.ttftMean) ? 'mean' : 'p99');
+    return { point: chosen, reason: null, fastest: null, statUsed };
 }
 
 export const ACCELERATOR_SUGGESTIONS = ['H100', 'H200', 'B200', 'A100', 'L4', 'MI300X', 'TPU v5e', 'TPU v6e', 'TPU v7'].flatMap((hw) =>

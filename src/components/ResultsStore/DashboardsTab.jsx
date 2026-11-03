@@ -52,7 +52,7 @@ import { loadCustomPricingRates } from '../../utils/pricingEngine';
 import { CurveChart, MetricToggles } from './CurveChart';
 import { fileSlug, mdTable, toCsv } from './exporters';
 import { resultStatusLabel } from './instance';
-import { ExportActions, Notice, ResultStatusChip } from './parts';
+import { CopyButton, ExportActions, Notice, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
 import { useWorkspace } from './workspaceContext';
 import {
@@ -88,6 +88,7 @@ import {
     watchRefPoints,
     watchRuns,
     watchSeries,
+    watchSummary,
     watchValue,
 } from './catalog';
 
@@ -500,18 +501,6 @@ function WatchTooltip({ active, payload, whenOf = fmtDay }) {
     );
 }
 
-// Live status summary of a watch for its header chip and the left sidebar.
-function watchSummary(watch, runs, runsByKey, getCurve) {
-    const refPoints = watchRefPoints(watch, getCurve);
-    const matching = watchRuns(watch, runs, { getCurve, runsByKey });
-    const matchingRows = buildRows(matching);
-    const series = watchSeries(matchingRows, refPoints, watch);
-    const regressed = series.filter((s) => s.regressed);
-    const unhealthy = series.filter((s) => s.unhealthy);
-    const waiting = !regressed.length && !unhealthy.length && (series.length < 2 || series.every((s) => s.isRef));
-    return { series, regressedCount: regressed.length, unhealthyCount: unhealthy.length, waiting };
-}
-
 function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
     const ws = useWorkspace();
     const [editing, setEditing] = useState(false);
@@ -661,6 +650,10 @@ function WatchView({ watch, runs, runsByKey, nav, onDelete, headingId }) {
                     <p className="mt-2 text-xs text-zinc-600">
                         Baseline: <span className="font-medium text-zinc-900">{watch.ref?.name}</span> · {metricLabel} · flag drops of {watch.threshold}% or worse
                         {watch.guard ? ' · TTFT p50 +20% & error ≥ 5% guard' : ''}
+                    </p>
+                    <p className="mt-1 text-micro text-zinc-500">
+                        Checked against loaded runs · <span className="font-mono tabular-nums">{series.length}</span> batch{series.length === 1 ? '' : 'es'}
+                        {series.length > 0 ? ` · newest ${whenOf(series[series.length - 1].ts)}` : ''}
                     </p>
                     {watch.atConc == null && refConcs.length > 1 && (
                         <p className="mt-1 text-micro text-zinc-500">
@@ -993,7 +986,18 @@ function mixedSummary(curves) {
     return parts.map(([label, values]) => `${label} (${[...values].join(', ')})`).join(' and ');
 }
 
-const PRICE_SOURCE = { custom: 'Your Leaderboard rate', list: 'GCP list price' };
+const PRICE_SOURCE = {
+    custom: 'Custom override (Leaderboard)',
+    list: 'GCP on-demand list (us-central1)',
+    entered: 'Custom override (Report)',
+};
+
+const TPOT_LIMIT_OPTIONS = [
+    { value: '', label: 'Any TPOT' },
+    { value: '25', label: 'TPOT p50 ≤ 25 ms' },
+    { value: '50', label: 'TPOT p50 ≤ 50 ms' },
+    { value: '100', label: 'TPOT p50 ≤ 100 ms' },
+];
 
 // A result's status in a word, for exports and the Unofficial label's tooltip.
 const STATUS_WORD = { draft: 'Draft', needs_changes: 'Needs changes', in_review: 'In review', declined: 'Declined', superseded: 'Superseded', official: 'Official', published: 'Published' };
@@ -1001,6 +1005,8 @@ const STATUS_WORD = { draft: 'Draft', needs_changes: 'Needs changes', in_review:
 function ReportView({ showcase, copy, nav, onDelete, headingId }) {
     const ws = useWorkspace();
     const [editing, setEditing] = useState(false);
+    const [sortBy, setSortBy] = useState(null);
+    const [sortDir, setSortDir] = useState('asc');
     const hintId = useId();
     const curves = showcase.curveIds.map((id) => ws.getCurve(id)).filter(Boolean);
     // Results that aren't Official / Published yet go in too. They're marked
@@ -1037,8 +1043,10 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
     // Price each result at a usable point by default: its peak can be an
     // overloaded one (a 53 s TTFT) that makes the hardware look cheaper.
     const priceAt = priceOptions.some((o) => o.value === showcase.priceAt) ? showcase.priceAt : OPERATING_TTFT_MS;
+    const maxTpotMs = showcase.maxTpotMs ? Number(showcase.maxTpotMs) : null;
     const atPeak = priceAt === 'peak';
-    const limitLabel = atPeak ? 'Peak' : catalogLimitLabel(priceAt, priceStat);
+    const baseLimitLabel = atPeak ? 'Peak' : catalogLimitLabel(priceAt, priceStat);
+    const limitLabel = maxTpotMs ? `${baseLimitLabel} · TPOT p50 ≤ ${maxTpotMs} ms` : baseLimitLabel;
     const perChip = Boolean(showcase.perChip);
     const tputColLabel = perChip
         ? atPeak
@@ -1053,17 +1061,21 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
         const type = accelTypeOf(c.meta.accelerator);
         const { price, source } = priceOf(type);
         const included = c.points.filter((p) => p.included);
-        const { point, reason, fastest } = pricingPoint(included, priceAt, atPeak ? null : priceStat);
+        const { point, reason, fastest } = pricingPoint(included, priceAt, atPeak ? null : priceStat, maxTpotMs);
         // The count in the result's label: what people see, and may have corrected.
         const chips = chipsOf(c.meta);
         const cpm = costPerMillion(price, chips, point?.output);
         // Say why there's no price rather than fall back to an overloaded point.
         const unpriced =
             reason === 'over-limit'
-                ? [`${nobreak('No point with')} ${nobreak(limitLabel)}`, fastest ? `Fastest:\u00a0${pointLabel(fastest)}` : '']
-                : reason === 'no-ttft'
-                  ? [`TTFT ${priceStat} not recorded`, 'Choose Peak or P50 to price instead.']
-                  : ['No points to price', ''];
+                ? [`${nobreak('No point with')} ${nobreak(baseLimitLabel)}`, fastest ? `Fastest:\u00a0${pointLabel(fastest)}` : '']
+                : reason === 'over-tpot'
+                  ? [`No point with TPOT p50 ≤ ${maxTpotMs} ms`, fastest ? `Fastest TPOT:\u00a0${fmtMs(fastest.tpotP50 ?? fastest.tpot)}` : '']
+                  : reason === 'no-tpot'
+                    ? ['TPOT not recorded', 'Choose Any TPOT to price instead.']
+                    : reason === 'no-ttft'
+                      ? [`TTFT ${priceStat} not recorded`, 'Choose Peak or P50 to price instead.']
+                      : ['No points to price', ''];
         const runIds = [...new Set(included.map((p) => p.runId || p.idLabel || p.runKey).filter(Boolean))].join(', ') || `result:${c.id}`;
         const tss = [...new Set(included.map((p) => p.ts).filter(Boolean))].sort((a, b) => a - b);
         const measured = tss.length ? fmtDate(tss[tss.length - 1]) : c.createdAt ? fmtDate(c.createdAt) : 'not recorded';
@@ -1087,12 +1099,44 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
         };
     });
 
-    const exportRows = rows.map((r) => ({
+    const validCpms = rows.map((r) => r.cpm).filter((v) => Number.isFinite(v) && v > 0);
+    const cheapestCpm = validCpms.length >= 2 ? Math.min(...validCpms) : null;
+
+    const toggleSort = (col, defaultDir = 'asc') => {
+        if (sortBy === col) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+        else {
+            setSortBy(col);
+            setSortDir(defaultDir);
+        }
+    };
+
+    const sortedRows = !sortBy
+        ? rows
+        : [...rows].sort((a, b) => {
+              const dir = sortDir === 'asc' ? 1 : -1;
+              if (sortBy === 'name') return dir * a.c.name.localeCompare(b.c.name);
+              const valOf = (r) => {
+                  if (sortBy === 'chips') return r.chips;
+                  if (sortBy === 'tput') return shownTput(r.point, r.chips);
+                  if (sortBy === 'price') return r.price;
+                  if (sortBy === 'cpm') return r.cpm;
+                  if (sortBy === 'tokPerDollar') return r.cpm != null ? 1e6 / r.cpm : null;
+                  return null;
+              };
+              const va = valOf(a);
+              const vb = valOf(b);
+              if (va == null && vb == null) return 0;
+              if (va == null) return 1;
+              if (vb == null) return -1;
+              return dir * (va - vb);
+          });
+
+    const exportRows = sortedRows.map((r) => ({
         ...r,
         // Exports go into customer documents: the plain status, without the
         // on-screen "· only in this browser" note.
         status: isOfficial(r.c) ? copy.publishedLabel : `${copy.unofficialLabel} (${STATUS_WORD[r.c.status] || r.c.status})`,
-        sourceLabel: r.source === 'entered' ? 'Entered' : PRICE_SOURCE[r.source] || 'not recorded',
+        sourceLabel: PRICE_SOURCE[r.source] || 'not recorded',
         note: r.point ? '' : r.unpriced.filter(Boolean).join('. ').replace(/\u00a0/g, ' '),
     }));
     const csv = () =>
@@ -1127,12 +1171,12 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
             exportRows
         );
     const markdown = [
-        `**${showcase.name}** · cost at ${atPeak ? 'peak throughput' : limitLabel}`,
+        `**${showcase.name}** · cost at ${atPeak && !maxTpotMs ? 'peak throughput' : limitLabel}`,
         showcase.description ? showcase.description : null,
         mixed ? `> **Not like-for-like:** these results use different ${mixed}.` : null,
         unofficial ? `> _${copy.unofficialLabel}: not ${copy.publishedLabel} yet, so its points and labels can still change._` : null,
         mdTable(
-            ['Result', 'Deployment', 'Accelerator', 'Chips', tputColLabel, 'Priced at', '$ / chip-hour', '$ / 1M output tokens', 'Tokens per $'],
+            ['Result', 'Deployment', 'Accelerator', 'Chips', tputColLabel, 'Priced at', '$ / chip-hour (source)', '$ / 1M output tokens', 'Tokens per $'],
             exportRows.map((r) => [
                 isOfficial(r.c) ? r.c.name : `${r.c.name} (${copy.unofficialLabel})`,
                 r.setup,
@@ -1140,8 +1184,8 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                 r.chips,
                 fmtTput(shownTput(r.point, r.chips)),
                 r.point ? pointLabel(r.point).replace(/\u00a0/g, ' ') : r.note,
-                r.price ? `${fmtMoney(r.price)}${r.sourceLabel && r.source !== 'entered' ? ` (${r.sourceLabel})` : ''}` : 'not recorded',
-                r.cpm != null ? fmtMoney(r.cpm) : '—',
+                r.price ? `${fmtMoney(r.price)}${r.sourceLabel ? ` (${r.sourceLabel})` : ''}` : 'not recorded',
+                r.cpm != null ? `${fmtMoney(r.cpm)}${cheapestCpm != null && Math.abs(r.cpm - cheapestCpm) < 1e-9 ? ' (Cheapest)' : ''}` : '—',
                 r.cpm != null ? fmtCount(1e6 / r.cpm) : '—',
             ]),
             ['l', 'l', 'l', 'r', 'r', 'l', 'r', 'r', 'r']
@@ -1152,7 +1196,7 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
             exportRows.map((r) => [r.c.name, r.modelId, r.workload, r.harness, r.engine, r.measured, r.runIds]),
             ['l', 'l', 'l', 'l', 'l', 'l', 'l']
         ),
-        atPeak
+        atPeak && !maxTpotMs
             ? 'Each result is priced at its highest throughput, however slow that point is.'
             : `Each result is priced at its highest throughput with ${limitLabel}.`,
     ]
@@ -1239,9 +1283,9 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                     <Panel
                         variant="editorial"
                         padding="none"
-                        title={atPeak ? 'Cost at peak throughput' : `Cost at ${limitLabel}`}
+                        title={atPeak && !maxTpotMs ? 'Cost at peak throughput' : `Cost at ${limitLabel}`}
                         subtitle={`${
-                            atPeak
+                            atPeak && !maxTpotMs
                                 ? 'Each result is priced at its highest throughput, however slow that point is.'
                                 : `Each result is priced at its highest throughput with ${limitLabel}, so an overloaded point can’t make it look cheaper.`
                         } Your prices and this choice are saved with the report.`}
@@ -1270,6 +1314,22 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                     <span className="text-micro text-zinc-500">Price at</span>
                                     <ToggleGroup size="xs" aria-label="Price at" value={priceAt} onChange={(v) => ws.updateShowcase(showcase.id, { priceAt: v })} options={priceOptions} />
                                 </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-micro text-zinc-500">TPOT limit</span>
+                                    <Select
+                                        surface="light"
+                                        aria-label="Secondary TPOT limit"
+                                        value={showcase.maxTpotMs ? String(showcase.maxTpotMs) : ''}
+                                        onChange={(e) => ws.updateShowcase(showcase.id, { maxTpotMs: e.target.value ? Number(e.target.value) : null })}
+                                        className="w-40 py-1 text-xs"
+                                    >
+                                        {TPOT_LIMIT_OPTIONS.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                            </option>
+                                        ))}
+                                    </Select>
+                                </div>
                             </div>
                         }
                     >
@@ -1277,7 +1337,7 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                             {accelTypes.map((t, idx) => {
                                 const start = listPrice(t, customRates);
                                 const { source } = priceOf(t);
-                                const startLabel = start ? (start.source === 'custom' ? 'your Leaderboard rate' : 'the GCP list price') : '';
+                                const startLabel = start ? (start.source === 'custom' ? 'your Leaderboard rate' : 'GCP on-demand list (us-central1)') : '';
                                 return (
                                     <div key={t} className="space-y-1">
                                         <label className="flex items-center gap-2 text-xs text-zinc-600">
@@ -1298,8 +1358,8 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                         <p id={`${hintId}-${idx}`} className="text-micro text-zinc-500">
                                             {source === 'entered'
                                                 ? start
-                                                    ? `Your price. Clear it to use ${startLabel} (${fmtMoney(start.price)}).`
-                                                    : 'Your price.'
+                                                    ? `Custom override (Report). Clear it to use ${startLabel} (${fmtMoney(start.price)}).`
+                                                    : 'Custom override (Report).'
                                                 : start
                                                   ? `${PRICE_SOURCE[start.source]} for ${start.name}. Enter what you pay to override it.`
                                                   : 'No list price for this accelerator. Enter yours.'}
@@ -1312,68 +1372,108 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                             <table className="w-full text-left text-xs">
                                 <thead className="border-b border-zinc-200 bg-zinc-50/70">
                                     <tr className="label-caps text-zinc-500">
-                                        <th className="px-5 py-3 font-semibold">Result</th>
+                                        <th className="px-5 py-3 font-semibold" aria-sort={sortBy === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('name', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                Result {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
                                         <th className="px-4 py-3 font-semibold">Accelerator</th>
-                                        <th className="px-4 py-3 text-right font-semibold">Chips</th>
-                                        <th className="px-4 py-3 text-right font-semibold">{tputColLabel}</th>
-                                        <th className="px-4 py-3 text-right font-semibold">$ / chip-hour</th>
-                                        <th className="px-4 py-3 text-right font-semibold">$ / 1M output tokens</th>
-                                        <th className="px-4 py-3 text-right font-semibold">Tokens per $</th>
+                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'chips' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('chips', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                Chips {sortBy === 'chips' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
+                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'tput' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('tput', 'desc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                {tputColLabel} {sortBy === 'tput' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
+                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'price' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('price', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                $ / chip-hour {sortBy === 'price' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
+                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'cpm' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('cpm', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                $ / 1M output tokens {sortBy === 'cpm' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
+                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('tokPerDollar', 'desc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                Tokens per $ {sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                            </button>
+                                        </th>
                                         <th className="px-4 py-3">
                                             <span className="sr-only">Actions</span>
                                         </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-zinc-100">
-                                    {rows.map(({ c, i, type, price, point, chips, cpm, unpriced }) => (
-                                        <tr key={c.id}>
-                                            <td className="px-5 py-3">
-                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                    <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(i) }} aria-hidden="true" />
-                                                    <button type="button" onClick={() => nav.openCurve(c.id)} className="text-left font-medium text-zinc-900 hover:text-accent-700">
-                                                        {c.name}
-                                                    </button>
-                                                    {isOfficial(c) ? (
-                                                        <ResultStatusChip status={c.status} copy={copy} size="xs" />
-                                                    ) : (
-                                                        <Badge tone="warning" size="xs" title={`${STATUS_WORD[c.status] || c.status}: not ${copy.publishedLabel} yet`}>
-                                                            {copy.unofficialLabel}
-                                                        </Badge>
+                                    {sortedRows.map(({ c, i, type, price, source, point, chips, cpm, unpriced }) => {
+                                        const isCheapest = cheapestCpm != null && cpm != null && Math.abs(cpm - cheapestCpm) < 1e-9;
+                                        return (
+                                            <tr key={c.id} className={cn(isCheapest && 'bg-emerald-50/30')}>
+                                                <td className="px-5 py-3">
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(i) }} aria-hidden="true" />
+                                                        <button type="button" onClick={() => nav.openCurve(c.id)} className="text-left font-medium text-zinc-900 hover:text-accent-700">
+                                                            {c.name}
+                                                        </button>
+                                                        {isOfficial(c) ? (
+                                                            <ResultStatusChip status={c.status} copy={copy} size="xs" />
+                                                        ) : (
+                                                            <Badge tone="warning" size="xs" title={`${STATUS_WORD[c.status] || c.status}: not ${copy.publishedLabel} yet`}>
+                                                                {copy.unofficialLabel}
+                                                            </Badge>
+                                                        )}
+                                                        {isCheapest && (
+                                                            <Badge tone="success" size="xs">
+                                                                Cheapest
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-zinc-700">{type}</td>
+                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{chips}</td>
+                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900">{fmtTput(shownTput(point, chips))}</td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="font-mono tabular-nums text-zinc-700">{price ? fmtMoney(price) : '—'}</div>
+                                                    {price && source && (
+                                                        <div className="mt-0.5 text-tiny text-zinc-500">
+                                                            {source === 'list' ? 'GCP list' : 'Custom override'}
+                                                        </div>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 text-zinc-700">{type}</td>
-                                            <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{chips}</td>
-                                            <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900">{fmtTput(shownTput(point, chips))}</td>
-                                            {/* Where the price comes from is said once, under its price box above. */}
-                                            <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{price ? fmtMoney(price) : '—'}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                {point ? (
-                                                    <>
-                                                        <div className="font-mono tabular-nums text-zinc-900">{cpm != null ? fmtMoney(cpm) : `Enter a ${type} price`}</div>
-                                                        <div className="mt-0.5 text-tiny text-zinc-500">at {pointLabel(point)}</div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="font-medium text-amber-700">{unpriced[0]}</div>
-                                                        {unpriced[1] && <div className="mt-0.5 text-tiny text-zinc-500">{unpriced[1]}</div>}
-                                                    </>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{cpm != null ? fmtCount(1e6 / cpm) : '—'}</td>
-                                            <td className="py-3 pl-2 pr-4 text-right">
-                                                <button
-                                                    type="button"
-                                                    aria-label={`Remove ${c.name} from this report`}
-                                                    title="Remove from report"
-                                                    onClick={() => ws.removeFromShowcase(showcase.id, c.id)}
-                                                    className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
-                                                >
-                                                    <X className="h-3.5 w-3.5" aria-hidden="true" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    {point ? (
+                                                        <>
+                                                            <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums text-zinc-900">
+                                                                <span>{cpm != null ? fmtMoney(cpm) : `Enter a ${type} price`}</span>
+                                                            </div>
+                                                            <div className="mt-0.5 text-tiny text-zinc-500">at {pointLabel(point)}</div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="font-medium text-amber-700">{unpriced[0]}</div>
+                                                            {unpriced[1] && <div className="mt-0.5 text-tiny text-zinc-500">{unpriced[1]}</div>}
+                                                        </>
+                                                    )}
+                                                </td>
+                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{cpm != null ? fmtCount(1e6 / cpm) : '—'}</td>
+                                                <td className="py-3 pl-2 pr-4 text-right">
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`Remove ${c.name} from this report`}
+                                                        title="Remove from report"
+                                                        onClick={() => ws.removeFromShowcase(showcase.id, c.id)}
+                                                        className="rounded-full p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
+                                                    >
+                                                        <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -1404,18 +1504,49 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
     const all = [...watchesWithStatus, ...ws.showcases.map((s) => ({ ...s, kind: 'showcase' }))];
     const active = all.find((d) => d.id === activeId) || all[0] || null;
 
+    const allWatchesDigest = useMemo(() => {
+        if (!watchesWithStatus.length) return '';
+        const regCount = watchesWithStatus.filter((w) => w.summary.regressedCount > 0).length;
+        const header = `**Watches summary** · ${watchesWithStatus.length} watch${watchesWithStatus.length === 1 ? '' : 'es'} (${regCount} with regressions) · Checked against ${runs.length} loaded runs`;
+        const table = mdTable(
+            ['Watch', 'Setup', 'Metric', 'Batches', 'Latest change', 'Status'],
+            watchesWithStatus.map((w) => {
+                const s = w.summary;
+                const metric = w.limit ? `Output at ${catalogLimitLabel(w.limit, 'p50')}` : w.atConc != null ? `Output at c=${w.atConc}` : 'Peak output';
+                const status = s.regressedCount
+                    ? `${s.regressedCount} regression${s.regressedCount === 1 ? '' : 's'}${s.unhealthyCount ? ` · ${s.unhealthyCount} unhealthy` : ''}`
+                    : s.unhealthyCount
+                      ? `No regressions · ${s.unhealthyCount} unhealthy`
+                      : s.waiting
+                        ? 'Waiting for next batch'
+                        : 'OK';
+                return [
+                    w.name,
+                    w.setupLabel || '—',
+                    metric,
+                    String(s.series.length),
+                    s.latestDelta != null ? fmtPct(s.latestDelta) : '—',
+                    status,
+                ];
+            }),
+            ['l', 'l', 'l', 'r', 'r', 'l']
+        );
+        return `${header}\n\n${table}`;
+    }, [watchesWithStatus, runs.length]);
+
     const item = (d) => {
         const reg = d.summary?.regressedCount || 0;
         const unh = d.summary?.unhealthyCount || 0;
+        const latestPart = !d.summary?.waiting && d.summary?.latestDelta != null ? ` · Latest ${fmtPct(d.summary.latestDelta)}` : '';
         const subText =
             d.kind === 'watch'
-                ? reg > 0
+                ? (reg > 0
                     ? `${reg} regression${reg === 1 ? '' : 's'}${unh > 0 ? ` · ${unh} unhealthy` : ''}`
                     : unh > 0
                       ? `No regressions · ${unh} unhealthy`
                       : d.summary?.waiting
                         ? 'Waiting for next batch'
-                        : 'No regressions'
+                        : 'No regressions') + latestPart
                 : `${d.curveIds.length} result${d.curveIds.length === 1 ? '' : 's'}`;
         return (
             <li key={d.id}>
@@ -1453,7 +1584,13 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                         </Button>
                     </div>
                     {watchesWithStatus.length ? (
-                        <ul className="space-y-1">{watchesWithStatus.map(item)}</ul>
+                        <>
+                            <ul className="space-y-1">{watchesWithStatus.map(item)}</ul>
+                            <div className="mt-2 space-y-1.5 px-3">
+                                <p className="text-micro text-zinc-500">Checked against loaded runs ({runs.length})</p>
+                                <CopyButton text={allWatchesDigest} label="Copy all watches summary" copiedLabel="Copied watches summary" variant="ghost" />
+                            </div>
+                        </>
                     ) : (
                         <p className="px-3 text-micro text-zinc-500">Follows one setup and flags drops against a baseline.</p>
                     )}

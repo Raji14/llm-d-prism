@@ -310,7 +310,8 @@ function dataUrlInfo(value) {
     return { mime: mime || 'text/plain', base64, bytes: base64 ? Math.floor((body * 3) / 4) - padding : body };
 }
 
-function decodeDataUrl(value) {
+// eslint-disable-next-line react-refresh/only-export-components -- shared helper for decoding attached data: URLs in CompareView and Attachments
+export function decodeDataUrl(value) {
     const comma = value.indexOf(',');
     const body = value.slice(comma + 1);
     try {

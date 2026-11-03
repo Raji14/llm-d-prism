@@ -13,11 +13,12 @@
 // limitations under the License.
 
 import React, { useId, useMemo, useState } from 'react';
-import { Database, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Database, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Button, Input, Label, Panel, Spinner, StatusChip, Switch, ToggleGroup } from '../ui';
 import { cn } from '../../utils/cn';
 import { getCanonicalBucketName } from '../../utils/bucketUtils';
 import { LOADED_AT, fmtDay, sourceOf } from './catalog';
+import { CopyButton } from './parts';
 import { sourceHealth } from './sourceHealth';
 
 const BUILT_IN = new Set(['llm-d-benchmarks', 'llm-d-benchmarks-staging']);
@@ -112,14 +113,37 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
     // The source the last Register added: the hook says "Added bucket" even
     // when nothing in it could be read, so the page checks for itself.
     const [registered, setRegistered] = useState(null);
-    const add = () => {
+    const [editingSource, setEditingSource] = useState(null);
+
+    const startEdit = (s) => {
+        const p = s.profile;
+        if (!p) return;
+        setEditingSource({ type: p.type, bucketName: p.bucketName, label: s.label });
+        setConnectionType?.(p.type === 'aws' ? 'aws' : 'gcs');
+        setNewBucketAlias?.(p.alias || s.label || '');
+        setNewBucketName?.(p.bucketName || '');
+        setGcsError?.(null);
+        setGcsSuccess?.(null);
+        document.getElementById('rs-source-name')?.focus();
+    };
+
+    const add = async () => {
         setRegisterTried(true);
         setGcsError?.(null);
         setGcsSuccess?.(null);
-        setRegistered(`${connectionType === 'aws' ? 'aws' : 'gcs'}:${getCanonicalBucketName(newBucketName)}`);
-        return connectionType === 'aws' ? handleAddAWSBucket(newBucketAlias) : handleAddGCSBucket(newBucketAlias);
+        const nextType = connectionType === 'aws' ? 'aws' : 'gcs';
+        const nextBucket = getCanonicalBucketName(newBucketName);
+        if (editingSource && (editingSource.type !== nextType || editingSource.bucketName !== nextBucket)) {
+            if (editingSource.type === 'gcs') removeGCSBucket?.(editingSource.bucketName);
+            else removeAWSBucket?.(editingSource.bucketName);
+        }
+        setEditingSource(null);
+        setRegistered(`${nextType}:${nextBucket}`);
+        return nextType === 'aws' ? handleAddAWSBucket(newBucketAlias) : handleAddGCSBucket(newBucketAlias);
     };
     const addedEmpty = registered ? sources.find((s) => s.key === registered && s.profile && !s.profile.loading && !s.profile.error && s.runs === 0) : null;
+    const sampleBucket = getCanonicalBucketName(newBucketName) || 'my-benchmark-bucket';
+    const gcloudCmd = `gcloud storage buckets add-iam-policy-binding gs://${sampleBucket} --member=allUsers --role=roles/storage.objectViewer`;
 
     return (
         <div className="space-y-6">
@@ -146,9 +170,7 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                                 <th className="px-4 py-3 font-semibold">Newest run</th>
                                 <th className="px-4 py-3 font-semibold">Health</th>
                                 <th className="px-4 py-3 font-semibold">Show in Browse</th>
-                                <th className="px-4 py-3">
-                                    <span className="sr-only">Actions</span>
-                                </th>
+                                <th className="px-4 py-3 text-right font-semibold">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-100">
@@ -158,6 +180,7 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                                 const shown = isShown(s.key);
                                 const only = Math.min(s.runs, uniqueRuns?.get(s.key) ?? s.runs);
                                 const health = sourceHealth(s, LOADED_AT);
+                                const accessDenied = health.status === 'failed' && /access denied/i.test(health.note || '');
                                 return (
                                     <tr key={s.key} className={cn(!shown && 'bg-zinc-50/70')}>
                                         <td className="px-5 py-3">
@@ -177,7 +200,13 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                                         <td className="px-4 py-3 text-zinc-700">{s.newest ? fmtDay(s.newest) : '—'}</td>
                                         <td className="px-4 py-3">
                                             <StatusChip status={health.status} size="xs" label={health.label} />
-                                            {health.note && <div className="mt-1 max-w-[220px] text-tiny text-zinc-500">{health.note}</div>}
+                                            {health.note && <div className="mt-1 max-w-[240px] text-tiny text-zinc-500">{health.note}</div>}
+                                            {accessDenied && p?.type === 'gcs' && (
+                                                <div className="mt-1 max-w-[260px] text-tiny text-amber-800">
+                                                    Grant <span className="font-mono">roles/storage.objectViewer</span> (<span className="font-mono">storage.objects.list</span> &amp;{' '}
+                                                    <span className="font-mono">storage.objects.get</span>) on <span className="font-mono">gs://{p.bucketName}</span>.
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="px-4 py-3">
                                             <Switch
@@ -188,16 +217,42 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                                             />
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            {removable && (
-                                                <Button
-                                                    size="xs"
-                                                    variant="ghost"
-                                                    aria-label={`Remove ${s.label}`}
-                                                    onClick={() => (p.type === 'gcs' ? removeGCSBucket(p.bucketName) : removeAWSBucket(p.bucketName))}
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                                                </Button>
-                                            )}
+                                            <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                                                {p && (
+                                                    <Button
+                                                        size="xs"
+                                                        variant={health.status === 'failed' ? 'secondary' : 'ghost'}
+                                                        disabled={syncing || p.loading}
+                                                        aria-label={`Retry sync for ${s.label}`}
+                                                        onClick={onSyncAll}
+                                                    >
+                                                        <RefreshCw className="h-3 w-3" aria-hidden="true" />
+                                                        Retry
+                                                    </Button>
+                                                )}
+                                                {removable && (
+                                                    <>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="ghost"
+                                                            aria-label={`Edit ${s.label}`}
+                                                            onClick={() => startEdit(s)}
+                                                        >
+                                                            <Pencil className="h-3 w-3" aria-hidden="true" />
+                                                            Edit
+                                                        </Button>
+                                                        <Button
+                                                            size="xs"
+                                                            variant="ghost"
+                                                            aria-label={`Remove ${s.label}`}
+                                                            onClick={() => (p.type === 'gcs' ? removeGCSBucket(p.bucketName) : removeAWSBucket(p.bucketName))}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                                                            Remove
+                                                        </Button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -209,7 +264,7 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
 
             <Panel
                 variant="editorial"
-                title="Register a source"
+                title={editingSource ? `Edit source: ${editingSource.label}` : 'Register a source'}
                 titleAs="h2"
                 subtitle="Point Prism at a pipeline bucket once. New runs sync automatically. For now it’s saved in this browser, so other admins won’t see it yet."
             >
@@ -248,10 +303,25 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                             onKeyDown={(e) => e.key === 'Enter' && newBucketName && add()}
                         />
                     </div>
-                    <Button size="sm" onClick={add} disabled={gcsLoading || !newBucketName} isLoading={gcsLoading}>
-                        {!gcsLoading && <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
-                        Register
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {editingSource && (
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                    setEditingSource(null);
+                                    setNewBucketAlias?.('');
+                                    setNewBucketName?.('');
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                        )}
+                        <Button size="sm" onClick={add} disabled={gcsLoading || !newBucketName} isLoading={gcsLoading}>
+                            {!gcsLoading && <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
+                            {editingSource ? 'Save source' : 'Register'}
+                        </Button>
+                    </div>
                 </div>
                 {/* Always in the page, so what Register reports is read out when it appears. */}
                 <div aria-live="polite">
@@ -262,6 +332,27 @@ export function SourcesTab({ runs, uniqueRuns, dashboardData, onSyncAll, syncing
                         </p>
                     ) : (
                         registerTried && gcsSuccess && <p className="mt-3 text-xs text-emerald-700">{gcsSuccess}</p>
+                    )}
+                </div>
+                <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 text-xs text-zinc-700">
+                    <div className="label-caps text-zinc-500">Required bucket permissions</div>
+                    {connectionType === 'aws' ? (
+                        <p className="mt-1">
+                            Grant read access (<span className="font-mono">s3:ListBucket</span> on the bucket and <span className="font-mono">s3:GetObject</span> on{' '}
+                            <span className="font-mono">arn:aws:s3:::{sampleBucket}/*</span>) so Prism can discover and fetch benchmark reports.
+                        </p>
+                    ) : (
+                        <div className="mt-1 space-y-2">
+                            <p>
+                                Grant <span className="font-mono font-medium text-zinc-900">roles/storage.objectViewer</span> (requires both{' '}
+                                <span className="font-mono">storage.objects.list</span> to discover reports and <span className="font-mono">storage.objects.get</span> to read them) to the Prism
+                                server service account or <span className="font-mono">allUsers</span> for public buckets:
+                            </p>
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 font-mono text-tiny text-zinc-800">
+                                <span className="truncate">{gcloudCmd}</span>
+                                <CopyButton text={gcloudCmd} label="Copy gcloud command" size="xs" />
+                            </div>
+                        </div>
                     )}
                 </div>
             </Panel>

@@ -353,23 +353,23 @@ sequenceDiagram
     end
 ```
 
-1. **Start from a Sweep**: In **Browse**, locate an auto-grouped card in the **Sweeps** strip and click **Edit** (or select multiple single-point runs in the list and click **Make result**).
-2. **Curate Points**: In **Result Editor (`CurveEditor`)**, inspect the **Points** list (in load order: `c=N` or `N req/s`) and the **Checks** panel. If a stage had `> 5%` failed requests, looks overloaded (latency up 5× or more for little extra throughput), or is out of line with the next heavier stage, click the 1-click **Exclude point** action in the check row.
+1. **Start from a Sweep or Uploaded Runs**: In **Browse**, locate an auto-grouped card in the **Sweeps** strip and click **Edit** (or select multiple single-point runs in the list and click **Make result**). In **My work**, contributors can also click **Combine N runs into 1 Result** directly from the `Uploaded runs` header, and see an upfront 3-step progression (`1. Upload runs → 2. Curate result → 3. Submit for review`) and GitHub sign-in prompt before starting curation.
+2. **Curate Points & Export Curves**: In **Result Editor (`CurveEditor`)**, inspect the **Points** list (in load order: `c=N` or `N req/s`) and the **Checks** panel. If a stage had `> 5%` failed requests, looks overloaded (latency up 5× or more for little extra throughput), or is out of line with the next heavier stage, click the 1-click **Exclude point** action in the check row. Use the chart's **SVG** or **PNG** download actions (`CurveChart`) to export a self-contained figure with title, target SLO subtitle, legend, and provenance footer.
 3. **Refine Metadata**: Standardize the `Model`, `Hardware` (including `×N` chip count), `Workload`, and `Category` labels, and use **Add baseline** to overlay an existing published Result as a dashed curve.
 4. **Publish**:
    - On an **Internal** instance: an approver (signed in and an admin) clicks **Mark official** to publish immediately (`v1`). Anyone else keeps a draft, which they can still compare and add to reports (marked `Unofficial`).
-   - On a **Public** instance: click **Submit for review**, complete the **DCO 1.1** sign-off and the `Once approved` choice (`Listed in the store` vs `Link only`) in `PublishDialog`, and track progress in **My results**. Until Results are stored on the server, reviewers see only the uploaded runs that reached the server queue; the toast, the editor's In review banner and the My work timeline all say which (§3.7.3). A declined Result can be reopened as a draft, fixed and submitted again.
+   - On a **Public** instance: click **Submit for review**, complete the **DCO 1.1** sign-off and the `Once approved` choice (`Listed in the store` vs `Anyone with the link`) in `PublishDialog`, and track progress in **My results**. Until Results are stored on the server, reviewers see only the uploaded runs that reached the server queue; the toast, the editor's In review banner and the My work timeline all say which (§3.7.3). A declined Result can be reopened as a draft, fixed and submitted again.
 
 ---
 
 ### CUJ 3: Solutions Architect / Config Tuner — Build a Price/Performance Sizing Report
 
-> **Persona Goal**: Compare candidate serving stacks under a customer latency SLO (`TTFT ≤ 2s`) and produce a cost-per-million-tokens table.
+> **Persona Goal**: Compare candidate serving stacks under a customer latency SLO (`TTFT p50 ≤ 2 s`) and produce a cost-per-million-tokens table.
 
-1. **Assemble Report**: From **Compare** (any runs, sweeps or Results) or the **Result Editor** (any status), click **Add to report**. Nothing has to be published first: Results that aren't Official are marked `Unofficial` in the report. (`+ New` under **Report** creates an empty report to add to.)
-2. **Set Latency SLO Target**: In **ReportView**, set **Price at** to `TTFT ≤ 1s`, `TTFT ≤ 2s`, `TTFT ≤ 5s`, or `Peak`. Each Result is evaluated at its highest-throughput concurrency point that satisfies the latency bound.
-3. **Review or Override Hardware Rates**: Each accelerator's `$/chip-hr` input is pre-filled from the user's Leaderboard custom prices or the `pricingEngine` GCP list price (with source attribution). Override any rate to reflect customer committed-use discounts.
-4. **Export Deliverable**: Inspect `$/1M output tokens` and `Tokens per $` across stacks, then click **Download CSV** or **Copy as Markdown** to include in a customer sizing document.
+1. **Compare & Inspect Inline Cost / Diff**: In **Compare (`CompareView`)**, inspect the **Sweep-space decision summary** card (`Best output`, `Best per-chip`, `Lowest cost (Cheapest)`), inline `$/1M tok` column with editable `$/chip-hr` rates, repeat batch sample size (`n=k`) and throughput `spread min–max tok/s`, and the **Configuration & harness diff** panel (`Differences` vs `All fields`, plus line-by-line YAML/JSON config diff against the baseline).
+2. **Assemble Report**: From **Compare** (including **Add all N to report**) or the **Result Editor** (any status), click **Add to report**. Nothing has to be published first: Results that aren't Official are marked `Unofficial` in the report. (`+ New` under **Report** creates an empty report to add to.)
+3. **Set Latency & TPOT SLO Targets**: In **ReportView**, set **Price at** to `TTFT p50 ≤ 1 s`, `≤ 2 s`, `≤ 3 s`, `≤ 5 s`, or `Peak`, and optionally apply a secondary **TPOT limit** (`Any TPOT`, `TPOT p50 ≤ 25 ms`, `≤ 50 ms`, `≤ 100 ms`). Each Result is evaluated at its highest-throughput concurrency point that satisfies both bounds.
+4. **Review or Override Hardware Rates & Sort**: Each accelerator's `$/chip-hr` input is pre-filled from the user's Leaderboard custom prices or the `pricingEngine` GCP on-demand list price (`GCP on-demand list (us-central1)` vs `Custom override`). Sort by any column (`Result`, `Chips`, `Output`, `$ / chip-hour`, `$ / 1M output tokens`, `Tokens per $`), inspect the `<Badge tone="success">Cheapest</Badge>` callout, and click **Download CSV** or **Copy as Markdown** to include in a customer sizing document.
 
 ---
 
@@ -378,8 +378,8 @@ sequenceDiagram
 > **Persona Goal**: Track a production setup across nightly batches and triage throughput drops against a known-good baseline.
 
 1. **Create Watch**: Search or filter **Browse** until one setup is left and click **Watch this setup** (with several left, **Watch a setup…** asks which, offering only the setups that match), or click **Watch this setup** on any `RunDetail` page or `CurveEditor` page (drafts included).
-2. **Configure Threshold**: In `NewWatchDialog`, choose the baseline (an Official / Published Result, the draft Result the watch was started from, the newest batch, or any older batch pinned as known-good), the metric (`Output at TTFT ≤ 2 s`, the default when the baseline has a point that fast; `Peak output throughput`; or `Output at c=N`), the threshold (`-3%`, `-5%`, `-10%`, `-15%`), and whether to also flag TTFT spikes and failed requests. A line under the metric says what it measures.
-3. **Inspect Trend & Triage**: In **Watches & reports** → `WatchView`, inspect the `Change vs. baseline` trend line and batch table; the watch re-checks each time it's opened. Any batch dropping below `-X%` is badged `Flagged`. Click **Compare with baseline** on its row (emphasised when flagged) to open the batch beside its baseline in `CompareView`, or click its run count to open `RunDetail` / `CompareView`.
+2. **Configure Threshold**: In `NewWatchDialog`, choose the baseline (an Official / Published Result, the median of earlier batches, any older batch pinned as known-good, or the newest batch with an explicit self-comparison warning), the metric (`Output at TTFT p50 ≤ 2 s`, the default when the baseline has a point that fast; `Peak output throughput`; or `Output at c=N`), the threshold (`-3%`, `-5%`, `-10%`, `-15%`), and whether to also flag TTFT p50 spikes (`+20%`) and failed requests (`≥ 5%`).
+3. **Inspect Trend & Triage**: The top-level `Watches & reports` tab displays the count of regressed watches (`Watches & reports (N regressed)`), and the sidebar lists each watch with its status, latest batch delta (`Latest -28.4%`), `"Checked against loaded runs"` freshness line, and a **Copy all watches summary** digest button. In `WatchView`, inspect the `Change vs. baseline` trend line and batch table; click **Compare with baseline** on any row to open the batch beside its baseline in `CompareView`.
 
 ---
 
@@ -390,7 +390,7 @@ sequenceDiagram
 1. **Open Queue**: Navigate to **Review queue** (`?tab=review`), which lists pending submissions oldest-first with automated check summaries.
 2. **Inspect Submission**: Click **Review** to open `ReviewDetail`. Check the DCO line (who signed and when, and whether it will be listed or link-only), compare the submitted curve against existing published results on the overlay chart (toggling `Mean | P50 | P99` and `Per chip`), and review `Metadata` (edited labels flagged), `Validation signals`, `Lineage & attribution`, and `Configs & logs` (the files uploaded with the runs, previewable in place).
 3. **Record Decision**:
-   - Click **Approve** to promote the Result to `Published`, listed or link-only as the author chose.
+   - Click **Approve** to promote the Result to `Published`, listed or link-only as the author chose (with an **Undo approval** banner immediately after approving).
    - Or click **Request changes** / **Decline**, select one or more structured reason chips (`Configs or logs missing`, `Failed requests over 5%`, etc.), add reviewer notes, and submit so the author sees the actionable feedback in **My results** → `Needs changes`. A declined author can reopen the Result as a draft and resubmit.
 
 ---
@@ -399,9 +399,9 @@ sequenceDiagram
 
 > **Persona Goal**: Connect GCS/S3 benchmark buckets, monitor ingestion health, and control which sources appear in Browse.
 
-1. **Inspect Health**: Open **Sources** (`?tab=sources`) to view each bucket's run count, newest run timestamp, and health badge (`Synced`, `Stale`, `No runs`, `Sync failed`, `Syncing`, `Not synced`; §3.6).
+1. **Inspect Health & Manage Sources**: Open **Sources** (`?tab=sources`) to view each bucket's run count, newest run timestamp, and health badge (`Synced`, `Stale`, `No runs`, `Sync failed`, `Syncing`, `Not synced`; §3.6). Each row provides **Retry** (when failed), **Edit**, and **Remove** actions for registered sources, plus inline IAM guidance when a bucket returns `403 / access denied`.
 2. **Control Visibility**: Toggle **Show in Browse** (`role="switch"`) on any source to hide noisy or staging buckets from the default catalog without deleting their runs. Watches that use its runs keep working.
-3. **Register Bucket**: In **Register a source**, select `GCS` or `S3`, enter a display name and bucket/prefix URI, and click **Register**. If Prism can't read any benchmark reports from it, the form says so in amber and its Health reads `No runs`.
+3. **Register or Edit Bucket with IAM Guidance**: In **Register a source** (or **Edit source**), select `GCS` or `S3`, enter a display name and bucket/prefix URI, review the **Required bucket permissions** box (`roles/storage.objectViewer` / `gcloud storage buckets add-iam-policy-binding` for GCS; `s3:ListBucket` & `s3:GetObject` for S3), and click **Register** / **Save source**.
 
 ---
 

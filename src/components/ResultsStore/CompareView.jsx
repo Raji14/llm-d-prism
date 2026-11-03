@@ -14,16 +14,20 @@
 
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { ExternalLink, LayoutDashboard, Share2, Sparkles, X } from 'lucide-react';
-import { Button, ChartContainer, EmptyState, Select, getSeriesShape, seriesColor } from '../ui';
+import { Badge, Button, ChartContainer, EmptyState, Input, Panel, Select, ToggleGroup, getSeriesShape, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { BackButton, BaselinePicker, ExportActions, Notice, ResultStatusChip } from './parts';
+import { BackButton, BaselinePicker, ExportActions, Notice, ResultStatusChip, decodeDataUrl } from './parts';
 import { useChartView } from './useChartView';
 import { mdTable, pointsCsv } from './exporters';
 import {
     OPERATING_TTFT_MS,
+    accelTypeOf,
+    costPerMillion,
+    fmtCount,
     fmtDate,
     fmtInt,
+    fmtMoney,
     fmtPct,
     fmtTput,
     healthyPoints,
@@ -31,6 +35,7 @@ import {
     latencyLabel,
     latencyValue,
     limitLabel,
+    listPrice,
     overloadedKeys,
     parityFraming,
     pctDelta,
@@ -79,10 +84,32 @@ function seriesStats(points, { latency, stat, throughput }) {
         allOverloaded: points.length > 0 && healthy.length === 0,
         satKeys,
         usable: usable.point && isNum(usable.point[throughput]) ? usable.point[throughput] : null,
+        usableOutput: usable.point && isNum(usable.point.output) ? usable.point.output : null,
+        usablePerChip: usable.point && isNum(usable.point.outputPerChip) ? usable.point.outputPerChip : null,
+        usableConc: usable.point?.conc ?? null,
         usableWhy: usable.reason,
         usableP99: usableP99.point && isNum(usableP99.point[throughput]) ? usableP99.point[throughput] : null,
         usableP99Why: usableP99.reason,
     };
+}
+
+// Compute repeat batch count (`n`) and throughput spread across repeat batches
+// when a Browse row has multiple repeat runs/batches.
+function repeatSpreadOf(s, throughput) {
+    const repeats = s.repeats || [];
+    const n = Math.max(1, repeats.length);
+    if (n < 2) return { n: 1, min: null, max: null };
+    const vals = repeats
+        .map((rep) => {
+            const pts = (rep.runs || []).flatMap((r) => r.points || []);
+            const hit = pricingPoint(pts, OPERATING_TTFT_MS, 'p50');
+            if (hit.point && isNum(hit.point[throughput])) return hit.point[throughput];
+            const pk = peakPoint(healthyPoints(pts), throughput);
+            return pk ? pk[throughput] : null;
+        })
+        .filter(isNum);
+    if (vals.length < 2) return { n, min: null, max: null };
+    return { n, min: Math.min(...vals), max: Math.max(...vals) };
 }
 
 // Change against the baseline row. Higher throughput and lower latency are
@@ -150,8 +177,18 @@ function seriesProvenance(s, config) {
         'not recorded';
     const setup = config?.setup || s.curve?.meta?.setup || runs.map((r) => r.setup || r.variant || r.runLabel).find(Boolean) || 'not recorded';
     const workload = config?.workload || s.curve?.meta?.workload || runs.map((r) => r.workload).find(Boolean) || 'not recorded';
+    const r0 = runs[0];
+    const workloadType = r0
+        ? r0.workloadConfigured
+            ? `${r0.workload} (configured${r0.measuredWorkload && r0.measuredWorkload !== r0.workload ? ` · measured ${r0.measuredWorkload}` : ''})`
+            : `${r0.workload || 'not recorded'} (measured average)`
+        : workload;
     const harness = config?.harness || s.curve?.meta?.harness || runs.map((r) => r.harness).find(Boolean) || 'not recorded';
     const engine = config?.engine || s.curve?.meta?.engine || runs.map((r) => r.engine).find((e) => e && e !== 'not recorded') || 'not recorded';
+    const harnessArgs = runs.map((r) => r.runMetadata?.harness_args).find(Boolean) || 'not recorded';
+    const attachments = runs.flatMap((r) => r.attachments || []);
+    const configAttachment = attachments.find((f) => /\.(ya?ml|json)$/i.test(f.name) && /^data:/i.test(f.value)) || null;
+    const configText = configAttachment ? decodeDataUrl(configAttachment.value) : null;
     const tss = [...new Set(runs.map((r) => r.ts).filter(Boolean))].sort((a, b) => a - b);
     const measured = tss.length
         ? tss.length === 1 || fmtDate(tss[0]) === fmtDate(tss[tss.length - 1])
@@ -161,7 +198,35 @@ function seriesProvenance(s, config) {
           ? fmtDate(s.curve.createdAt)
           : 'not recorded';
     const runIds = [...new Set(runs.map((r) => r.runId || r.idLabel || r.key).filter(Boolean))].join(', ') || (s.curve ? `result:${s.curve.id}` : 'not recorded');
-    return { modelId: modelFull, hw, setup, workload, harness, engine, measured, runIds };
+    return {
+        modelId: modelFull,
+        hw,
+        setup,
+        workload,
+        workloadType,
+        harness,
+        engine,
+        harnessArgs,
+        configName: configAttachment?.name || null,
+        configText,
+        measured,
+        runIds,
+    };
+}
+
+// Line-level diff between two config texts (baseline vs compared).
+function diffConfigLines(baseText, otherText) {
+    if (!baseText || !otherText || baseText.trim() === otherText.trim()) return [];
+    const aLines = baseText.split(/\r?\n/).map((l) => l.trimEnd());
+    const bLines = otherText.split(/\r?\n/).map((l) => l.trimEnd());
+    const aSet = new Set(aLines.filter((l) => l.trim() && !l.trim().startsWith('#')));
+    const bSet = new Set(bLines.filter((l) => l.trim() && !l.trim().startsWith('#')));
+    const removed = [...aSet].filter((l) => !bSet.has(l)).slice(0, 12);
+    const added = [...bSet].filter((l) => !aSet.has(l)).slice(0, 12);
+    return [
+        ...removed.map((line) => ({ kind: 'removed', line })),
+        ...added.map((line) => ({ kind: 'added', line })),
+    ];
 }
 
 // Compare: default axes, a series per run/curve, and added baselines overlaid
@@ -173,11 +238,26 @@ function seriesProvenance(s, config) {
 // else an Official result, else the most baseline-like name (baseline,
 // standard, none, default), else the first series. With only 1 series, no
 // baseline is set until one is added.
-export function CompareView({ items, initialView, resolve, baselineOptions, copy, canMakeResult, nav, onShare, onLiveChange, onAddToDashboard, onOpenInBrowser }) {
+export function CompareView({
+    items,
+    initialView,
+    resolve,
+    baselineOptions,
+    copy,
+    canMakeResult,
+    customRates = {},
+    nav,
+    onShare,
+    onLiveChange,
+    onAddToDashboard,
+    onOpenInBrowser,
+}) {
     const [extra, setExtra] = useState([]);
     const [removed, setRemoved] = useState(() => new Set());
     // A shared link names the baseline its sender chose; open on it.
     const [pickedBase, setPickedBase] = useState(() => initialView?.base || null);
+    const [priceOverrides, setPriceOverrides] = useState({});
+    const [diffFilter, setDiffFilter] = useState('diff');
     const tableHeadingId = useId();
     const baseSelectId = useId();
     const backLabel = nav.backLabel || 'Back to Browse';
@@ -242,21 +322,76 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     }, [onLiveChange, all, latency, stat, throughput, baseKey]);
 
     const configs = resolved.map((x) => x.s.config || runsConfig(x.s.runs || []));
-    const rows = resolved.map((x, i) => ({
-        ...x,
-        i,
-        key: itemKey(x.item),
-        stats: seriesStats(x.s.points, view),
-        prov: seriesProvenance(x.s, configs[i]),
-    }));
+    const rows = resolved.map((x, i) => {
+        const stats = seriesStats(x.s.points, view);
+        const prov = seriesProvenance(x.s, configs[i]);
+        const accelType = accelTypeOf(prov.hw);
+        const chips = Number(configs[i]?.chips) || x.s.points[0]?.chips || 1;
+        const catalogRate = listPrice(accelType, customRates);
+        const overrideVal = priceOverrides[accelType];
+        const hasOverride = overrideVal !== undefined && overrideVal !== '';
+        const unitPrice = hasOverride ? Number(overrideVal) : catalogRate?.price ?? null;
+        const priceSource = hasOverride
+            ? 'Custom override'
+            : catalogRate?.source === 'custom'
+              ? 'Saved custom rate'
+              : catalogRate?.source === 'list'
+                ? 'GCP on-demand list (us-central1)'
+                : null;
+        const costPerM = costPerMillion(unitPrice, chips, stats.usableOutput);
+        const tokPerDollar = isNum(costPerM) && costPerM > 0 ? 1e6 / costPerM : null;
+        const spread = repeatSpreadOf(x.s, throughput);
+        return {
+            ...x,
+            i,
+            key: itemKey(x.item),
+            stats,
+            prov,
+            accelType,
+            chips,
+            unitPrice: isNum(unitPrice) && unitPrice > 0 ? unitPrice : null,
+            priceSource,
+            costPerM,
+            tokPerDollar,
+            spread,
+        };
+    });
+
+    const accelTypes = (() => {
+        const seen = new Map();
+        rows.forEach((r) => {
+            if (r.accelType && r.accelType !== 'Accelerator not recorded' && !seen.has(r.accelType)) {
+                const cat = listPrice(r.accelType, customRates);
+                seen.set(r.accelType, {
+                    type: r.accelType,
+                    defaultPrice: cat?.price ?? null,
+                    source: cat?.source === 'list' ? 'GCP on-demand list' : cat?.source === 'custom' ? 'Saved custom rate' : 'No list price',
+                });
+            }
+        });
+        return [...seen.values()];
+    })();
+
+    const pricedRows = rows.filter((r) => isNum(r.costPerM));
+    const cheapestRow = pricedRows.length >= 2 ? pricedRows.reduce((best, r) => (r.costPerM < best.costPerM ? r : best)) : null;
+    const bestUsableRow = rows.filter((r) => isNum(r.stats.usable)).length >= 2
+        ? rows.filter((r) => isNum(r.stats.usable)).reduce((best, r) => (r.stats.usable > best.stats.usable ? r : best))
+        : null;
+    const bestPerChipRow = rows.filter((r) => isNum(r.stats.usablePerChip)).length >= 2
+        ? rows.filter((r) => isNum(r.stats.usablePerChip)).reduce((best, r) => (r.stats.usablePerChip > best.stats.usablePerChip ? r : best))
+        : null;
+
     const hasP99 = rows.some((r) => r.s.points.some((p) => isNum(p.ttftP99)));
-    const baseStats = rows.find((r) => r.key === baseKey)?.stats;
-    const deltas = (st) => ({
-        peak: pctDelta(st.peak, baseStats?.peak),
-        latAtPeak: pctDelta(st.latAtPeak, baseStats?.latAtPeak),
-        best: pctDelta(st.best, baseStats?.best),
-        usable: pctDelta(st.usable, baseStats?.usable),
-        usableP99: pctDelta(st.usableP99, baseStats?.usableP99),
+    const hasCost = rows.some((r) => isNum(r.costPerM) || r.unitPrice != null);
+    const baseRow = rows.find((r) => r.key === baseKey) || null;
+    const baseStats = baseRow?.stats;
+    const deltas = (r) => ({
+        peak: pctDelta(r.stats.peak, baseStats?.peak),
+        latAtPeak: pctDelta(r.stats.latAtPeak, baseStats?.latAtPeak),
+        best: pctDelta(r.stats.best, baseStats?.best),
+        usable: pctDelta(r.stats.usable, baseStats?.usable),
+        usableP99: pctDelta(r.stats.usableP99, baseStats?.usableP99),
+        costPerM: pctDelta(r.costPerM, baseRow?.costPerM),
     });
 
     // What the comparison tests: one thing differing is the variable under
@@ -267,7 +402,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const parity = resolved.length > 1 ? seriesParity(configs) : null;
     const framing = parityFraming(parity);
     const perChipHint = framing?.perChip && !tp.perChip ? ' Chip counts differ, so turn on Per chip to compare per accelerator.' : '';
-    const nonBaseDeltas = rows.filter((r) => baseKey && r.key !== baseKey).map((r) => deltas(r.stats));
+    const nonBaseDeltas = rows.filter((r) => baseKey && r.key !== baseKey).map((r) => deltas(r));
     const worstTputDrop = nonBaseDeltas.reduce((min, d) => {
         const drop = Math.min(isNum(d.usable) ? d.usable : 0, isNum(d.peak) ? d.peak : 0);
         return drop < min ? drop : min;
@@ -294,8 +429,40 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
     const overloadedCount = rows.filter((r) => r.stats.overloadedPeak || r.stats.allOverloaded).length;
     const overloadedNote =
         overloadedCount > 0
-            ? 'Overloaded stages (where latency spiked ≥5× for <25% more throughput) are marked not comparable and excluded from peak and best-latency Δ.'
+            ? 'Overloaded stages (where latency spiked ≥5× for <25% more throughput, or ≥5% requests failed) are marked not comparable and excluded from peak and best-latency Δ.'
             : '';
+
+    // Configuration & harness diff fields across all series.
+    const configRows =
+        rows.length < 2
+            ? []
+            : [
+                  { key: 'modelId', label: 'Model ID', get: (r) => r.prov.modelId },
+                  { key: 'hw', label: 'Hardware & chips', get: (r) => r.prov.hw },
+                  { key: 'setup', label: 'Deployment / stack', get: (r) => r.prov.setup },
+                  { key: 'engine', label: 'Serving engine', get: (r) => r.prov.engine },
+                  { key: 'workloadType', label: 'Workload (ISL/OSL)', get: (r) => r.prov.workloadType },
+                  { key: 'harness', label: 'Harness', get: (r) => r.prov.harness },
+                  { key: 'harnessArgs', label: 'Harness CLI args', get: (r) => r.prov.harnessArgs },
+                  { key: 'configName', label: 'Attached config file', get: (r) => r.prov.configName || 'not attached' },
+              ].map((f) => {
+                  const values = rows.map((r) => f.get(r));
+                  const norm = new Set(values.map((v) => String(v || '').trim().toLowerCase()));
+                  return { ...f, values, differs: norm.size > 1 };
+              });
+
+    const visibleConfigRows = diffFilter === 'diff' ? configRows.filter((r) => r.differs) : configRows;
+    const yamlDiffs = !baseRow?.prov?.configText
+        ? []
+        : rows
+              .filter((r) => r.key !== baseRow.key && r.prov.configText)
+              .map((r) => ({
+                  key: r.key,
+                  name: label(r.s),
+                  file: r.prov.configName,
+                  lines: diffConfigLines(baseRow.prov.configText, r.prov.configText),
+              }))
+              .filter((d) => d.lines.length > 0);
 
     // Baseline suggestions closest to what's compared come first. Never offer
     // any currently compared series (by key or by underlying run set) as its
@@ -324,10 +491,11 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
 
     const summaryHeaders = [
         'Series',
-        'Points',
+        'Points (n batches)',
         `${tp.label} at ${LIMIT_P50_LABEL} (tok/s)`,
         'Δ',
         ...(hasP99 ? [`${tp.label} at ${LIMIT_P99_LABEL} (tok/s)`, 'Δ p99'] : []),
+        ...(hasCost ? [`$/1M output tokens at ${LIMIT_P50_LABEL}`, 'Δ cost'] : []),
         `Peak healthy ${tp.label.toLowerCase()} (tok/s)`,
         'Δ',
         `${latLabel} at peak (ms)`,
@@ -335,7 +503,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
         `Best ${latLabel} (ms)`,
         'Δ',
     ];
-    const summaryAlign = ['l', 'r', 'r', 'r', ...(hasP99 ? ['r', 'r'] : []), 'r', 'r', 'r', 'r', 'r', 'r'];
+    const summaryAlign = ['l', 'r', 'r', 'r', ...(hasP99 ? ['r', 'r'] : []), ...(hasCost ? ['r', 'r'] : []), 'r', 'r', 'r', 'r', 'r', 'r'];
 
     const markdown = [
         `**Throughput vs latency** · ${latLabel} · ${tp.label.toLowerCase()} throughput`,
@@ -345,16 +513,23 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
         mdTable(
             summaryHeaders,
             rows.map((r) => {
-                const d = !baseKey || r.key === baseKey ? null : deltas(r.stats);
+                const d = !baseKey || r.key === baseKey ? null : deltas(r);
+                const ptsText = r.spread.n > 1 ? `${r.s.points.length} (n=${r.spread.n})` : `${r.s.points.length} (n=1)`;
                 return [
-                    `${label(r.s)}${r.key === baseKey ? ' · baseline' : ''}`,
-                    r.s.points.length,
+                    `${label(r.s)}${r.key === baseKey ? ' · baseline' : ''}${cheapestRow?.key === r.key ? ' · cheapest' : ''}`,
+                    ptsText,
                     usableCell(r.stats.usable, r.stats.usableWhy),
                     d ? fmtDeltaMd(d.usable, true) : '—',
                     ...(hasP99
                         ? [
                               usableCell(r.stats.usableP99, r.stats.usableP99Why),
                               d ? fmtDeltaMd(d.usableP99, true) : '—',
+                          ]
+                        : []),
+                    ...(hasCost
+                        ? [
+                              isNum(r.costPerM) ? `${fmtMoney(r.costPerM)} (${fmtCount(r.tokPerDollar)} tok/$)` : '—',
+                              d ? fmtDeltaMd(d.costPerM, false) : '—',
                           ]
                         : []),
                     peakCellMd(r.stats),
@@ -369,23 +544,24 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
         ),
         `**Provenance**`,
         mdTable(
-            ['Series', 'Role', 'Model ID', 'Hardware', 'Deployment', 'Workload (ISL/OSL)', 'Harness', 'Serving engine', 'Measured', 'Run IDs'],
+            ['Series', 'Role', 'Model ID', 'Hardware', 'Deployment', 'Workload (ISL/OSL)', 'Harness', 'Serving engine', 'Rate ($/chip-hr)', 'Measured', 'Run IDs'],
             rows.map((r) => [
                 label(r.s),
                 !baseKey ? 'compared (no baseline)' : r.key === baseKey ? 'baseline' : 'compared',
                 r.prov.modelId,
                 r.prov.hw,
                 r.prov.setup,
-                r.prov.workload,
+                r.prov.workloadType,
                 r.prov.harness,
                 r.prov.engine,
+                r.unitPrice != null ? `${fmtMoney(r.unitPrice)} (${r.priceSource || 'list'})` : 'not priced',
                 r.prov.measured,
                 r.prov.runIds,
             ]),
-            ['l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'l']
+            ['l', 'l', 'l', 'l', 'l', 'l', 'l', 'l', 'r', 'l', 'l']
         ),
         base
-            ? `Δ is against ${label(base.s)}. Higher throughput and lower latency are better (±1% is treated as neutral run-to-run noise). “At ${LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 ≤ ${LIMIT_SECONDS}.`
+            ? `Δ is against ${label(base.s)}. Higher throughput, lower latency, and lower $/1M tokens are better (±1% is treated as neutral run-to-run noise). “At ${LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 ≤ ${LIMIT_SECONDS}.`
             : `No baseline selected — add a baseline in Compare to include Δ columns.`,
     ]
         .filter(Boolean)
@@ -481,6 +657,66 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                 </Notice>
             )}
 
+            {/* Sweep-space decision summary when comparing multiple configurations */}
+            {resolved.length >= 2 && (bestUsableRow || bestPerChipRow || cheapestRow) && (
+                <div className="grid gap-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 sm:grid-cols-4">
+                    <div className="sm:col-span-4 flex items-center justify-between border-b border-zinc-200/70 pb-2">
+                        <span className="label-caps font-semibold text-zinc-700">Sweep-space decision summary</span>
+                        <span className="text-micro text-zinc-500">Evaluated at {LIMIT_P50_LABEL}</span>
+                    </div>
+                    <div className="min-w-0">
+                        <div className="label-caps text-zinc-500">Best output at {LIMIT_P50_LABEL}</div>
+                        {bestUsableRow ? (
+                            <>
+                                <div className="mt-1 truncate text-xs font-semibold text-zinc-900">{label(bestUsableRow.s)}</div>
+                                <div className="font-mono text-xs text-emerald-700">
+                                    {fmtTput(bestUsableRow.stats.usable)} tok/s{bestUsableRow.stats.usableConc != null ? ` at c=${bestUsableRow.stats.usableConc}` : ''}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-1 text-xs text-zinc-500">None under {LIMIT_SECONDS}</div>
+                        )}
+                    </div>
+                    <div className="min-w-0">
+                        <div className="label-caps text-zinc-500">Best per-chip at {LIMIT_P50_LABEL}</div>
+                        {bestPerChipRow ? (
+                            <>
+                                <div className="mt-1 truncate text-xs font-semibold text-zinc-900">{label(bestPerChipRow.s)}</div>
+                                <div className="font-mono text-xs text-zinc-800">
+                                    {fmtTput(bestPerChipRow.stats.usablePerChip)} tok/s/chip ({bestPerChipRow.chips} chip{bestPerChipRow.chips === 1 ? '' : 's'})
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-1 text-xs text-zinc-500">Not recorded</div>
+                        )}
+                    </div>
+                    <div className="min-w-0">
+                        <div className="label-caps text-zinc-500">Lowest cost at {LIMIT_P50_LABEL}</div>
+                        {cheapestRow ? (
+                            <>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                    <span className="truncate text-xs font-semibold text-zinc-900">{label(cheapestRow.s)}</span>
+                                    <Badge tone="success" size="xs">
+                                        Cheapest
+                                    </Badge>
+                                </div>
+                                <div className="font-mono text-xs text-emerald-700">
+                                    {fmtMoney(cheapestRow.costPerM)} / 1M tok ({fmtCount(cheapestRow.tokPerDollar)} tok/$)
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-1 text-xs text-zinc-500">Set $/chip-hr below to price</div>
+                        )}
+                    </div>
+                    <div className="flex items-center justify-end">
+                        <Button size="xs" variant="secondary" onClick={() => onAddToDashboard(resolved.map((x) => x.item))}>
+                            <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
+                            Add all {resolved.length} to report
+                        </Button>
+                    </div>
+                </div>
+            )}
+
             <ChartContainer
                 title="Throughput vs latency"
                 subtitle="Each line is one run or result, in concurrency order. Baselines you add are dashed."
@@ -509,7 +745,7 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                         </h3>
                         <p className="mt-0.5 text-micro text-zinc-500">
                             {/* The Baseline menu above and the row's tag already name the baseline. */}
-                            Higher throughput and lower latency are better. “At {LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 within {LIMIT_SECONDS}.
+                            Higher throughput, lower latency, and lower $/1M tokens are better (±1% is treated as neutral run-to-run noise). “At {LIMIT_P50_LABEL}” is the highest throughput with TTFT p50 within {LIMIT_SECONDS}.
                         </p>
                     </div>
                     <ExportActions
@@ -543,18 +779,51 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                         markdown={markdown}
                     />
                 </div>
+
+                {accelTypes.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-2.5 text-xs text-zinc-700">
+                        <span className="font-semibold text-zinc-900">Chip-hour rates ($/chip-hr):</span>
+                        {accelTypes.map((a) => {
+                            const val = priceOverrides[a.type] !== undefined ? priceOverrides[a.type] : a.defaultPrice ?? '';
+                            const isCustom = priceOverrides[a.type] !== undefined && priceOverrides[a.type] !== '';
+                            return (
+                                <label key={a.type} className="inline-flex items-center gap-1.5">
+                                    <span className="font-medium text-zinc-800">{a.type}</span>
+                                    <Input
+                                        surface="light"
+                                        type="number"
+                                        step="0.05"
+                                        min="0"
+                                        aria-label={`${a.type} price per chip-hour in USD`}
+                                        value={val}
+                                        placeholder="—"
+                                        onChange={(e) => setPriceOverrides((prev) => ({ ...prev, [a.type]: e.target.value }))}
+                                        className="w-20 py-1 font-mono text-xs"
+                                    />
+                                    <span className="text-micro text-zinc-500">({isCustom ? 'Custom override' : a.source})</span>
+                                </label>
+                            );
+                        })}
+                    </div>
+                )}
+
                 <div className="overflow-x-auto rounded-3xl border border-zinc-200 bg-white">
                     <table className="w-full text-left text-xs">
                         <thead className="border-b border-zinc-200 bg-zinc-50/70">
                             <tr className="label-caps text-zinc-500">
                                 <th className="px-4 py-3 font-semibold">Series</th>
-                                <th className="px-4 py-3 font-semibold">Points</th>
+                                <th className="px-4 py-3 font-semibold">Points · n</th>
                                 <th className="px-4 py-3 text-right font-semibold">
                                     {tp.label} at {LIMIT_P50_LABEL} (tok/s)
                                 </th>
                                 {hasP99 && (
                                     <th className="px-4 py-3 text-right font-semibold">
                                         {tp.label} at {LIMIT_P99_LABEL} (tok/s)
+                                    </th>
+                                )}
+                                {hasCost && (
+                                    <th className="px-4 py-3 text-right font-semibold">
+                                        $/1M tok at {LIMIT_P50_LABEL}
                                     </th>
                                 )}
                                 <th className="px-4 py-3 text-right font-semibold">Peak {tp.label.toLowerCase()} (tok/s)</th>
@@ -568,7 +837,8 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                         <tbody className="divide-y divide-zinc-100">
                             {rows.map((r) => {
                                 const isBase = Boolean(baseKey && r.key === baseKey);
-                                const d = !baseKey || isBase ? null : deltas(r.stats);
+                                const isCheapest = Boolean(cheapestRow && cheapestRow.key === r.key);
+                                const d = !baseKey || isBase ? null : deltas(r);
                                 return (
                                     <tr key={r.key} className={cn(isBase && 'bg-accent-50/40')}>
                                         <td className="px-4 py-3">
@@ -576,6 +846,11 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                                 <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(r.i) }} aria-hidden="true" />
                                                 <span className="font-medium text-zinc-900">{label(r.s)}</span>
                                                 {isBase && <span className="text-tiny font-semibold text-accent-700">baseline</span>}
+                                                {isCheapest && (
+                                                    <Badge tone="success" size="xs">
+                                                        Cheapest
+                                                    </Badge>
+                                                )}
                                                 {r.s.curve && <ResultStatusChip status={r.s.curve.status} copy={copy} size="xs" />}
                                             </div>
                                             <div className="mt-0.5 pl-4 text-tiny text-zinc-500">
@@ -583,7 +858,18 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                                 {r.prov.setup && r.prov.setup !== 'not recorded' ? ` · ${r.prov.setup}` : ''}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-3 font-mono tabular-nums text-zinc-700">{r.s.points.length}</td>
+                                        <td className="px-4 py-3 font-mono tabular-nums text-zinc-700">
+                                            <div>
+                                                {r.s.points.length} pt{r.s.points.length === 1 ? '' : 's'} · n={r.spread.n}
+                                            </div>
+                                            {r.spread.min != null && r.spread.max != null ? (
+                                                <div className="font-sans text-micro text-zinc-500">
+                                                    spread {fmtTput(r.spread.min)}–{fmtTput(r.spread.max)} tok/s
+                                                </div>
+                                            ) : (
+                                                <div className="font-sans text-micro text-zinc-400">single batch</div>
+                                            )}
+                                        </td>
                                         <td
                                             className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900"
                                             title={r.stats.usableWhy === 'no-ttft' ? 'TTFT p50 wasn’t recorded' : undefined}
@@ -605,6 +891,25 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                                                     <div className="text-tiny">
                                                         <Delta value={d.usableP99} higherIsBetter />
                                                     </div>
+                                                )}
+                                            </td>
+                                        )}
+                                        {hasCost && (
+                                            <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900">
+                                                {isNum(r.costPerM) ? (
+                                                    <>
+                                                        <div>{fmtMoney(r.costPerM)}</div>
+                                                        <div className="font-sans text-micro text-zinc-500">{fmtCount(r.tokPerDollar)} tok/$</div>
+                                                        {d && (
+                                                            <div className="text-tiny">
+                                                                <Delta value={d.costPerM} higherIsBetter={false} />
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <span className="font-sans text-tiny text-zinc-400">
+                                                        {r.unitPrice == null ? 'no rate' : 'over limit'}
+                                                    </span>
                                                 )}
                                             </td>
                                         )}
@@ -675,6 +980,87 @@ export function CompareView({ items, initialView, resolve, baselineOptions, copy
                     </table>
                 </div>
             </section>
+
+            {/* Configuration & harness diff across series */}
+            {rows.length >= 2 && (
+                <Panel
+                    variant="editorial"
+                    padding="none"
+                    title="Configuration & harness diff"
+                    titleAs="h3"
+                    subtitle="Compares recorded stack labels, workload (configured vs measured), harness arguments, and attached config files across series."
+                    actions={
+                        <ToggleGroup
+                            size="xs"
+                            aria-label="Configuration diff filter"
+                            value={diffFilter}
+                            onChange={setDiffFilter}
+                            options={[
+                                { value: 'diff', label: `Differences (${configRows.filter((c) => c.differs).length})` },
+                                { value: 'all', label: `All fields (${configRows.length})` },
+                            ]}
+                        />
+                    }
+                >
+                    {visibleConfigRows.length === 0 ? (
+                        <p className="px-5 py-4 text-xs text-zinc-600">
+                            All recorded configuration fields match across these series. Switch to <span className="font-medium text-zinc-900">All fields</span> to inspect them.
+                        </p>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                                <thead className="border-b border-zinc-200 bg-zinc-50/70">
+                                    <tr className="label-caps text-zinc-500">
+                                        <th className="px-4 py-2.5 font-semibold">Field</th>
+                                        <th className="px-3 py-2.5 font-semibold">Parity</th>
+                                        {rows.map((r) => (
+                                            <th key={r.key} className="px-4 py-2.5 font-semibold">
+                                                {label(r.s)}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-100">
+                                    {visibleConfigRows.map((cr) => (
+                                        <tr key={cr.key} className={cn(cr.differs && 'bg-amber-50/30')}>
+                                            <td className="px-4 py-2.5 font-medium text-zinc-900">{cr.label}</td>
+                                            <td className="px-3 py-2.5">
+                                                <Badge tone={cr.differs ? 'warning' : 'neutral'} size="xs">
+                                                    {cr.differs ? 'Differs' : 'Same'}
+                                                </Badge>
+                                            </td>
+                                            {cr.values.map((val, idx) => (
+                                                <td key={`${cr.key}-${rows[idx].key}`} className="px-4 py-2.5 font-mono text-tiny text-zinc-800">
+                                                    {val}
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    {yamlDiffs.length > 0 && (
+                        <div className="border-t border-zinc-200 px-5 py-4 space-y-3">
+                            <div className="label-caps text-zinc-500">Attached config file line diff vs baseline ({baseRow?.prov?.configName})</div>
+                            {yamlDiffs.map((yd) => (
+                                <div key={yd.key} className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                                    <div className="mb-1.5 text-xs font-semibold text-zinc-900">
+                                        {yd.name} ({yd.file})
+                                    </div>
+                                    <pre className="max-h-48 overflow-auto font-mono text-tiny leading-relaxed">
+                                        {yd.lines.map((l, idx) => (
+                                            <div key={idx} className={cn(l.kind === 'added' ? 'text-emerald-800' : 'text-red-800')}>
+                                                {l.kind === 'added' ? `+ ${l.line}` : `- ${l.line}`}
+                                            </div>
+                                        ))}
+                                    </pre>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </Panel>
+            )}
 
             <p className="text-micro text-zinc-500">
                 Need every metric and percentile?{' '}

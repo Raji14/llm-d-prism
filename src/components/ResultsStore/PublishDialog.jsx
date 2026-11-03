@@ -25,7 +25,24 @@ import { Button, Checkbox, Input, Label, Modal, ToggleGroup } from '../ui';
 // knows them even when the result's own list is out of date), and
 // `reviewRuns` the uploaded runs reviewers would actually get (on the server
 // and not public yet).
-export function PublishDialog({ subject, summary, checks, copy, instance, actor, localRuns = 0, reviewRuns, isOpen, onClose, onMarkOfficial, onSubmit, onContinueUpload, onEditFirst }) {
+export function PublishDialog({
+    subject,
+    summary,
+    checks,
+    copy,
+    instance,
+    actor,
+    localRuns = 0,
+    reviewRuns,
+    isOpen,
+    onClose,
+    onMarkOfficial,
+    onSubmit,
+    onContinueUpload,
+    onEditFirst,
+    onSignIn,
+    signInReady = false,
+}) {
     // Without sign-in the actor is just the word "you": don't record it as a name.
     const signedIn = typeof actor === 'string' && actor.startsWith('@');
     const [attribution, setAttribution] = useState(signedIn ? actor : '');
@@ -92,32 +109,49 @@ export function PublishDialog({ subject, summary, checks, copy, instance, actor,
                     </>
                 ) : (
                     <>
+                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3.5 py-2 text-tiny text-zinc-600">
+                            <span className="font-semibold text-zinc-900">1. Upload runs</span>
+                            <span aria-hidden="true">→</span>
+                            <span className="font-semibold text-zinc-900">2. Curate result</span>
+                            <span aria-hidden="true">→</span>
+                            <span className="font-semibold text-accent-700">3. Submit for review</span>
+                        </div>
+                        {!signedIn && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                <span>
+                                    <span className="font-semibold">GitHub sign-in required for server submissions:</span> sign in to link your GitHub account, or enter an attribution handle below to save for review in this browser.
+                                </span>
+                                {onSignIn && (
+                                    <Button size="xs" variant="secondary" disabled={!signInReady} onClick={onSignIn}>
+                                        Sign in with GitHub
+                                    </Button>
+                                )}
+                            </div>
+                        )}
                         <div>
                             <Label surface="light" htmlFor="rs-attribution">
                                 Attribution
                             </Label>
                             <Input surface="light" id="rs-attribution" value={attribution} onChange={(e) => setAttribution(e.target.value)} placeholder="@github-user or organization" />
                         </div>
-                        {!localOnly && (
-                            <div>
-                                <div className="mb-1.5 text-xs font-semibold text-zinc-900">Once approved</div>
-                                <ToggleGroup
-                                    size="xs"
-                                    aria-label="Who can see it once approved"
-                                    value={visibility}
-                                    onChange={setVisibility}
-                                    options={[
-                                        { value: 'public', label: 'Listed in the store' },
-                                        { value: 'link', label: 'Link only' },
-                                    ]}
-                                />
-                                <p className="mt-1.5 text-micro text-zinc-500">
-                                    {visibility === 'link'
-                                        ? 'Anyone with the link can open it, but it isn’t listed in Browse.'
-                                        : 'Everyone can find it in Browse and compare against it.'}
-                                </p>
-                            </div>
-                        )}
+                        <div>
+                            <div className="mb-1.5 text-xs font-semibold text-zinc-900">Once approved</div>
+                            <ToggleGroup
+                                size="xs"
+                                aria-label="Who can see it once approved"
+                                value={visibility}
+                                onChange={setVisibility}
+                                options={[
+                                    { value: 'public', label: 'Listed in the store' },
+                                    { value: 'link', label: 'Anyone with the link' },
+                                ]}
+                            />
+                            <p className="mt-1.5 text-micro text-zinc-500">
+                                {visibility === 'link'
+                                    ? 'Anyone with the link can open it (unlisted), but it isn’t listed in Browse.'
+                                    : 'Everyone can find it in Browse and compare against it.'}
+                            </p>
+                        </div>
                         <Checkbox
                             surface="light"
                             checked={dco}

@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
+import { Download } from 'lucide-react';
 import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, ZAxis } from 'recharts';
 import {
+    Button,
     ChartLegend,
     ChartTooltip,
     ChartTooltipRow,
@@ -31,7 +33,62 @@ import {
     seriesColor,
 } from '../ui';
 import { Notice } from './parts';
-import { LATENCY_METRICS, LATENCY_STATS, OPERATING_TTFT_MS, THROUGHPUT_METRICS, fmtInt, fmtMs, latencyAxis, limitLabel, secondsLabel, throughputMetric } from './catalog';
+import { LATENCY_METRICS, LATENCY_STATS, OPERATING_TTFT_MS, THROUGHPUT_METRICS, fmtDate, fmtInt, fmtMs, latencyAxis, limitLabel, secondsLabel, throughputMetric } from './catalog';
+
+const escXml = (s) =>
+    String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+// Builds a self-contained publication SVG from the live Recharts SVG plus
+// title, metric/statistic subtitle, series legend, and provenance footer.
+function buildExportSvg(plotEl, { title, subtitle, series, footer = `llm-d Prism Results Store · ${fmtDate(Date.now())}` }) {
+    const svgEl = plotEl?.querySelector('svg');
+    if (!svgEl) return null;
+    const rect = svgEl.getBoundingClientRect();
+    const plotW = Math.max(640, Math.round(rect.width || 760));
+    const plotH = Math.max(260, Math.round(rect.height || 340));
+    const padX = 24;
+    const headerH = 58;
+    const legendRows = Math.ceil(Math.max(1, series.length) / 2);
+    const legendH = series.length ? legendRows * 22 + 16 : 0;
+    const footerH = 30;
+    const totalW = plotW + padX * 2;
+    const totalH = headerH + plotH + legendH + footerH;
+
+    const clone = svgEl.cloneNode(true);
+    const innerMarkup = clone.innerHTML;
+
+    const legendItems = series
+        .map((s, idx) => {
+            const col = idx % 2;
+            const row = Math.floor(idx / 2);
+            const lx = padX + col * Math.floor(plotW / 2);
+            const ly = headerH + plotH + 18 + row * 22;
+            const dash = s.lineStyle === 'dashed' ? 'stroke-dasharray="5 3"' : s.lineStyle === 'dotted' ? 'stroke-dasharray="2 3"' : '';
+            const label = s.name.length > 52 ? `${s.name.slice(0, 50)}…` : s.name;
+            return `<g transform="translate(${lx}, ${ly})">
+                <line x1="0" y1="-4" x2="18" y2="-4" stroke="${escXml(s.color)}" stroke-width="2" ${dash} />
+                <circle cx="9" cy="-4" r="3.5" fill="${escXml(s.color)}" />
+                <text x="24" y="0" font-family="Inter, system-ui, sans-serif" font-size="11" fill="#27272a">${escXml(label)}</text>
+            </g>`;
+        })
+        .join('\n');
+
+    const svgString = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${totalH}" viewBox="0 0 ${totalW} ${totalH}">
+    <rect width="100%" height="100%" fill="#ffffff" rx="12" />
+    <text x="${padX}" y="28" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="600" fill="#18181b">${escXml(title)}</text>
+    <text x="${padX}" y="46" font-family="Inter, system-ui, sans-serif" font-size="11" fill="#52525b">${escXml(subtitle)}</text>
+    <g transform="translate(${padX}, ${headerH})">${innerMarkup}</g>
+    ${legendItems}
+    <line x1="${padX}" y1="${totalH - footerH}" x2="${totalW - padX}" y2="${totalH - footerH}" stroke="#e4e4e7" stroke-width="1" />
+    <text x="${padX}" y="${totalH - 10}" font-family="Inter, system-ui, sans-serif" font-size="10" fill="#71717a">${escXml(footer)}</text>
+</svg>`;
+    return { svgString, width: totalW, height: totalH };
+}
 
 function PointTooltip({ active, payload, xLabel, yLabel }) {
     if (!active || !payload?.length) return null;
@@ -102,9 +159,10 @@ const CYCLE_LINE_STYLES = ['solid', 'dashed', 'dotted'];
 //
 // series: [{ id, name, color?, shape?, lineStyle?: 'solid'|'dashed'|'dotted',
 //            points: [{ x, y, conc, idLabel, statUnknown? }], excluded?: [{ x, y, conc, reason }] }]
-export function CurveChart({ series, latency = 'ttft', stat = null, throughput = 'output', sloMs = OPERATING_TTFT_MS, height = 340, showLegend = true, emptyMessage }) {
+export function CurveChart({ series, title = null, latency = 'ttft', stat = null, throughput = 'output', sloMs = OPERATING_TTFT_MS, height = 340, showLegend = true, emptyMessage }) {
     const theme = getChartTheme();
     const [yMode, setYMode] = useState('focus');
+    const plotRef = useRef(null);
     const resolved = series.map((s, i) => ({
         ...s,
         color: s.color || seriesColor(i),
@@ -156,14 +214,87 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
     // so name it (aria-label, not an svg <title>, which would also pop a native
     // hover tooltip over the chart's own) and summarize it (svg <desc>).
     const chartTitle = `${xLabel} vs ${yLabel}`;
+    const exportTitle = title || (resolved.length === 1 ? resolved[0].name : `${resolved.length} series · ${yLabel} vs ${xLabel}`);
+    const exportSubtitle = [
+        `${yLabel} vs ${xLabel}`,
+        latency === 'ttft' && Number.isFinite(sloMs) && sloMs > 0 ? `Target: ${sloText}` : null,
+        clipCeiling != null ? `Y-axis focused on ${capLabel}` : null,
+    ]
+        .filter(Boolean)
+        .join(' · ');
+    const slug = `${latency}-${effectiveStat || 'typical'}-${throughput}`;
+
+    const downloadSvg = () => {
+        const built = buildExportSvg(plotRef.current, { title: exportTitle, subtitle: exportSubtitle, series: resolved });
+        if (!built) return;
+        const blob = new Blob([built.svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `prism-chart-${slug}.svg`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+
+    const downloadPng = () => {
+        const built = buildExportSvg(plotRef.current, { title: exportTitle, subtitle: exportSubtitle, series: resolved });
+        if (!built) return;
+        const img = new Image();
+        const svgBlob = new Blob([built.svgString], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        img.onload = () => {
+            const scale = 2;
+            const canvas = document.createElement('canvas');
+            canvas.width = built.width * scale;
+            canvas.height = built.height * scale;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.scale(scale, scale);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, built.width, built.height);
+                ctx.drawImage(img, 0, 0, built.width, built.height);
+                canvas.toBlob((pngBlob) => {
+                    if (!pngBlob) return;
+                    const pngUrl = URL.createObjectURL(pngBlob);
+                    const a = document.createElement('a');
+                    a.href = pngUrl;
+                    a.download = `prism-chart-${slug}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
+                }, 'image/png');
+            }
+            URL.revokeObjectURL(url);
+        };
+        img.src = url;
+    };
 
     return (
         <div>
-            {allUnderSlo && (
-                <p className="mb-2 text-micro text-zinc-500">
-                    All plotted points sit below the <span className="font-medium text-zinc-700">{sloText}</span> target (highest: {fmtMs(maxY)}).
-                </p>
-            )}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-micro text-zinc-500">
+                    {allUnderSlo ? (
+                        <span>
+                            All plotted points sit below the <span className="font-medium text-zinc-700">{sloText}</span> target (highest: {fmtMs(maxY)}).
+                        </span>
+                    ) : (
+                        <span>{exportSubtitle}</span>
+                    )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                    <Button size="xs" variant="ghost" onClick={downloadSvg} aria-label="Download chart as SVG">
+                        <Download className="h-3 w-3" aria-hidden="true" />
+                        SVG
+                    </Button>
+                    <Button size="xs" variant="ghost" onClick={downloadPng} aria-label="Download chart as PNG">
+                        <Download className="h-3 w-3" aria-hidden="true" />
+                        PNG
+                    </Button>
+                </div>
+            </div>
             {canClip && (
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/70 px-3 py-1.5 text-xs text-zinc-600">
                     <span>
@@ -183,7 +314,7 @@ export function CurveChart({ series, latency = 'ttft', stat = null, throughput =
                     />
                 </div>
             )}
-            <div style={{ height }}>
+            <div ref={plotRef} style={{ height }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <ScatterChart aria-label={chartTitle} desc={describeSeries(resolved)} margin={{ top: 10, right: 24, bottom: 45, left: 60 }}>
                         <CartesianGrid {...gridProps()} />

@@ -1783,10 +1783,28 @@ export const limitLabel = (ms = OPERATING_TTFT_MS, stat = 'p50') => `TTFT${stat 
 // Returns { point, reason, fastest, statUsed }: with no point, reason is
 // 'no-points', 'no-ttft' (nothing recorded that TTFT statistic) or
 // 'over-limit' (every point is slower, and `fastest` is the quickest one).
-export function pricingPoint(points, limit = OPERATING_TTFT_MS, stat = null) {
+export function pricingPoint(points, limit = OPERATING_TTFT_MS, stat = null, maxTpotMs = null) {
     const usable = points.filter((p) => isNum(p.output));
     if (!usable.length) return { point: null, reason: 'no-points', fastest: null, statUsed: stat || 'p50' };
-    if (limit === 'peak') return { point: nearestPoint(usable, null), reason: null, fastest: null, statUsed: stat || 'p50' };
+    const tpotOf = (p) => (isNum(p.tpotP50) ? p.tpotP50 : p.tpot);
+    const applyTpot = (candidates) => {
+        if (!isNum(maxTpotMs) || maxTpotMs <= 0) return { points: candidates, reason: null, fastest: null };
+        const timedTpot = candidates.filter((p) => isNum(tpotOf(p)));
+        if (!timedTpot.length) return { points: [], reason: 'no-tpot', fastest: null };
+        const withinTpot = timedTpot.filter((p) => tpotOf(p) <= maxTpotMs);
+        if (!withinTpot.length) {
+            const fastestTpot = timedTpot.reduce((a, b) => (tpotOf(b) < tpotOf(a) ? b : a));
+            return { points: [], reason: 'over-tpot', fastest: fastestTpot };
+        }
+        return { points: withinTpot, reason: null, fastest: null };
+    };
+    if (limit === 'peak') {
+        const tpotFiltered = applyTpot(usable);
+        if (!tpotFiltered.points.length) {
+            return { point: null, reason: tpotFiltered.reason, fastest: tpotFiltered.fastest, statUsed: stat || 'p50' };
+        }
+        return { point: nearestPoint(tpotFiltered.points, null), reason: null, fastest: null, statUsed: stat || 'p50' };
+    }
     const valOf = (p) => (stat ? latencyValue(p, 'ttft', stat) : p.ttft);
     const timed = usable.filter((p) => isNum(valOf(p)));
     if (!timed.length) return { point: null, reason: 'no-ttft', fastest: null, statUsed: stat || 'p50' };
@@ -1795,7 +1813,11 @@ export function pricingPoint(points, limit = OPERATING_TTFT_MS, stat = null) {
         const fastest = timed.reduce((a, b) => (valOf(b) < valOf(a) ? b : a));
         return { point: null, reason: 'over-limit', fastest, statUsed: stat || 'p50' };
     }
-    const chosen = nearestPoint(within, null);
+    const tpotFiltered = applyTpot(within);
+    if (!tpotFiltered.points.length) {
+        return { point: null, reason: tpotFiltered.reason, fastest: tpotFiltered.fastest, statUsed: stat || 'p50' };
+    }
+    const chosen = nearestPoint(tpotFiltered.points, null);
     const statUsed = stat || (chosen && isNum(chosen.ttftP50) ? 'p50' : chosen && isNum(chosen.ttftMean) ? 'mean' : 'p99');
     return { point: chosen, reason: null, fastest: null, statUsed };
 }
@@ -1884,4 +1906,25 @@ export function reproduceCommand(run) {
         `  --output_tokens ${osl} \\`,
         `  ${stageArg}`,
     ].join('\n');
+}
+
+// Live status summary of a watch for its header chip, the left sidebar, and
+// the top-level Watches & reports tab badge.
+export function watchSummary(watch, runs, runsByKey, getCurve) {
+    const refPoints = watchRefPoints(watch, getCurve);
+    const matching = watchRuns(watch, runs, { getCurve, runsByKey });
+    const matchingRows = buildRows(matching);
+    const series = watchSeries(matchingRows, refPoints, watch);
+    const regressed = series.filter((s) => s.regressed);
+    const unhealthy = series.filter((s) => s.unhealthy);
+    const waiting = !regressed.length && !unhealthy.length && (series.length < 2 || series.every((s) => s.isRef));
+    const latestNonRef = [...series].reverse().find((s) => !s.isRef) || series[series.length - 1] || null;
+    return {
+        series,
+        regressedCount: regressed.length,
+        unhealthyCount: unhealthy.length,
+        waiting,
+        latestDelta: latestNonRef?.delta ?? null,
+        latestTs: latestNonRef?.ts ?? null,
+    };
 }

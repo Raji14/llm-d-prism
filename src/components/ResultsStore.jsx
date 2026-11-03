@@ -51,6 +51,7 @@ import {
     loadOrder,
     runKeyOf,
     runsConfig,
+    watchSummary,
 } from './ResultsStore/catalog';
 import { WorkspaceProvider } from './ResultsStore/WorkspaceProvider';
 import { useWorkspace } from './ResultsStore/workspaceContext';
@@ -678,14 +679,23 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     kindLabel: row.kind === 'suggested' ? `Sweep · ${row.runs.length} runs · ${fmtDay(row.ts)}` : `Run · ${fmtDay(row.ts)}`,
                     points: row.points,
                     runs: row.runs,
+                    repeats: row.repeats,
                     config: runsConfig(row.runs),
                 };
             }
             const run = runOfKey(item.key);
             if (!run) return null;
-            return { id: run.key, name: run.title, kindLabel: `Run ${run.idLabel} · ${fmtDay(run.ts)}`, points: run.points, runs: [run], config: runsConfig([run]) };
+            return {
+                id: run.key,
+                name: run.title,
+                kindLabel: `Run ${run.idLabel} · ${fmtDay(run.ts)}`,
+                points: run.points,
+                runs: [run],
+                repeats: rowOfRun.get(run.key)?.repeats,
+                config: runsConfig([run]),
+            };
         },
-        [ws, rowsByKey, runOfKey, runsFromKeys]
+        [ws, rowsByKey, rowOfRun, runOfKey, runsFromKeys]
     );
 
     // Everything that can be a baseline, each with what it measured so
@@ -1301,10 +1311,18 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
 
     // ------------------------------------------------------------ render
     const workCount = ws.curves.filter((c) => c.status === 'draft' || c.status === 'needs_changes').length + uploads.length;
+    const watchRegressedCount = useMemo(
+        () => ws.watches.filter((w) => watchSummary(w, watchRuns, watchRunsByKey, ws.getCurve).regressedCount > 0).length,
+        [ws.watches, watchRuns, watchRunsByKey, ws.getCurve]
+    );
     const tabs = [
         { value: 'browse', label: 'Browse' },
         { value: 'mywork', label: 'My work', count: workCount || null },
-        { value: 'dashboards', label: 'Watches & reports', count: ws.watches.length + ws.showcases.length || null },
+        {
+            value: 'dashboards',
+            label: watchRegressedCount > 0 ? `Watches & reports (${watchRegressedCount} regressed)` : 'Watches & reports',
+            count: ws.watches.length + ws.showcases.length || null,
+        },
         ...(isReviewer ? [{ value: 'review', label: 'Review queue', count: ws.curves.filter((c) => c.status === 'in_review').length + queue.items.length || null }] : []),
         ...(isAdmin ? [{ value: 'sources', label: 'Sources' }] : []),
     ];
@@ -1339,6 +1357,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 baselineOptions={baselineOptions}
                 copy={copy}
                 canMakeResult={canMakeResult}
+                customRates={dashboardState?.customRates}
                 nav={nav}
                 onShare={setShare}
                 onLiveChange={onLiveCompare}
@@ -1393,6 +1412,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 nav={nav}
                 onOpenClassic={onOpenClassic}
                 onUpload={onUpload}
+                onSignIn={() => login?.()}
+                signInReady={!!isConfigured}
             />
         );
     } else if (activeTab === 'dashboards') {
@@ -1551,6 +1572,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     actor={actor}
                     localRuns={quick.runs.filter((r) => r.isLocalOnly).length}
                     reviewRuns={reviewableRuns(quick.runs.filter((r) => r.isUpload && !r.isLocalOnly && r.runId).map((r) => r.runId))}
+                    onSignIn={() => login?.()}
+                    signInReady={!!isConfigured}
                     onClose={() => setQuick(null)}
                     onEditFirst={() => {
                         const picked = quick.runs;

@@ -18,7 +18,7 @@ import { Button, EmptyState, Panel, StatusChip, VisibilityChip } from '../ui';
 import { cn } from '../../utils/cn';
 import { ResultVisibilityChip } from './parts';
 import { resultAudience, resultStatusLabel } from './instance';
-import { curveChecks, fmtDay, mapSubmissionState } from './catalog';
+import { curveChecks, fmtDay, formsSweep, mapSubmissionState } from './catalog';
 
 // Each step says what actually happened: done · now · warn · todo.
 function Timeline({ steps }) {
@@ -100,10 +100,10 @@ function WorkRow({ title, status, statusLabel, visibility, chip, detail, meta, a
 }
 
 // The kicker ("Drafts · 3") is the section's only label, so it's the heading.
-function Section({ title, count, subtitle, children }) {
+function Section({ title, count, subtitle, actions, children }) {
     if (!count) return null;
     return (
-        <Panel variant="editorial" padding="none" kicker={`${title} · ${count}`} kickerAs="h2" subtitle={subtitle}>
+        <Panel variant="editorial" padding="none" kicker={`${title} · ${count}`} kickerAs="h2" subtitle={subtitle} actions={actions}>
             <ul className="divide-y divide-zinc-100">{children}</ul>
         </Panel>
     );
@@ -111,7 +111,7 @@ function Section({ title, count, subtitle, children }) {
 
 // Everything you're curating, apart from browsing: drafts, uploads, what's
 // waiting on a reviewer and what you've published.
-export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, canPublish, officialBlock, nav, onOpenClassic, onUpload }) {
+export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, canPublish, officialBlock, nav, onOpenClassic, onUpload, onSignIn, signInReady = false }) {
     // Results saved before signing in are owned by 'you'; they're still in
     // this browser, so they stay in My Work after sign-in.
     const mine = curves.filter((c) => c.owner === actor || !c.owner || c.owner === 'you');
@@ -122,6 +122,8 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
     const published = by(copy.publishedStatus);
     const declined = by('declined');
     const isPublic = instance === 'public';
+    const signedIn = typeof actor === 'string' && actor.startsWith('@');
+    const uploadsFormSweep = uploads.length >= 2 && formsSweep(uploads);
 
     const mapped = serverItems.map((s) => ({ ...s, ui: mapSubmissionState(s.status, { feedback: s.feedback, instance }) })).filter((s) => s.ui);
     const serverDrafts = mapped.filter((s) => s.ui.status === 'draft' && !uploads.some((r) => r.runId === s.runId));
@@ -140,7 +142,7 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                     title="Nothing here yet"
                     message={
                         isPublic
-                            ? 'Submit your results to get started. Drafts, reviews and what you publish show up here.'
+                            ? 'Workflow: 1. Upload runs → 2. Curate result → 3. Submit for review (requires GitHub sign-in). Drafts, reviews and what you publish show up here.'
                             : officialBlock
                               ? 'Edit a sweep in Browse to start a draft, or upload runs. Your drafts show up here; an approver marks results official.'
                               : 'Mark a sweep official in Browse, or upload runs. Drafts and what you publish show up here.'
@@ -180,6 +182,19 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
 
     return (
         <div className="space-y-6">
+            {isPublic && !signedIn && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-700">
+                    <div>
+                        <span className="font-semibold text-zinc-900">Submission flow:</span> 1. Upload runs → 2. Curate result (prune overloaded stages, check labels) → 3. Submit for review.{' '}
+                        <span className="text-zinc-500">Sign in with GitHub to submit runs to the public review queue.</span>
+                    </div>
+                    {onSignIn && (
+                        <Button size="xs" variant="secondary" disabled={!signInReady} onClick={onSignIn}>
+                            Sign in with GitHub
+                        </Button>
+                    )}
+                </div>
+            )}
             {/* First: the only section that's waiting on you. */}
             {isPublic && (
                 <Section
@@ -225,6 +240,13 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                 subtitle={`Runs you uploaded that aren’t in a result yet. ${
                     officialBlock ? 'Edit one to prune points or fix labels; an approver marks it official.' : `${copy.publishVerb} in one step, or edit first to prune points or fix labels.`
                 }`}
+                actions={
+                    uploadsFormSweep ? (
+                        <Button size="xs" variant="secondary" onClick={() => nav.makeCurve(uploads)}>
+                            Combine {uploads.length} runs into 1 Result
+                        </Button>
+                    ) : null
+                }
             >
                 {/* Every upload here is unpublished, so rows say who can see them, not a status. */}
                 {uploads.map((r) => {

@@ -46,12 +46,12 @@ export function Panel({ title, kicker, subtitle, actions, padding = 'md', varian
             {(title || actions || kicker) && (
                 <div
                     className={cn(
-                        'flex justify-between gap-4 mb-4',
+                        'flex flex-wrap justify-between gap-4 mb-4',
                         editorial ? 'items-start' : 'items-center',
                         padding === 'none' && cn('p-4 mb-0 border-b', editorial ? 'border-zinc-200 px-5' : 'border-theme-border')
                     )}
                 >
-                    <div className="min-w-0">
+                    <div className="min-w-[14rem] flex-1">
                         {kicker && <KickerTag className="kicker text-zinc-500 mb-1">{kicker}</KickerTag>}
                         {title && (
                             <TitleTag className={editorial ? 'text-sm font-semibold text-zinc-900' : 'text-sm font-bold text-theme-text'}>{title}</TitleTag>

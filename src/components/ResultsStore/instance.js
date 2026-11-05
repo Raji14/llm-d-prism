@@ -19,23 +19,13 @@
 //              The word "public" is never shown.
 //   public   — community store. Publishing submits a curve for review; an
 //              admin approves it and it becomes Published.
-// Set VITE_PRISM_INSTANCE=internal at build time. On the dev server only,
-// `?instance=` overrides it so both modes can be previewed from one server.
-// Production builds ignore it, so a URL can't relabel the deployed store.
+// Each instance is its own deployment: the deploy sets PRISM_INSTANCE, and
+// src/config/site.js reads it at runtime (VITE_PRISM_INSTANCE still works at
+// build time). On the dev server only, `?instance=` overrides it so both modes
+// can be previewed from one server. Production builds ignore it, so a URL
+// can't relabel the deployed store.
 
-export const INSTANCE_MODES = ['internal', 'public'];
-
-export function readInstanceMode() {
-    if (import.meta.env.DEV) {
-        try {
-            const fromUrl = new URLSearchParams(window.location.search).get('instance');
-            if (INSTANCE_MODES.includes(fromUrl)) return fromUrl;
-        } catch {
-            // Not running in a browser.
-        }
-    }
-    return import.meta.env.VITE_PRISM_INSTANCE === 'internal' ? 'internal' : 'public';
-}
+export { INSTANCE_MODES, readInstanceMode } from '../../config/site.js';
 
 // `unofficialLabel` marks results that aren't Official / Published yet, for
 // example a draft priced in a report.

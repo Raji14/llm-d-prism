@@ -17,7 +17,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, Github, Menu, X, ArrowUpRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Button } from '../ui/Button';
-import { NAV, SUBMIT, REPO_URL, DOCS_URL, isActive } from './navigation';
+import { BrandLockup } from '../ui/BrandMarks.jsx';
+import { readSiteProfile } from '../../config/site.js';
+import { NAV, SUBMIT, REPO_URL, DOCS_URL, isActive, submitFor } from './navigation';
 
 function NavLink({ view, onNavigate, className, children, ...rest }) {
     return (
@@ -139,14 +141,15 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
     };
 
     const hideSubmit = currentView === 'results-store' || currentView === SUBMIT.view || currentView === 'submit';
+    // Which Prism this is (one deployment each): its mark, name and submit words.
+    const site = readSiteProfile();
+    const submit = submitFor(site.instance);
 
     return (
         <header className="surface-light relative z-50 shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl text-zinc-900 font-sans">
             <nav aria-label="Primary" className="mx-auto max-w-6xl h-16 px-4 sm:px-6 flex items-center gap-4 md:gap-6">
-                <NavLink view="home" onNavigate={onNavigate} className="flex items-center gap-3 shrink-0" aria-label="Prism home">
-                    <img src="https://llm-d.ai/img/llm-d-logotype-and-icon.png" alt="llm-d" className="h-6 object-contain" />
-                    <span className="h-5 w-px bg-zinc-200" />
-                    <span className="text-lg font-semibold tracking-tight">Prism</span>
+                <NavLink view="home" onNavigate={onNavigate} className="flex items-center shrink-0" aria-label={`${site.displayName} home`}>
+                    <BrandLockup brand={site.brand} siteName={site.siteName} />
                 </NavLink>
 
                 <div className="hidden lg:flex items-center gap-1 text-sm">
@@ -199,13 +202,13 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                 </a>
                 {!hideSubmit && (
                     <Button
-                        href={`?view=${SUBMIT.view}`}
-                        onClick={(e) => goTo(e, SUBMIT.view)}
+                        href={`?view=${submit.view}`}
+                        onClick={(e) => goTo(e, submit.view)}
                         variant="secondary"
                         size="md"
                         className="hidden h-9 px-4 py-0 sm:inline-flex"
                     >
-                        {SUBMIT.label}
+                        {submit.label}
                     </Button>
                 )}
                 <button
@@ -258,8 +261,8 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                     ))}
                     <div className="mt-2 pt-4 border-t border-zinc-100 flex flex-wrap items-center gap-3">
                         {!hideSubmit && (
-                            <Button href={`?view=${SUBMIT.view}`} onClick={(e) => goTo(e, SUBMIT.view)} size="md" className="h-10 py-0">
-                                {SUBMIT.label}
+                            <Button href={`?view=${submit.view}`} onClick={(e) => goTo(e, submit.view)} size="md" className="h-10 py-0">
+                                {submit.label}
                             </Button>
                         )}
                         <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer" variant="secondary" size="md" className="h-10 py-0">

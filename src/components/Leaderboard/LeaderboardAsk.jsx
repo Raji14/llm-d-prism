@@ -372,7 +372,7 @@ export default function LeaderboardAsk({
                             >
                                 <StatusChip status="sample" size="xs" />
                                 <span className="truncate">
-                                    {publishedCount > 0 ? `${sampleCount} illustrative` : 'Illustrative only · nothing published yet'}
+                                    {publishedCount > 0 ? `${sampleCount} illustrative` : `Illustrative only · nothing ${publishedLabel} yet`}
                                 </span>
                             </span>
                         )}

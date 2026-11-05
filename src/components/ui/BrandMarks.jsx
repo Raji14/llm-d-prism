@@ -14,6 +14,7 @@
 
 import React from 'react';
 import { cn } from '../../utils/cn';
+import { Badge } from './Badge.jsx';
 
 // Third-party brand marks. These are the ONLY place in src/ where literal
 // brand hexes are allowed outside the chart palette — brand colors are fixed
@@ -45,5 +46,44 @@ export function GoogleMark({ className, title = 'Google Cloud' }) {
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" style={{ fill: GOOGLE_YELLOW }} />
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" style={{ fill: GOOGLE_RED }} />
         </svg>
+    );
+}
+
+const LLMD_LOGOTYPE_URL = 'https://llm-d.ai/img/llm-d-logotype-and-icon.png';
+
+/**
+ * Prism's own mark: the rainbow prism Prism launched with (the 128px version
+ * of the original 32px header logo). Decorative; the wordmark carries the name.
+ */
+export function PrismMark({ className }) {
+    return <img src="/favicon-dark.png" alt="" aria-hidden="true" className={cn('h-7 w-7 shrink-0 object-contain', className)} />;
+}
+
+/**
+ * The header lockup for each brand (src/config/site.js). Only llm-d Prism
+ * wears llm-d's logotype; every other Prism shows its own mark, plus the
+ * instance's name when the deploy sets one, so a private Prism never passes
+ * for llm-d's.
+ */
+export function BrandLockup({ brand = 'prism', siteName = null, className }) {
+    if (brand === 'llm-d') {
+        return (
+            <span className={cn('flex items-center gap-3', className)}>
+                <img src={LLMD_LOGOTYPE_URL} alt="llm-d" className="h-6 object-contain" />
+                <span aria-hidden="true" className="h-5 w-px bg-zinc-200" />
+                <span className="text-lg font-semibold tracking-tight">Prism</span>
+            </span>
+        );
+    }
+    return (
+        <span className={cn('flex items-center gap-2', className)}>
+            <PrismMark />
+            <span className="text-lg font-semibold tracking-tight">Prism</span>
+            {siteName && (
+                <Badge tone="neutral" size="sm" className="ml-1 hidden sm:inline-flex">
+                    {siteName}
+                </Badge>
+            )}
+        </span>
     );
 }

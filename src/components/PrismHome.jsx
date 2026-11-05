@@ -3,10 +3,10 @@ import { ArrowRight, ArrowUpRight, Activity, BarChart2, Blocks, Bot, FileCode, T
 import { cn } from '../utils/cn';
 import { normalizeLeaderboardEntry } from '../utils/leaderboardData.js';
 import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF } from '../utils/wellLitProofs.js';
-import { readInstanceMode } from './ResultsStore/instance.js';
+import { readSiteProfile } from '../config/site.js';
 import { Badge } from './ui/Badge.jsx';
 import { Button } from './ui/Button.jsx';
-import { DOCS_URL, METHODOLOGY, NAV, REPO_URL, SUBMIT } from './layout/navigation';
+import { DOCS_URL, METHODOLOGY, NAV, REPO_URL, SUBMIT, submitFor } from './layout/navigation';
 
 const LEADERBOARD = 'model-leaderboard';
 const REPORT_FORMAT_URL = 'https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report';
@@ -115,7 +115,7 @@ const TOOLKIT = [
 
 // The non-leaderboard jobs, repeated under the hero CTAs for the personas
 // who aren't choosing a stack.
-const HERO_JOBS = TOOLKIT.filter((c) => ['regressions-analysis', 'benchmark-browser', SUBMIT.view].includes(c.view));
+const heroJobsFrom = (toolkit) => toolkit.filter((c) => ['regressions-analysis', 'benchmark-browser', SUBMIT.view].includes(c.view));
 
 // Tools without a card, read from the shared nav model so a new tool shows up
 // on Home without editing this file.
@@ -123,11 +123,44 @@ const MORE_TOOLS = (NAV.find((n) => n.id === 'tools')?.items || []).filter(
     (t) => !TOOLKIT.some((c) => c.view === t.view)
 );
 
-const STEPS = [
-    { n: '01', title: 'Run', body: 'Benchmark with inference-perf and real-world workloads from the catalog.' },
-    { n: '02', title: 'Validate', body: 'Reports are schema-checked against Benchmark Report v0.2, then peer-reviewed.' },
-    { n: '03', title: 'Compare', body: 'Verified runs rank on the leaderboard, and anyone can reproduce them from the recipe.' },
-];
+// What changes between instances (src/config/site.js). The journeys are the
+// same on every Prism (decided 2026-11-03); only the front door and the publish
+// rule differ, so only the words around them change. An internal Prism never
+// says "public" or "community".
+const HOME_COPY = {
+    public: {
+        subhead:
+            'Prism ranks model, accelerator and serving-stack combinations on validated, reproducible runs, comparing throughput per chip, latency and cost.',
+        resultNoun: 'published result',
+        emptyPill: { view: SUBMIT.view, text: 'The community leaderboard is open', detail: 'Submit the first verified run' },
+        submitCard: { kicker: 'Submit', body: 'Upload a Benchmark Report v0.2, pass the schema checks, and get ranked after review.' },
+        steps: [
+            { n: '01', title: 'Run', body: 'Benchmark with inference-perf and real-world workloads from the catalog.' },
+            { n: '02', title: 'Validate', body: 'Reports are schema-checked against Benchmark Report v0.2, then peer-reviewed.' },
+            { n: '03', title: 'Compare', body: 'Verified runs rank on the leaderboard, and anyone can reproduce them from the recipe.' },
+        ],
+    },
+    internal: {
+        subhead:
+            'Prism ranks model, accelerator and serving-stack combinations on the runs your team marks Official, comparing throughput per chip, latency and cost. Results stay on this Prism.',
+        resultNoun: 'official result',
+        emptyPill: { view: 'results-store', text: 'No official results yet', detail: 'Upload runs and mark one official' },
+        submitCard: { kicker: 'Upload', body: 'Bring in Benchmark Report v0.2 runs. Once an approver marks a result Official, it ranks here.' },
+        steps: [
+            { n: '01', title: 'Run', body: 'Benchmark with inference-perf, then upload the Benchmark Report v0.2 runs here.' },
+            { n: '02', title: 'Mark official', body: 'An approver checks the result and marks it Official. Prism records who did it and when.' },
+            { n: '03', title: 'Compare', body: 'Official results rank on this Prism’s leaderboard, and anyone here can reproduce them from the recipe.' },
+        ],
+    },
+};
+
+// Home shows the reports this Prism pins, in order (PRISM_PINNED_REPORTS, by
+// path id). With nothing configured, every built-in report that has a number.
+const pinnedCards = (pinned) => {
+    const available = PROOF_CARDS.filter((c) => c.proof);
+    if (!pinned) return available;
+    return pinned.map((id) => available.find((c) => c.path === id)).filter(Boolean);
+};
 
 const AGENT_ROLES = [
     { id: 'config-tuner', label: 'Config tuner' },
@@ -330,24 +363,37 @@ function ProofCard({ card, go }) {
     );
 }
 
-function ProofBand({ go }) {
-    const cards = PROOF_CARDS.filter((c) => c.proof);
+function ProofBand({ go, site }) {
+    const cards = pinnedCards(site.pinnedReports);
+    const isLlmd = site.brand === 'llm-d';
+    const llmdLink = (
+        <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition-colors hover:decoration-accent-400"
+        >
+            llm-d
+        </a>
+    );
     return (
         <div id="paths" className="mt-14 scroll-mt-20 text-left sm:mt-16">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between md:gap-10">
                 <div className="max-w-2xl">
                     <p className="kicker text-accent-600">Well-lit paths, measured</p>
+                    {/* llm-d Prism speaks as llm-d; any other Prism credits it. */}
                     <p className="mt-2 text-sm leading-relaxed text-zinc-600">
-                        <a
-                            href={DOCS_URL}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition-colors hover:decoration-accent-400"
-                        >
-                            llm-d
-                        </a>{' '}
-                        is an open-source, Kubernetes-native stack for distributed LLM inference. Its well-lit paths are
-                        tested deployment recipes, one per layer, each benchmarked in its guide.
+                        {isLlmd ? (
+                            <>
+                                {llmdLink} is an open-source, Kubernetes-native stack for distributed LLM inference. Its
+                                well-lit paths are tested deployment recipes, one per layer, each benchmarked in its guide.
+                            </>
+                        ) : (
+                            <>
+                                These come from {llmdLink}&apos;s well-lit paths: tested deployment recipes for distributed LLM
+                                inference, one per layer, each benchmarked in its guide.
+                            </>
+                        )}
                     </p>
                 </div>
                 <a
@@ -360,7 +406,7 @@ function ProofBand({ go }) {
                 </a>
             </div>
 
-            {cards.length > 0 && (
+            {cards.length > 0 ? (
                 <ul
                     className={cn(
                         'mt-6 grid gap-4',
@@ -373,17 +419,28 @@ function ProofBand({ go }) {
                         <ProofCard key={card.path} card={card} go={go} />
                     ))}
                 </ul>
+            ) : (
+                <p className="mt-6 rounded-2xl border border-dashed border-zinc-300 bg-white/70 px-5 py-4 text-sm text-zinc-600">
+                    No reports are pinned to this Prism yet.
+                </p>
             )}
 
             <p className="mt-4 text-xs leading-relaxed text-zinc-600">
-                Next on the roadmap: <span className="font-semibold text-zinc-800">{NEXT_UP}</span>.
+                {isLlmd ? 'Next on the roadmap: ' : 'Next on llm-d’s roadmap: '}
+                <span className="font-semibold text-zinc-800">{NEXT_UP}</span>.
             </p>
         </div>
     );
 }
 
 const PrismHome = ({ onNavigate }) => {
-    const instance = readInstanceMode();
+    // Which Prism this is: one deployment each, same layout, its own words.
+    const site = readSiteProfile();
+    const { instance } = site;
+    const copy = HOME_COPY[instance] || HOME_COPY.public;
+    const submit = submitFor(instance);
+    const toolkit = TOOLKIT.map((card) => (card.view === SUBMIT.view ? { ...card, ...copy.submitCard, title: submit.label } : card));
+    const heroJobs = heroJobsFrom(toolkit);
     const published = usePublishedSummary(instance);
 
     // In-app navigation for plain clicks; modified clicks (new tab / window)
@@ -395,14 +452,15 @@ const PrismHome = ({ onNavigate }) => {
     };
 
     // Freshness pill: what the leaderboard ranks right now. Until a result is
-    // published it invites the first one; sample entries never count.
+    // published (or marked Official) it invites the first one; sample entries
+    // never count.
     const pill = published.count
         ? {
               view: LEADERBOARD,
-              text: `${plural(published.count, instance === 'internal' ? 'official result' : 'published result')} across ${plural(published.models, 'model')}`,
+              text: `${plural(published.count, copy.resultNoun)} across ${plural(published.models, 'model')}`,
               detail: published.updated ? `updated ${published.updated}` : null,
           }
-        : { view: SUBMIT.view, text: 'The community leaderboard is open', detail: 'Submit the first verified run' };
+        : copy.emptyPill;
 
     return (
         <div className="surface-light min-h-full bg-theme-bg text-zinc-900 font-sans antialiased overflow-x-hidden">
@@ -434,8 +492,7 @@ const PrismHome = ({ onNavigate }) => {
                         </h1>
 
                         <p className="mx-auto mt-6 max-w-3xl text-lg leading-relaxed text-zinc-700 [text-wrap:balance] sm:text-xl">
-                            Prism ranks model, accelerator and serving-stack combinations on validated, reproducible runs,
-                            comparing throughput per chip, latency and cost.
+                            {copy.subhead}
                         </p>
 
                         <div className="mx-auto mt-8 flex max-w-sm flex-col gap-3 sm:max-w-none sm:flex-row sm:justify-center">
@@ -454,7 +511,7 @@ const PrismHome = ({ onNavigate }) => {
                         </div>
 
                         <p className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm text-zinc-600 sm:gap-x-2">
-                            {HERO_JOBS.map((job, i) => (
+                            {heroJobs.map((job, i) => (
                                 <React.Fragment key={job.view}>
                                     {i > 0 && <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">·</span>}
                                     <a
@@ -469,7 +526,7 @@ const PrismHome = ({ onNavigate }) => {
                         </p>
                     </div>
 
-                    <ProofBand go={go} />
+                    <ProofBand go={go} site={site} />
                 </div>
             </section>
 
@@ -482,7 +539,7 @@ const PrismHome = ({ onNavigate }) => {
                         body="Pick the job you're doing. Each card opens the right view."
                     />
                     <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
-                        {TOOLKIT.map((card) => {
+                        {toolkit.map((card) => {
                             const Icon = card.icon;
                             return (
                                 <li key={card.view}>
@@ -540,8 +597,8 @@ const PrismHome = ({ onNavigate }) => {
                             the same source of truth.
                         </p>
                         <div className="mt-8 flex flex-wrap gap-3">
-                            <Button href={hrefFor(SUBMIT.view)} onClick={(e) => go(e, SUBMIT.view)} variant="inverse" size="md">
-                                <UploadCloud className="h-4 w-4" /> {SUBMIT.label}
+                            <Button href={hrefFor(submit.view)} onClick={(e) => go(e, submit.view)} variant="inverse" size="md">
+                                <UploadCloud className="h-4 w-4" /> {submit.label}
                             </Button>
                             <Button href={REPORT_FORMAT_URL} target="_blank" rel="noopener noreferrer" variant="inverseOutline" size="md">
                                 Report format <ArrowUpRight className="h-4 w-4" />
@@ -574,7 +631,7 @@ const PrismHome = ({ onNavigate }) => {
                         </div>
                     </div>
                     <ol className="grid gap-px self-start overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-3 lg:grid-cols-1">
-                        {STEPS.map((s) => (
+                        {copy.steps.map((s) => (
                             <li key={s.n} className="flex gap-5 bg-zinc-950 p-6">
                                 <span className="pt-0.5 font-mono text-sm text-accent-400">{s.n}</span>
                                 <div>

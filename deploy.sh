@@ -14,6 +14,11 @@ GITHUB_CLIENT_ID="${GITHUB_CLIENT_ID:-}"
 GITHUB_CLIENT_SECRET="${GITHUB_CLIENT_SECRET:-}"
 ALLOW_UNAUTHENTICATED="true"
 PUBLIC_URL=""
+# Which Prism this deployment is (src/config/site.js). Only llm-d's public
+# deployment sets PRISM_BRAND=llm-d; every other Prism shows its own mark.
+PRISM_INSTANCE="public"
+PRISM_BRAND="prism"
+PRISM_PINNED_REPORTS=""
 
 # Helper function to print usage
 usage() {
@@ -27,6 +32,9 @@ usage() {
   echo "  -c, --contact <URL>           Contact Us URL/Email"
   echo "  -giq, --giq-projects <IDS>    Comma-separated list of GIQ project IDs"
   echo "  -b, --gcs-buckets <NAMES>     Comma-separated list of GCS buckets"
+  echo "  --instance <internal|public>  Who can get in and how results rank (default: public)"
+  echo "  --brand <llm-d|prism>         Logo: only llm-d's public Prism uses llm-d (default: prism)"
+  echo "  --pinned-reports \"<IDS>\"      Space-separated report ids pinned to Home, in order"
   echo "  --[no-]allow-unauthenticated Control whether the service is publicly accessible"
   echo "  -h, --help                    Show this help message"
   exit 1
@@ -65,6 +73,9 @@ while [[ "$#" -gt 0 ]]; do
         -giq|--giq-projects) GIQ_PROJECTS="$2"; shift ;;
         -b|--gcs-buckets) GCS_BUCKETS="$2"; shift ;;
         -u|--public-url) PUBLIC_URL="$2"; shift ;;
+        --instance) PRISM_INSTANCE="$2"; shift ;;
+        --brand) PRISM_BRAND="$2"; shift ;;
+        --pinned-reports) PRISM_PINNED_REPORTS="$2"; shift ;;
         --no-allow-unauthenticated) ALLOW_UNAUTHENTICATED="false" ;;
         --allow-unauthenticated) ALLOW_UNAUTHENTICATED="true" ;;
         -h|--help) usage ;;
@@ -72,6 +83,18 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
+
+# Which Prism this is: refuse values the app would silently ignore.
+case "$PRISM_INSTANCE" in
+    internal|public) ;;
+    *) echo "Error: --instance must be 'internal' or 'public' (got '$PRISM_INSTANCE')." >&2; exit 1 ;;
+esac
+case "$PRISM_BRAND" in
+    llm-d|prism) ;;
+    *) echo "Error: --brand must be 'llm-d' or 'prism' (got '$PRISM_BRAND')." >&2; exit 1 ;;
+esac
+# gcloud --set-env-vars splits on commas, so pinned ids travel space-separated.
+PRISM_PINNED_REPORTS="${PRISM_PINNED_REPORTS//,/ }"
 
 # Auto-detect API Key from .env.local if not set
 if [ -z "$GOOGLE_API_KEY" ] && [ -f ".env.local" ]; then
@@ -102,6 +125,9 @@ GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID"
 GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET"
 PUBLIC_URL="$PUBLIC_URL"
 ALLOW_UNAUTHENTICATED="$ALLOW_UNAUTHENTICATED"
+PRISM_INSTANCE="$PRISM_INSTANCE"
+PRISM_BRAND="$PRISM_BRAND"
+PRISM_PINNED_REPORTS="$PRISM_PINNED_REPORTS"
 EOL
 
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
@@ -126,7 +152,7 @@ DEPLOY_ARGS=(
   --region $REGION
   --port 8080
   --project $PROJECT_ID
-  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",DEFAULT_PROJECTS="${GIQ_PROJECTS:-$PROJECT_ID}",DEFAULT_BUCKETS="${GCS_BUCKETS:-prism-internal-results}",SITE_NAME="$SITE_NAME",GA_TRACKING_ID="$GA_TRACKING_ID",CONTACT_US_URL="$CONTACT_US_URL",GOOGLE_API_KEY="$GOOGLE_API_KEY",GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID",GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET",PUBLIC_URL="$PUBLIC_URL"
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",DEFAULT_PROJECTS="${GIQ_PROJECTS:-$PROJECT_ID}",DEFAULT_BUCKETS="${GCS_BUCKETS:-prism-internal-results}",SITE_NAME="$SITE_NAME",GA_TRACKING_ID="$GA_TRACKING_ID",CONTACT_US_URL="$CONTACT_US_URL",GOOGLE_API_KEY="$GOOGLE_API_KEY",GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID",GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET",PUBLIC_URL="$PUBLIC_URL",PRISM_INSTANCE="$PRISM_INSTANCE",PRISM_BRAND="$PRISM_BRAND",PRISM_PINNED_REPORTS="$PRISM_PINNED_REPORTS"
 )
 
 if [ "$ALLOW_UNAUTHENTICATED" = "false" ]; then

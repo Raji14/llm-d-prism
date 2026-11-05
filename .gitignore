@@ -34,6 +34,8 @@ Thumbs.db
 .envrc
 .secrets.env
 .deploy_config
+# Filled-in copy of deploy/internal.env.example (private project details)
+deploy/internal.env
 vendor/
 node_modules
 

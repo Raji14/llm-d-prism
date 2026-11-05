@@ -258,7 +258,10 @@ export default function LeaderboardDashboard({
             const current = new URLSearchParams(window.location.search);
             const params = new URLSearchParams();
             if (current.get('view')) params.set('view', current.get('view'));
-            if (current.get('instance')) params.set('instance', current.get('instance'));
+            // Which-Prism preview params (dev server only, src/config/site.js) ride along.
+            ['instance', 'brand', 'site', 'pinned'].forEach((k) => {
+                if (current.get(k) != null) params.set(k, current.get(k));
+            });
             if (searchQuery.trim()) params.set('q', searchQuery.trim());
             params.set('model', selectedModelFamily);
             params.set('workload', selectedWorkload);
@@ -558,8 +561,12 @@ export default function LeaderboardDashboard({
                     <div className="surface-light rounded-3xl border border-zinc-200 bg-white">
                         <EmptyState
                             icon={<Database className="w-9 h-9 text-zinc-400 mx-auto" />}
-                            title="Nothing published yet"
-                            message="The Leaderboard ranks results once they're published from the Results Store. Publish one there, or show the illustrative samples to see how ranking works."
+                            title={instance === 'internal' ? 'Nothing official yet' : 'Nothing published yet'}
+                            message={
+                                instance === 'internal'
+                                    ? 'The Leaderboard ranks results once an approver marks them Official in the Results Store. Mark one there, or show the illustrative samples to see how ranking works.'
+                                    : "The Leaderboard ranks results once they're published from the Results Store. Publish one there, or show the illustrative samples to see how ranking works."
+                            }
                             action={
                                 <div className="flex flex-wrap items-center justify-center gap-2">
                                     <Button variant="primary" size="sm" href="?view=results-store" onClick={(e) => go(e, 'results-store')}>

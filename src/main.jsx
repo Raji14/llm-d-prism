@@ -17,6 +17,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { GitHubAuthProvider } from './components/GitHubAuthProvider.jsx'
+import { applySiteToDocument } from './config/site.js'
+
+// Which Prism this is (llm-d Prism, an internal Prism, …) comes from the
+// deployment; set the tab title and instance attributes before first paint.
+applySiteToDocument()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

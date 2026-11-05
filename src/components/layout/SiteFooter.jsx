@@ -14,9 +14,20 @@
 
 // Prism 2.0 site footer, rendered at the end of every view.
 import React from 'react';
-import { NAV, SUBMIT, METHODOLOGY, REPO_URL, DOCS_URL } from './navigation';
+import { readSiteProfile } from '../../config/site.js';
+import { NAV, METHODOLOGY, REPO_URL, DOCS_URL, submitFor } from './navigation';
+
+// The line under the wordmark: llm-d's community on llm-d Prism, your team on
+// an internal Prism, nobody's brand on anyone else's.
+const taglineFor = ({ brand, instance }) => {
+    if (brand === 'llm-d') return 'Reproducible inference benchmarks for the llm-d community. Apache-2.0.';
+    if (instance === 'internal') return 'Inference benchmarks for your team, on open-source Prism.';
+    return 'Reproducible inference benchmarks. Apache-2.0.';
+};
 
 export default function SiteFooter({ onNavigate }) {
+    const site = readSiteProfile();
+    const submit = submitFor(site.instance);
     const link = (view, label) => (
         <li key={view}>
             <a
@@ -46,7 +57,7 @@ export default function SiteFooter({ onNavigate }) {
             <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] text-sm">
                 <div className="col-span-2 md:col-span-1">
                     <span className="text-base font-semibold">Prism</span>
-                    <p className="mt-2 text-zinc-600 max-w-xs">Reproducible inference benchmarks for the llm-d community. Apache-2.0.</p>
+                    <p className="mt-2 text-zinc-600 max-w-xs">{taglineFor(site)}</p>
                 </div>
                 <div>
                     <p className={heading}>Explore</p>
@@ -54,7 +65,7 @@ export default function SiteFooter({ onNavigate }) {
                         {link('home', 'Home')}
                         {link('model-leaderboard', 'Leaderboard')}
                         {link(METHODOLOGY.view, METHODOLOGY.label)}
-                        {link(SUBMIT.view, SUBMIT.label)}
+                        {link(submit.view, submit.label)}
                     </ul>
                 </div>
                 <div>

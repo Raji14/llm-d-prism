@@ -27,6 +27,7 @@ import { useGitHubAuth } from './useGitHubAuth';
 import { v4 as uuidv4 } from 'uuid';
 import { getBenchmarkKey } from '../utils/dashboardHelpers';
 import { getCanonicalBucketName, getBucketAlias, dedupeBucketConfigs } from '../utils/bucketUtils';
+import { documentTitleFor, readBrand, readSiteName } from '../config/site.js';
 
 const getPrefixForBucket = (bucketName) => {
     if (bucketName === 'llm-d-benchmarks' || bucketName === 'llm-d-benchmarks-staging') {
@@ -326,7 +327,9 @@ export const useDashboardData = (initialState, dashboardState) => {
 
                 if (siteName) {
                     setSiteName(siteName);
-                    document.title = `Prism ${siteName}`;
+                    // Same rule as src/config/site.js, so the tab never flips
+                    // between two titles once the config arrives.
+                    document.title = documentTitleFor({ brand: readBrand(), siteName: readSiteName() || siteName });
                 }
 
                 if (contactUrl) {

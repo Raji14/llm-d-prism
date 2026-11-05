@@ -71,6 +71,9 @@ app.get('/api/config', (req, res) => {
         siteName: process.env.SITE_NAME || null,
         gaTrackingId: process.env.GA_TRACKING_ID || null,
         contactUrl: process.env.CONTACT_US_URL || null,
+        // Which Prism this deployment is (src/config/site.js).
+        instance: process.env.PRISM_INSTANCE === 'internal' ? 'internal' : 'public',
+        brand: process.env.PRISM_BRAND === 'llm-d' ? 'llm-d' : 'prism',
         localDir: !!process.env.PRISM_LOCAL_DIR
     });
 });
@@ -1177,11 +1180,18 @@ app.get('*', async (req, res) => {
         // Inject runtime environment variables
         // We inject GOOGLE_API_KEY specifically as it's required for the dashboard
         // Priorities: Process Env > Build Time (already in HTML)
+        // Which Prism this deployment is (src/config/site.js): instance, logo,
+        // display name and pinned reports. Unset values are left out.
         const runtimeEnv = {
-            GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY || process.env.REACT_APP_GOOGLE_API_KEY
+            GOOGLE_API_KEY: process.env.GOOGLE_API_KEY || process.env.VITE_GOOGLE_API_KEY || process.env.REACT_APP_GOOGLE_API_KEY,
+            PRISM_INSTANCE: process.env.PRISM_INSTANCE || undefined,
+            PRISM_BRAND: process.env.PRISM_BRAND || undefined,
+            PRISM_PINNED_REPORTS: process.env.PRISM_PINNED_REPORTS || undefined,
+            SITE_NAME: process.env.SITE_NAME || undefined,
         };
 
-        const scriptTag = `<script>window.env = ${JSON.stringify(runtimeEnv)};</script>`;
+        // Escape '<' so no value can close the script tag early.
+        const scriptTag = `<script>window.env = ${JSON.stringify(runtimeEnv).replace(/</g, '\\u003c')};</script>`;
 
         // Inject before </head>
         html = html.replace('</head>', `${scriptTag}</head>`);

@@ -48,6 +48,13 @@ export const NAV = [
 
 export const SUBMIT = { label: 'Submit a run', view: 'submit-benchmarks', icon: UploadCloud };
 
+// Same page, words that match the instance's publish rule: a public Prism
+// takes runs for review; on an internal one people upload runs and an approver
+// marks a result Official (src/config/site.js).
+export function submitFor(instance) {
+    return instance === 'internal' ? { ...SUBMIT, label: 'Upload runs' } : SUBMIT;
+}
+
 // How runs are produced, validated and ranked. Linked from Home, the footer
 // and the leaderboard's sample-data notice.
 export const METHODOLOGY = { label: 'How we measure', view: 'methodology' };

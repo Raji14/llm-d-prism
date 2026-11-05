@@ -77,6 +77,12 @@ Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine
     *   **Description**: Dynamically list and query verified community-submitted benchmarks.
     *   **Status**: Product Spec
 
+7.  **Prism instances: llm-d Prism and Internal Prism**
+    *   **Description**: One codebase deployed as separate, independent instances: llm-d Prism in public, Internal Prism at Google, and IBM's own. Instance, logo, site name and pinned reports are deploy parameters. There's no runtime toggle (decided 2026-11-03).
+    *   **Status**: UI/UX prototype on `feat/prism-instances`
+    *   **Next Steps**: Review both Homes with Sean and Jason. Deploy Internal Prism as its own Cloud Run service.
+    *   **Spec/Ref**: [product spec](../changes/prism-instances/product_spec.md) · [UI spec](../changes/prism-instances/ui_spec.md) · [design](../changes/prism-instances/design.md)
+
 ---
 
 ### 🟣 2027-H1 (Future Ideas & Explorations)

@@ -58,20 +58,24 @@ const hardwareShortLabel = (accId) => {
     return found ? found.short : accId || 'Accelerator';
 };
 
+const NOT_REPORTED = 'Not reported';
+
 /**
  * Workload & harness fields that must match for two runs to be considered
- * a like-for-like ("apples-to-apples") comparison.
+ * a like-for-like ("apples-to-apples") comparison. Concurrency isn't one of
+ * them: each run is ranked at its own best point under the SLO, so two setups
+ * landing on different concurrency levels is the comparison, not a confound.
  */
 export const WORKLOAD_PARITY_FIELDS = [
     {
         key: 'model',
         label: 'Model',
-        extract: (r) => r?.model_name || r?.model_family || 'Not reported',
+        extract: (r) => r?.model_name || r?.model_family || NOT_REPORTED,
     },
     {
         key: 'dataset',
         label: 'Dataset',
-        extract: (r) => r?.workload?.dataset_name || 'Not reported',
+        extract: (r) => r?.workload?.dataset_name || NOT_REPORTED,
     },
     {
         key: 'isl_osl',
@@ -79,32 +83,26 @@ export const WORKLOAD_PARITY_FIELDS = [
         extract: (r) => {
             const isl = r?.workload?.input_tokens;
             const osl = r?.workload?.output_tokens;
-            if (isl == null && osl == null) return 'Not reported';
+            if (isl == null && osl == null) return NOT_REPORTED;
             return `${isl ?? '—'} in / ${osl ?? '—'} out tok`;
         },
-    },
-    {
-        key: 'concurrency',
-        label: 'Concurrency',
-        extract: (r) => (r?.workload?.concurrency != null ? `Concurrency ${r.workload.concurrency}` : 'Not reported'),
     },
     {
         key: 'harness',
         label: 'Benchmark harness',
         extract: (r) => {
             const fa = r?.fairness_audit;
-            if (!fa) return 'Not reported';
-            const harness = fa.harness || 'inference-perf';
+            if (!fa?.harness) return NOT_REPORTED;
             const temp = fa.temp != null ? `temp ${fa.temp}` : null;
             const warmup = fa.warmup_runs != null ? `warmup ${fa.warmup_runs}` : null;
-            return [harness, temp, warmup].filter(Boolean).join(' · ');
+            return [fa.harness, temp, warmup].filter(Boolean).join(' · ');
         },
     },
 ];
 
 /**
  * Evaluates whether a set of runs share the exact same model, dataset,
- * prompt/output length, concurrency, and benchmark harness.
+ * prompt/output length and benchmark harness.
  */
 export function computeParity(runs = []) {
     const valid = (runs || []).filter(Boolean);
@@ -119,7 +117,7 @@ export function computeParity(runs = []) {
         const values = valid.map((r) => ({
             runId: r.id,
             recipeName: r.recipe_name,
-            value: String(field.extract(r) ?? 'Not reported'),
+            value: String(field.extract(r) ?? NOT_REPORTED),
         }));
         const distinct = new Set(values.map((v) => v.value.toLowerCase()));
         if (distinct.size > 1) {
@@ -146,6 +144,7 @@ export function computeParity(runs = []) {
 
 /**
  * Serving stack and hardware fields compared symmetrically between two runs.
+ * A field a run didn't record reads "Not reported", never a guessed default.
  */
 export const CONFIG_DIFF_FIELDS = [
     {
@@ -153,7 +152,7 @@ export const CONFIG_DIFF_FIELDS = [
         label: 'Hardware topology',
         extract: (r) => {
             const count = r?.hardware?.accelerator_count || 1;
-            const short = hardwareShortLabel(r?.hardware?.accelerator_type);
+            const short = r?.hardware?.accelerator_label || hardwareShortLabel(r?.hardware?.accelerator_type);
             const vm = r?.hardware?.machine_type ? ` (${r.hardware.machine_type})` : '';
             return `${count}× ${short}${vm}`;
         },
@@ -171,7 +170,8 @@ export const CONFIG_DIFF_FIELDS = [
         key: 'parallelism',
         label: 'Parallelism & replicas',
         extract: (r) => {
-            const tp = r?.stack?.tensor_parallel_size || 1;
+            const tp = r?.stack?.tensor_parallel_size;
+            if (!tp) return NOT_REPORTED;
             const pp = r?.stack?.pipeline_parallel_size || 1;
             const ep = r?.stack?.expert_parallel_size || 1;
             const rep = r?.stack?.replicas || 1;
@@ -186,16 +186,19 @@ export const CONFIG_DIFF_FIELDS = [
         key: 'quantization',
         label: 'Weights & KV precision',
         extract: (r) => {
-            const w = (r?.stack?.quantization || 'fp16').toUpperCase();
-            const kv = (r?.stack?.kv_cache_dtype || 'auto').toUpperCase();
-            return `${w} weights · ${kv} KV`;
+            const w = r?.stack?.quantization;
+            const kv = r?.stack?.kv_cache_dtype;
+            if (!w && !kv) return NOT_REPORTED;
+            return `${w ? String(w).toUpperCase() : NOT_REPORTED} weights · ${kv ? String(kv).toUpperCase() : NOT_REPORTED} KV`;
         },
     },
     {
         key: 'prefix_caching',
         label: 'Prefix caching & routing',
         extract: (r) => {
-            if (!r?.stack?.prefix_caching) return 'Disabled';
+            const pc = r?.stack?.prefix_caching;
+            if (pc == null) return NOT_REPORTED;
+            if (!pc) return 'Disabled';
             const routing = r?.stack?.routing;
             return routing ? `Enabled (${routing})` : 'Enabled';
         },
@@ -205,21 +208,26 @@ export const CONFIG_DIFF_FIELDS = [
         label: 'Speculative decoding',
         extract: (r) => {
             const spec = r?.stack?.speculative_decoding;
-            if (!spec?.enabled) return 'Disabled';
+            if (!spec) return NOT_REPORTED;
+            if (!spec.enabled) return 'Disabled';
             const draft = spec.draft_model ? spec.draft_model.split('/').pop() : 'draft model';
-            const k = spec.num_speculative_tokens || 3;
-            return `Enabled (${draft}, k=${k})`;
+            const k = spec.num_speculative_tokens;
+            return k ? `Enabled (${draft}, k=${k})` : `Enabled (${draft})`;
         },
     },
     {
         key: 'pd_disaggregation',
         label: 'Prefill / decode topology',
-        extract: (r) => (r?.stack?.pd_disaggregation ? 'Disaggregated P/D' : 'Colocated'),
+        extract: (r) => {
+            const pd = r?.stack?.pd_disaggregation;
+            if (pd == null) return NOT_REPORTED;
+            return pd ? 'Disaggregated P/D' : 'Colocated';
+        },
     },
     {
         key: 'container_image',
         label: 'Container image',
-        extract: (r) => r?.container_image || 'Not reported',
+        extract: (r) => r?.container_image || NOT_REPORTED,
     },
 ];
 

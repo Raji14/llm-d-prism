@@ -23,7 +23,7 @@ import {
     CartesianGrid,
     ReferenceLine
 } from 'recharts';
-import { Download, FilterX, Info } from 'lucide-react';
+import { Download, FilterX } from 'lucide-react';
 import {
     ChartContainer,
     ChartFilterRow,
@@ -45,8 +45,16 @@ import {
     resolveSeriesColor
 } from '../ui';
 import { cn } from '../../utils/cn';
-import { computeParetoFrontier, getMetricValue } from '../../utils/paretoFrontier.js';
-import { engineLabel } from '../../utils/leaderboardFacets.js';
+import { computeParetoFrontier } from '../../utils/paretoFrontier.js';
+import {
+    DEFAULT_SLO,
+    describeSlo,
+    engineLabel,
+    formatHardwareShort,
+    formatLimitMs,
+    latencyFor,
+    provenanceStatus,
+} from '../../utils/leaderboardFacets.js';
 
 // Canonical Prism chart palette mapped stably to accelerator entities
 const HARDWARE_COLORS = {
@@ -67,13 +75,11 @@ const HARDWARE_LABELS = {
     'tpu-v5e': 'TPU v5e',
 };
 
-function formatShortHardware(item) {
-    if (!item) return '';
-    const count = item.hardware?.accelerator_count || 1;
-    const accType = item.hardware?.accelerator_type || '';
-    const shortAcc = HARDWARE_LABELS[accType] || item.hardware_summary || accType;
-    return `${count}× ${shortAcc}`;
-}
+// Accelerators outside the catalog keep their recorded name as their series.
+const hardwareKeyOf = (item) => {
+    const acc = item?.hardware?.accelerator_type || 'other';
+    return acc === 'other' ? item?.hardware?.accelerator_label || 'other' : acc;
+};
 
 // Canonical Prism chart palette mapped stably to stack components
 const STACK_COLORS = {
@@ -89,83 +95,91 @@ const STACK_SERIES_INDEX = {
 };
 
 const STACK_ORDER = ['llm-d', 'vllm', 'sglang'];
+const UNKNOWN_STACK = 'unknown';
+const stackKeyOf = (item) => String(item?.stack?.engine || UNKNOWN_STACK).toLowerCase();
 
 function getStackShape(stackKey) {
-    const key = String(stackKey || 'llm-d').toLowerCase();
+    const key = String(stackKey || '').toLowerCase();
     if (key.includes('llm-d') || key === 'llmd') return 'diamond';
     if (key.includes('vllm')) return 'circle';
     if (key.includes('sglang')) return 'triangle';
     return 'square';
 }
 
-function getSweepPointMetric(pt, metricKey) {
-    if (!pt) return null;
-    if (metricKey === 'ttft_p50') return pt.ttft_p50;
-    if (metricKey === 'itl_p50') return pt.itl_p50;
-    if (metricKey === 'output_tokens_per_sec') {
-        return pt.output_tokens_per_sec ?? (pt.itl_p50 > 0 ? 1000 / pt.itl_p50 : null);
-    }
-    if (metricKey === 'workload.concurrency') return pt.concurrency;
-    if (metricKey === 'tokens_per_sec_per_chip') return pt.tokens_per_sec_per_chip;
-    if (metricKey === 'tokens_per_sec') return pt.tokens_per_sec;
-    if (metricKey === 'tokens_per_dollar') return pt.tokens_per_dollar;
-    return pt[metricKey] ?? null;
-}
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const perUserRate = (tpotMs) => (isNum(tpotMs) && tpotMs > 0 ? 1000 / tpotMs : null);
 
-const X_AXIS_CONFIGS = {
-    ttft_p50: {
-        label: 'TTFT (P50)',
-        shortLabel: 'TTFT P50',
-        axisLabel: 'Time to First Token (TTFT P50, ms — lower is better)',
-        unit: ' ms',
-        direction: 'min',
-        format: (v) => Number(v).toFixed(1)
-    },
-    itl_p50: {
-        label: 'TPOT / ITL (P50)',
-        shortLabel: 'TPOT P50',
-        axisLabel: 'Time Per Output Token (TPOT P50, ms — lower is better)',
-        unit: ' ms',
-        direction: 'min',
-        format: (v) => Number(v).toFixed(1)
-    },
-    output_tokens_per_sec: {
-        label: 'Interactivity',
-        shortLabel: 'Interactivity',
-        axisLabel: 'Interactivity / Output Token Rate (tok/s/user — higher is better)',
-        unit: ' tok/s',
-        direction: 'max',
-        format: (v) => Number(v).toFixed(1)
-    },
-    'workload.concurrency': {
-        label: 'Concurrency',
-        shortLabel: 'Concurrency',
-        axisLabel: 'Concurrent Requests / Streams',
-        unit: ' streams',
-        direction: 'max',
-        format: (v) => Math.round(v).toLocaleString()
+// Axis ids stay stable in URLs; what they read follows the active percentile.
+function xAxisConfig(metricId, pct) {
+    const P = String(pct).toUpperCase();
+    switch (metricId) {
+        case 'itl_p50':
+            return {
+                label: `TPOT (${P})`,
+                shortLabel: `TPOT ${P}`,
+                axisLabel: `Time per output token (TPOT ${P}, ms — lower is better)`,
+                unit: ' ms',
+                direction: 'min',
+                format: (v) => Number(v).toFixed(1),
+                ofItem: (item) => latencyFor(item, 'itl', pct),
+                ofPoint: (pt) => pt?.[`itl_${pct}`] ?? null,
+            };
+        case 'output_tokens_per_sec':
+            return {
+                label: `Interactivity (${P})`,
+                shortLabel: `Interactivity ${P}`,
+                axisLabel: `Interactivity: tokens per second each user sees (1000 ÷ TPOT ${P}, higher is better)`,
+                unit: ' tok/s/user',
+                direction: 'max',
+                format: (v) => Number(v).toFixed(1),
+                ofItem: (item) => perUserRate(latencyFor(item, 'itl', pct)),
+                ofPoint: (pt) => perUserRate(pt?.[`itl_${pct}`]),
+            };
+        case 'workload.concurrency':
+            return {
+                label: 'Concurrency',
+                shortLabel: 'Concurrency',
+                axisLabel: 'Concurrent requests',
+                unit: ' concurrent',
+                direction: 'max',
+                format: (v) => Math.round(v).toLocaleString(),
+                ofItem: (item) => item?.operatingConcurrency ?? null,
+                ofPoint: (pt) => pt?.concurrency ?? null,
+            };
+        case 'ttft_p50':
+        default:
+            return {
+                label: `TTFT (${P})`,
+                shortLabel: `TTFT ${P}`,
+                axisLabel: `Time to first token (TTFT ${P}, ms — lower is better)`,
+                unit: ' ms',
+                direction: 'min',
+                format: (v) => Number(v).toFixed(1),
+                ofItem: (item) => latencyFor(item, 'ttft', pct),
+                ofPoint: (pt) => pt?.[`ttft_${pct}`] ?? null,
+            };
     }
-};
+}
 
 const THROUGHPUT_CONFIGS = {
     tokens_per_sec_per_chip: {
         label: 'Throughput per chip',
         shortLabel: 'Throughput per chip',
-        axisLabel: 'Throughput per Chip (Tokens/sec/chip)',
+        axisLabel: 'Throughput per chip (total tokens/sec/chip)',
         unit: ' tok/s/chip',
         format: (v) => Math.round(v).toLocaleString()
     },
     tokens_per_sec: {
         label: 'Total throughput',
         shortLabel: 'Aggregate throughput',
-        axisLabel: 'Throughput (Tokens/sec)',
+        axisLabel: 'Throughput (total tokens/sec)',
         unit: ' tok/s',
         format: (v) => Math.round(v).toLocaleString()
     },
     tokens_per_dollar: {
         label: 'Tokens / dollar',
         shortLabel: 'Tokens per dollar',
-        axisLabel: 'Tokens Per Dollar ($)',
+        axisLabel: 'Tokens per dollar',
         unit: ' tok/$',
         format: (v) => Math.round(v).toLocaleString()
     }
@@ -210,7 +224,7 @@ function CustomScatterDot(props) {
     const isSelected = Boolean(activeItemId && item?.id === activeItemId);
     const isPareto = Boolean(payload.isParetoOptimal);
     const missesSlo = Boolean(item?.missesSlo);
-    const shape = payload.shape || getStackShape(item?.stack?.engine);
+    const shape = payload.shape || getStackShape(stackKeyOf(item));
     const fill = payload.color;
     const stroke = isSelected
         ? chartTheme.accent
@@ -285,17 +299,16 @@ function CustomScatterDot(props) {
 const ParetoChartTooltip = ({
     active,
     payload,
-    latencyMetric = 'ttft_p50',
+    latConfig,
     throughputMetric = 'tokens_per_sec_per_chip'
 }) => {
-    if (!active || !payload || !payload.length) return null;
+    if (!active || !payload || !payload.length || !latConfig) return null;
 
     const recipeEntry = payload.find(p => p?.payload?.item?.recipe_name || p?.payload?.recipe_name) || payload[0];
     const data = recipeEntry?.payload || {};
     const item = data.item || data;
     const sweepPt = data.sweepPoint || null;
 
-    const latConfig = X_AXIS_CONFIGS[latencyMetric] || X_AXIS_CONFIGS.ttft_p50;
     const tputConfig = THROUGHPUT_CONFIGS[throughputMetric] || THROUGHPUT_CONFIGS.tokens_per_sec_per_chip;
 
     if (!item || (!item.recipe_name && !data.recipeName)) {
@@ -330,28 +343,25 @@ const ParetoChartTooltip = ({
         );
     }
 
-    const isPareto = Boolean(data.isParetoOptimal ?? item.isParetoOptimal);
-    const stackKey = (item.stack?.engine || 'llm-d').toLowerCase();
-    const color = data.color || data.seriesColor || STACK_COLORS[stackKey] || HARDWARE_COLORS[item.hardware?.accelerator_type] || CHART_SERIES[2];
+    const isPareto = Boolean(data.isParetoOptimal);
+    const color = data.color || data.seriesColor || STACK_COLORS[stackKeyOf(item)] || CHART_SERIES[2];
+    const point = sweepPt || item.operatingPoint || {};
 
-    const latVal = data.x ?? getMetricValue(item, latencyMetric);
-    const tputVal = data.y ?? getMetricValue(item, throughputMetric);
+    const latVal = data.x;
+    const tputVal = data.y;
 
-    const concurrency = sweepPt?.concurrency ?? data.concurrency ?? item.operatingConcurrency ?? item.workload?.concurrency ?? 32;
-    const qps = sweepPt?.qps ?? item.operatingPoint?.qps;
-    const costPer1M = sweepPt?.cost_per_1m ?? item.cost_analysis?.cost_per_1m_output_tokens_usd ?? item.cost_per_1m;
-    const totalTps = sweepPt?.tokens_per_sec ?? item.tokens_per_sec ?? item.metrics?.total_tokens_per_sec?.p50;
+    const concurrency = point.concurrency ?? item.operatingConcurrency ?? null;
+    const qps = point.qps ?? null;
+    const costPer1M = point.cost_per_1m ?? item.cost_analysis?.cost_per_1m_output_tokens_usd ?? null;
+    const totalTps = point.tokens_per_sec ?? item.tokens_per_sec ?? null;
     const chips = Math.max(1, item.hardware?.accelerator_count || 1);
-    const perChipTps = sweepPt?.tokens_per_sec_per_chip ?? item.tokens_per_sec_per_chip ?? (totalTps != null ? totalTps / chips : null);
+    const perChipTps = point.tokens_per_sec_per_chip ?? item.tokens_per_sec_per_chip ?? null;
+    const illustrative = Boolean(point.illustrative || item.is_sample);
 
-    const modelLabel = item.model_family || item.model_name?.split('/')?.pop() || item.model_name || 'LLM Model';
+    const modelLabel = item.model_family || item.model_name?.split('/')?.pop() || item.model_name || 'Model';
     const quant = item.stack?.quantization ? ` · ${item.stack.quantization.toUpperCase()}` : '';
-    const shortHw = formatShortHardware(item);
-    const statusKey = item.missesSlo
-        ? 'misses_slo'
-        : item.well_lit_path
-            ? 'well_lit_path'
-            : item.verification_status || 'verified';
+    const tp = item.stack?.tensor_parallel_size ? ` TP${item.stack.tensor_parallel_size}` : '';
+    const shortHw = formatHardwareShort(item);
 
     return (
         <ChartTooltip
@@ -362,7 +372,8 @@ const ParetoChartTooltip = ({
                         {modelLabel}
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
-                        <StatusChip status={statusKey} size="xs" />
+                        <StatusChip status={provenanceStatus(item)} size="xs" />
+                        {item.missesSlo && !sweepPt && <StatusChip status="misses_slo" size="xs" />}
                         {isPareto && (
                             <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 text-tiny font-semibold border border-amber-200 shrink-0">
                                 Frontier
@@ -376,7 +387,7 @@ const ParetoChartTooltip = ({
                 <div className="flex items-center justify-between gap-2 font-mono">
                     <span className="font-semibold text-zinc-900 truncate">{shortHw}</span>
                     <span className="text-accent-700 shrink-0">
-                        {engineLabel(item.stack?.engine)} TP{item.stack?.tensor_parallel_size || 1}{quant}
+                        {engineLabel(item.stack?.engine)}{tp}{quant}
                     </span>
                 </div>
                 <div className="text-tiny text-zinc-600 truncate">
@@ -387,22 +398,22 @@ const ParetoChartTooltip = ({
             <div className="space-y-1">
                 <ChartTooltipRow
                     color={color}
-                    label="Operating point"
-                    value={`${concurrency} concurrency${qps ? ` · ${qps} QPS` : ''}`}
+                    label={sweepPt ? 'Load point' : 'Operating point'}
+                    value={concurrency != null ? `${concurrency} concurrent${qps ? ` · ${qps} QPS` : ''}` : 'Not recorded'}
                 />
                 <ChartTooltipRow
                     color={color}
                     label={latConfig.label}
-                    value={latVal != null && !isNaN(latVal) ? latConfig.format(latVal) : 'N/A'}
-                    unit={latConfig.unit}
+                    value={isNum(latVal) ? latConfig.format(latVal) : 'Not recorded'}
+                    unit={isNum(latVal) ? latConfig.unit : ''}
                 />
                 <ChartTooltipRow
                     color={color}
                     label={tputConfig.label}
-                    value={tputVal != null && !isNaN(tputVal) ? tputConfig.format(tputVal) : 'N/A'}
-                    unit={tputConfig.unit}
+                    value={isNum(tputVal) ? tputConfig.format(tputVal) : 'Not recorded'}
+                    unit={isNum(tputVal) ? tputConfig.unit : ''}
                 />
-                {throughputMetric !== 'tokens_per_sec_per_chip' && perChipTps != null && (
+                {throughputMetric !== 'tokens_per_sec_per_chip' && isNum(perChipTps) && (
                     <ChartTooltipRow
                         color={color}
                         label="Throughput per chip"
@@ -410,7 +421,7 @@ const ParetoChartTooltip = ({
                         unit=" tok/s/chip"
                     />
                 )}
-                {throughputMetric !== 'tokens_per_sec' && totalTps != null && (
+                {throughputMetric !== 'tokens_per_sec' && isNum(totalTps) && (
                     <ChartTooltipRow
                         color={color}
                         label={`Total across ${chips} ${chips === 1 ? 'chip' : 'chips'}`}
@@ -418,14 +429,19 @@ const ParetoChartTooltip = ({
                         unit=" tok/s"
                     />
                 )}
-                {costPer1M != null && (
-                    <ChartTooltipRow
-                        color={color}
-                        label="Cost / 1M tokens"
-                        value={`$${Number(costPer1M).toFixed(3)}`}
-                    />
-                )}
+                <ChartTooltipRow
+                    color={color}
+                    label="Cost / 1M tokens"
+                    value={isNum(costPer1M) ? `$${Number(costPer1M).toFixed(3)}` : 'No list price'}
+                />
             </div>
+            {(illustrative || point.total_estimated) && (
+                <div className="mt-2 pt-1.5 border-t border-theme-border text-tiny font-sans text-zinc-600">
+                    {illustrative
+                        ? 'Illustrative sample: not a measured run.'
+                        : 'Total throughput estimated from the output rate and workload shape.'}
+                </div>
+            )}
         </ChartTooltip>
     );
 };
@@ -451,9 +467,9 @@ export default function ParetoCurveChart({
     onThroughputMetricChange,
     scaleMode: controlledScaleMode,
     onScaleModeChange,
-    maxTtftSla = null,
-    maxTpotSla = null,
-    slaPercentile = 'p90',
+    maxTtftSla = DEFAULT_SLO.ttft,
+    maxTpotSla = DEFAULT_SLO.tpot,
+    slaPercentile = DEFAULT_SLO.percentile,
     onSelectRecipe,
     selectedRecipe
 }) {
@@ -492,7 +508,7 @@ export default function ParetoCurveChart({
     const useLogScale = scaleMode === 'log';
     const chartContainerRef = useRef(null);
 
-    const activeLatConfig = X_AXIS_CONFIGS[latencyMetric] || X_AXIS_CONFIGS.ttft_p50;
+    const activeLatConfig = useMemo(() => xAxisConfig(latencyMetric, slaPercentile), [latencyMetric, slaPercentile]);
     const activeTputConfig = THROUGHPUT_CONFIGS[throughputMetric] || THROUGHPUT_CONFIGS.tokens_per_sec_per_chip;
     const xDirection = activeLatConfig.direction || 'min';
 
@@ -501,37 +517,42 @@ export default function ParetoCurveChart({
     // Global frontier for the plotted operating points on the chosen axes
     const frontier = useMemo(
         () => (isComparableScope
-            ? computeParetoFrontier(dataset || [], latencyMetric, throughputMetric, xDirection, 'max')
+            ? computeParetoFrontier(
+                dataset || [],
+                (item) => activeLatConfig.ofItem(item) ?? 0,
+                (item) => item?.[throughputMetric] ?? 0,
+                xDirection,
+                'max'
+            )
             : []),
-        [dataset, isComparableScope, latencyMetric, throughputMetric, xDirection]
+        [dataset, isComparableScope, activeLatConfig, throughputMetric, xDirection]
     );
 
-    // Prepare primary operating-point scatter markers
+    // Prepare primary operating-point scatter markers (rows with no value on an axis aren't plotted)
     const chartData = useMemo(() => {
-        return (dataset || []).map((item, index) => {
-            const x = getMetricValue(item, latencyMetric);
-            const y = getMetricValue(item, throughputMetric);
-            const accId = item.hardware?.accelerator_type || 'other';
-            const stackId = (item.stack?.engine || 'llm-d').toLowerCase();
-            const color = curveGroupMode === 'hardware'
-                ? (HARDWARE_COLORS[accId] || chartTheme.muted)
-                : (STACK_COLORS[stackId] || chartTheme.muted);
-
-            return {
+        return (dataset || []).flatMap((item, index) => {
+            const x = activeLatConfig.ofItem(item);
+            const y = item?.[throughputMetric] ?? null;
+            if (!isNum(x) || !isNum(y)) return [];
+            return [{
                 x,
                 y,
                 z: Math.max(100, (item.hardware?.accelerator_count || 1) * 30),
-                color,
-                shape: getStackShape(stackId),
-                stackId,
-                concurrency: item.operatingConcurrency ?? item.workload?.concurrency ?? 32,
+                color: curveGroupMode === 'hardware'
+                    ? (HARDWARE_COLORS[hardwareKeyOf(item)] || chartTheme.muted)
+                    : (STACK_COLORS[stackKeyOf(item)] || chartTheme.muted),
+                shape: getStackShape(stackKeyOf(item)),
+                stackId: stackKeyOf(item),
                 isParetoOptimal: Boolean(isComparableScope && frontier[index]?.isParetoOptimal && !item.missesSlo),
                 item
-            };
+            }];
         });
-    }, [dataset, latencyMetric, throughputMetric, curveGroupMode, isComparableScope, frontier, chartTheme.muted]);
+    }, [dataset, activeLatConfig, throughputMetric, curveGroupMode, isComparableScope, frontier, chartTheme.muted]);
 
-    // Build concurrency sweep curves for every run in scope + optional overall Pareto frontier
+    const unplottedCount = (dataset || []).length - chartData.length;
+
+    // Build load-sweep curves for every run in scope + optional overall Pareto frontier.
+    // Overloaded points are left off: they're kept for the record, never ranked or drawn.
     const overlaidSeries = useMemo(() => {
         const items = dataset || [];
         if (items.length === 0 || !isComparableScope) return [];
@@ -540,25 +561,26 @@ export default function ParetoCurveChart({
         const allSweepNodes = [];
 
         items.forEach((item) => {
-            const accId = item.hardware?.accelerator_type || 'other';
-            const stackId = (item.stack?.engine || 'llm-d').toLowerCase();
+            const stackId = stackKeyOf(item);
             const color = curveGroupMode === 'hardware'
-                ? (HARDWARE_COLORS[accId] || chartTheme.muted)
+                ? (HARDWARE_COLORS[hardwareKeyOf(item)] || chartTheme.muted)
                 : (STACK_COLORS[stackId] || chartTheme.muted);
             const shape = getStackShape(stackId);
             const sweepPoints = Array.isArray(item.sweep_points) ? item.sweep_points : [];
+            const illustrative = sweepPoints.some((pt) => pt.illustrative);
 
             const points = sweepPoints
+                .filter((pt) => !pt.overloaded)
                 .map((pt) => {
-                    const xVal = getSweepPointMetric(pt, latencyMetric);
-                    const yVal = getSweepPointMetric(pt, throughputMetric);
-                    if (!Number.isFinite(xVal) || !Number.isFinite(yVal) || xVal <= 0 || yVal <= 0) return null;
+                    const xVal = activeLatConfig.ofPoint(pt);
+                    const yVal = pt?.[throughputMetric] ?? null;
+                    if (!isNum(xVal) || !isNum(yVal) || xVal <= 0 || yVal <= 0) return null;
                     const node = {
                         x: xVal,
                         y: yVal,
                         concurrency: pt.concurrency,
                         qps: pt.qps,
-                        seriesLabel: `${engineLabel(stackId)} · ${formatShortHardware(item)}`,
+                        seriesLabel: `${engineLabel(item.stack?.engine)} · ${formatHardwareShort(item)}`,
                         seriesColor: color,
                         color,
                         shape,
@@ -576,10 +598,11 @@ export default function ParetoCurveChart({
                 sweepSeriesList.push({
                     key: `sweep-${item.id}`,
                     recipeId: item.id,
-                    label: `${engineLabel(stackId)} (${formatShortHardware(item)})`,
+                    label: `${engineLabel(item.stack?.engine)} (${formatHardwareShort(item)})${illustrative ? ' · sample' : ''}`,
                     color,
                     shape,
                     points,
+                    illustrative,
                     missesSlo: Boolean(item.missesSlo),
                     isFaint: curveGroupMode === 'overall'
                 });
@@ -619,22 +642,21 @@ export default function ParetoCurveChart({
         }
 
         return sweepSeriesList;
-    }, [dataset, isComparableScope, curveGroupMode, latencyMetric, throughputMetric, xDirection, chartTheme.muted]);
+    }, [dataset, isComparableScope, curveGroupMode, activeLatConfig, throughputMetric, xDirection, chartTheme.muted]);
+
+    const hasIllustrative = overlaidSeries.some((s) => s.illustrative);
 
     // Dynamically discover stacks actually present in dataset
     const presentStacks = useMemo(() => {
         const seen = new Set();
-        (dataset || []).forEach((item) => {
-            const key = (item.stack?.engine || 'llm-d').toLowerCase();
-            seen.add(key);
-        });
+        (dataset || []).forEach((item) => seen.add(stackKeyOf(item)));
         const ordered = STACK_ORDER.filter((k) => seen.has(k));
         seen.forEach((k) => {
             if (!ordered.includes(k)) ordered.push(k);
         });
         return ordered.map((key) => ({
             key,
-            label: engineLabel(key),
+            label: key === UNKNOWN_STACK ? 'Stack not recorded' : engineLabel(key),
             color: STACK_COLORS[key] || chartTheme.muted,
             resolvedColor: STACK_SERIES_INDEX[key] != null
                 ? resolveSeriesColor(STACK_SERIES_INDEX[key], 'light')
@@ -646,36 +668,46 @@ export default function ParetoCurveChart({
     // Dynamically discover hardware present when in 'hardware' curve mode
     const presentHardware = useMemo(() => {
         if (curveGroupMode !== 'hardware') return [];
-        const seen = new Set();
+        const seen = new Map();
         (dataset || []).forEach((item) => {
-            const acc = item.hardware?.accelerator_type;
-            if (acc) seen.add(acc);
+            const key = hardwareKeyOf(item);
+            if (!seen.has(key)) seen.set(key, HARDWARE_LABELS[key] || item.hardware?.accelerator_label || 'Other accelerator');
         });
-        return Array.from(seen).map((acc) => ({
-            key: acc,
-            label: HARDWARE_LABELS[acc] || acc,
-            color: HARDWARE_COLORS[acc] || chartTheme.muted,
+        return Array.from(seen.entries()).map(([key, label]) => ({
+            key,
+            label,
+            color: HARDWARE_COLORS[key] || chartTheme.muted,
         }));
     }, [dataset, curveGroupMode, chartTheme.muted]);
 
-    // Active SLO reference line position when X-axis matches an active latency SLO
-    const activeSloLine = useMemo(() => {
-        if (latencyMetric === 'ttft_p50' && maxTtftSla !== null && maxTtftSla > 0) {
-            return { x: maxTtftSla, label: `SLO TTFT ≤ ${maxTtftSla}ms (${String(slaPercentile).toUpperCase()})` };
+    // The SLO line, on the axis it belongs to. Since the X axis reads the
+    // SLO's own percentile, a point left of the line really is inside it.
+    const sloLine = useMemo(() => {
+        const P = String(slaPercentile).toUpperCase();
+        if (latencyMetric === 'ttft_p50' && isNum(maxTtftSla) && maxTtftSla > 0) {
+            return { x: maxTtftSla, label: `SLO TTFT ${P} ≤ ${formatLimitMs(maxTtftSla)}` };
         }
-        if (latencyMetric === 'itl_p50' && maxTpotSla !== null && maxTpotSla > 0) {
-            return { x: maxTpotSla, label: `SLO TPOT ≤ ${maxTpotSla}ms (${String(slaPercentile).toUpperCase()})` };
+        if (latencyMetric === 'itl_p50' && isNum(maxTpotSla) && maxTpotSla > 0) {
+            return { x: maxTpotSla, label: `SLO TPOT ${P} ≤ ${formatLimitMs(maxTpotSla)}` };
+        }
+        if (latencyMetric === 'output_tokens_per_sec' && isNum(maxTpotSla) && maxTpotSla > 0) {
+            return { x: 1000 / maxTpotSla, label: `SLO ≥ ${(1000 / maxTpotSla).toFixed(0)} tok/s/user` };
         }
         return null;
     }, [latencyMetric, maxTtftSla, maxTpotSla, slaPercentile]);
 
     // Collect all plotted coordinates (both sweep curves and operating points) for clean axis domain
-    const allXValues = useMemo(() => {
+    const dataXValues = useMemo(() => {
         const vals = chartData.map((d) => d.x);
         overlaidSeries.forEach((s) => s.points.forEach((p) => vals.push(p.x)));
-        if (activeSloLine) vals.push(activeSloLine.x);
         return vals;
-    }, [chartData, overlaidSeries, activeSloLine]);
+    }, [chartData, overlaidSeries]);
+
+    // A far-off SLO (the default 2 s next to 100 ms samples) would squash every
+    // point into one corner, so the line is only drawn when it's near the data.
+    const dataXMax = dataXValues.length ? Math.max(...dataXValues) : 0;
+    const sloOnChart = Boolean(sloLine && dataXMax > 0 && sloLine.x <= dataXMax * 1.6);
+    const allXValues = sloOnChart ? [...dataXValues, sloLine.x] : dataXValues;
 
     const allYValues = useMemo(() => {
         const vals = chartData.map((d) => d.y);
@@ -710,6 +742,7 @@ export default function ParetoCurveChart({
         const subtitleParts = [
             scopeLabel || 'All models & workloads',
             `${activeTputConfig.shortLabel} vs. ${activeLatConfig.shortLabel}`,
+            `Ranked within ${describeSlo({ ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile })}`,
             `Scale: ${scaleMode === 'log' ? 'Logarithmic' : 'Linear'}`
         ].filter(Boolean);
 
@@ -735,7 +768,7 @@ export default function ParetoCurveChart({
 
         const hasSampleRuns = Boolean(dataset?.some((d) => d.is_sample));
         const footerText = hasSampleRuns
-            ? 'Includes reference benchmark curves · llm-d Prism'
+            ? 'Includes illustrative samples (not measured runs) · llm-d Prism'
             : 'llm-d Prism · Benchmark Report v0.2';
 
         const standaloneSvg = [
@@ -758,17 +791,21 @@ export default function ParetoCurveChart({
         const svgUrl = URL.createObjectURL(svgBlob);
         const link = document.createElement('a');
         link.href = svgUrl;
-        link.download = `prism-pareto-frontier-${latencyMetric}-vs-${throughputMetric}.svg`;
+        link.download = `prism-pareto-frontier-${latencyMetric}-${slaPercentile}-vs-${throughputMetric}.svg`;
         link.click();
         URL.revokeObjectURL(svgUrl);
     };
+
+    const offChartNote = sloLine && !sloOnChart && dataXMax > 0
+        ? `${sloLine.label.replace(/^SLO /, 'The SLO (')}) is off the right edge of this chart.`
+        : null;
 
     return (
         <ChartContainer
             title={`Throughput vs. latency (${activeTputConfig.shortLabel.toLowerCase()} vs. ${activeLatConfig.shortLabel})`}
             subtitle={
                 !isComparableScope
-                    ? 'Select a single model above to overlay concurrency curves'
+                    ? 'Select a single model above to overlay load curves'
                     : undefined
             }
             showFilters={showChartControls}
@@ -789,7 +826,7 @@ export default function ParetoCurveChart({
                 <ChartFilterRow>
                     <div
                         className={cn(!isComparableScope && 'opacity-50')}
-                        title={!isComparableScope ? 'Select a single model to overlay concurrency curves' : undefined}
+                        title={!isComparableScope ? 'Select a single model to overlay load curves' : undefined}
                     >
                         <ChartFilterGroup label="Curves">
                             <ToggleGroup
@@ -868,6 +905,12 @@ export default function ParetoCurveChart({
                                 <span>{hw.label}</span>
                             </span>
                         ))}
+                        {hasIllustrative && (
+                            <span className="inline-flex items-center gap-2 text-micro text-zinc-700 font-medium">
+                                <SeriesLineSwatch shape="circle" color={chartTheme.muted} lineStyle="dashed" />
+                                <span>Illustrative sample curve</span>
+                            </span>
+                        )}
                         {isComparableScope && curveGroupMode === 'overall' && (
                             <span className="inline-flex items-center gap-2 text-micro text-zinc-700 font-medium">
                                 <SeriesLineSwatch
@@ -897,6 +940,16 @@ export default function ParetoCurveChart({
                             <span>Selected recipe</span>
                         </span>
                     </div>
+                    {(offChartNote || unplottedCount > 0) && (
+                        <span className="text-micro text-zinc-600">
+                            {[
+                                offChartNote,
+                                unplottedCount > 0
+                                    ? `${unplottedCount} ${unplottedCount === 1 ? 'run isn’t' : 'runs aren’t'} plotted: ${activeLatConfig.shortLabel} wasn’t recorded.`
+                                    : null,
+                            ].filter(Boolean).join(' ')}
+                        </span>
+                    )}
                 </div>
             }
         >
@@ -905,7 +958,7 @@ export default function ParetoCurveChart({
                     <EmptyState
                         icon={<FilterX className="w-9 h-9 text-zinc-400 mx-auto" />}
                         title="No benchmark points to plot"
-                        message="No recipes match the active combination of filters. Try adjusting your model family, hardware, or SLO constraints."
+                        message={`None of these runs recorded ${activeLatConfig.shortLabel}. Try another percentile or X-axis.`}
                     />
                 ) : (
                     <ResponsiveContainer width="100%" height={360} minWidth={0}>
@@ -938,21 +991,21 @@ export default function ParetoCurveChart({
                                 cursor={cursorProps()}
                                 content={
                                     <ParetoChartTooltip
-                                        latencyMetric={latencyMetric}
+                                        latConfig={activeLatConfig}
                                         throughputMetric={throughputMetric}
                                     />
                                 }
                             />
 
                             {/* Active Latency SLO Boundary Line */}
-                            {activeSloLine && (
+                            {sloOnChart && (
                                 <ReferenceLine
-                                    x={activeSloLine.x}
+                                    x={sloLine.x}
                                     stroke={CHART_STATUS.danger}
                                     strokeDasharray="4 4"
                                     strokeWidth={1.75}
                                     label={{
-                                        value: activeSloLine.label,
+                                        value: sloLine.label,
                                         position: 'insideTopRight',
                                         fill: CHART_STATUS.danger,
                                         fontSize: 11,
@@ -962,9 +1015,10 @@ export default function ParetoCurveChart({
                                 />
                             )}
 
-                            {/* Overlaid Concurrency Sweep Curves & Pareto Boundary */}
+                            {/* Overlaid load-sweep curves & Pareto boundary */}
                             {overlaidSeries.map((series) => {
                                 const isSelectedCurve = Boolean(activeItem?.id && series.recipeId === activeItem.id);
+                                const dashed = series.isFrontierBoundary ? '5 3' : series.illustrative ? '6 4' : series.missesSlo ? '3 3' : undefined;
                                 return (
                                     <Line
                                         key={series.key}
@@ -972,9 +1026,9 @@ export default function ParetoCurveChart({
                                         type="monotone"
                                         dataKey="y"
                                         stroke={series.color}
-                                        strokeWidth={series.isFrontierBoundary ? 2.5 : isSelectedCurve ? 2.6 : 1.9}
-                                        strokeOpacity={series.isFaint ? 0.38 : series.missesSlo ? 0.35 : isSelectedCurve ? 1 : 0.82}
-                                        strokeDasharray={series.isFrontierBoundary ? '5 3' : series.missesSlo ? '3 3' : undefined}
+                                        strokeWidth={series.isFrontierBoundary ? 2.5 : isSelectedCurve ? 2.4 : series.illustrative ? 1.5 : 1.9}
+                                        strokeOpacity={series.isFaint ? 0.38 : series.missesSlo ? 0.35 : series.illustrative && !isSelectedCurve ? 0.6 : isSelectedCurve ? 1 : 0.82}
+                                        strokeDasharray={dashed}
                                         dot={
                                             series.isFrontierBoundary
                                                 ? false
@@ -995,7 +1049,7 @@ export default function ParetoCurveChart({
 
                             {/* Primary Operating Point Scatter Markers */}
                             <Scatter
-                                name="Active SLO operating points"
+                                name="Operating points at the active SLO"
                                 data={chartData}
                                 isAnimationActive={false}
                                 shape={

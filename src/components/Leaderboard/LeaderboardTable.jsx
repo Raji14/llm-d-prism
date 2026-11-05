@@ -23,20 +23,20 @@ import {
     Flag,
     MoreHorizontal,
     Eye,
-    ExternalLink
+    ExternalLink,
+    AlertTriangle
 } from 'lucide-react';
 import { Button, EmptyState, StatusChip } from '../ui';
 import { cn } from '../../utils/cn';
 import {
-    getRecipeReproductionCount,
-    getRecipeViewCount
-} from '../../utils/communityRewards.js';
-import {
     DEFAULT_OBJECTIVE,
-    HARDWARE_OPTIONS,
+    DEFAULT_SLO,
+    describeSlo,
     engineLabel,
+    formatHardwareShort,
+    latencyFor,
+    provenanceStatus,
     workloadFor,
-    latencyFor
 } from '../../utils/leaderboardFacets.js';
 import {
     formatRunDate,
@@ -48,20 +48,26 @@ import {
 const LOWER_IS_BETTER = new Set(['rank', 'ttft_p50', 'itl_p50', 'cost_per_1m']);
 const OBJECTIVE_SORT_FIELDS = new Set(['tokens_per_sec_per_chip', 'ttft_p50', 'itl_p50', 'cost_per_1m']);
 
-function formatShortHardware(item) {
-    const count = item?.hardware?.accelerator_count || 1;
-    const accId = item?.hardware?.accelerator_type;
-    const match = HARDWARE_OPTIONS.find((h) => h.value === accId);
-    if (match) return `${count}× ${match.short}`;
-    if (accId === 'nvidia-a100-40gb') return `${count}× A100 40G`;
-    if (item?.hardware_summary) {
-        return item.hardware_summary
-            .replace(/^(\d+)x\s+/i, '$1× ')
-            .replace(/NVIDIA\s+/i, '')
-            .replace(/Google\s+/i, '')
-            .replace(/\s+SXM5|\s+Trillium|\s+80GB|\s+24GB|\s+G2\s+VM/gi, '');
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const groupKeyOf = (item) => item?.groupKey || `${item?.model_family || 'Model'}|||${item?.workload_class || 'chat'}`;
+const costOf = (item) => {
+    const c = item?.cost_analysis?.cost_per_1m_output_tokens_usd ?? item?.cost_per_1m;
+    return isNum(c) && c > 0 ? c : null;
+};
+
+// "+12%" against the pinned baseline; green when it's better for that metric.
+function DeltaLine({ value, base, lowerIsBetter = false }) {
+    if (!isNum(value) || !isNum(base) || base === 0) return null;
+    const pct = ((value - base) / base) * 100;
+    if (Math.abs(pct) < 0.05) {
+        return <span className="block text-tiny font-mono text-zinc-500">same</span>;
     }
-    return `${count}× GPU`;
+    const better = lowerIsBetter ? pct < 0 : pct > 0;
+    return (
+        <span className={cn('block text-tiny font-mono font-semibold', better ? 'text-emerald-700' : 'text-rose-600')}>
+            {pct > 0 ? '+' : '−'}{Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0)}%
+        </span>
+    );
 }
 
 export default function LeaderboardTable({
@@ -71,6 +77,8 @@ export default function LeaderboardTable({
     isGroupedByModel,
     selectedModelFamily,
     selectedWorkload,
+    latencyPercentile = DEFAULT_SLO.percentile,
+    slo = DEFAULT_SLO,
     onSelectRecipe,
     selectedRecipe,
     selectedForCompare = [],
@@ -78,6 +86,7 @@ export default function LeaderboardTable({
     onOpenCompareModal,
     baselineRecipeId,
     onSetBaseline,
+    onCompareWithBaseline,
     onResetFilters,
     onClearCompare,
     onOpenFeedback,
@@ -86,6 +95,8 @@ export default function LeaderboardTable({
     const [sortField, setSortField] = useState(null);
     const [sortDirection, setSortDirection] = useState('desc');
     const [openActionMenuId, setOpenActionMenuId] = useState(null);
+    const pct = latencyPercentile;
+    const pctLabel = String(pct).toUpperCase();
 
     const [sortedObjective, setSortedObjective] = useState(rankingMetric);
     if (sortedObjective !== rankingMetric) {
@@ -100,7 +111,37 @@ export default function LeaderboardTable({
         return () => window.removeEventListener('click', handleOutsideClick);
     }, [openActionMenuId]);
 
-    const baseline = dataset?.find(r => r.id === baselineRecipeId) || null;
+    // The pinned baseline, reduced to the numbers rows compare against.
+    const baseline = useMemo(() => {
+        const b = (dataset || []).find((r) => r.id === baselineRecipeId);
+        if (!b) return null;
+        return {
+            id: b.id,
+            recipeName: b.recipe_name,
+            group: b.groupKey || `${b.model_family || 'Model'}|||${b.workload_class || 'chat'}`,
+            perChip: b.tokens_per_sec_per_chip,
+            ttft: latencyFor(b, 'ttft', pct),
+            tpot: latencyFor(b, 'itl', pct),
+            cost: costOf(b),
+        };
+    }, [dataset, baselineRecipeId, pct]);
+
+    // How many setups Compare will open (the baseline joins if there's room),
+    // and whether they span more than one model or workload.
+    const compareSummary = useMemo(() => {
+        const ids = new Set(selectedForCompare);
+        const baselineAdds = Boolean(baseline && !ids.has(baseline.id));
+        const groups = new Set(
+            (dataset || [])
+                .filter((r) => ids.has(r.id) || (baselineAdds && r.id === baseline.id))
+                .map((r) => r.groupKey || `${r.model_family || 'Model'}|||${r.workload_class || 'chat'}`)
+        );
+        return {
+            baselineAdds,
+            count: Math.min(3, selectedForCompare.length + (baselineAdds ? 1 : 0)),
+            crossesGroups: groups.size > 1,
+        };
+    }, [dataset, selectedForCompare, baseline]);
 
     // Determine whether rows should be grouped by (model × workload)
     const effectiveGrouped = useMemo(() => {
@@ -109,7 +150,7 @@ export default function LeaderboardTable({
             return selectedModelFamily === 'all' || selectedWorkload === 'all';
         }
         const distinctGroups = new Set(
-            (dataset || []).map((r) => `${r.model_family || 'Model'}|||${r.workload_class || 'chat'}`)
+            (dataset || []).map((r) => r.groupKey || `${r.model_family || 'Model'}|||${r.workload_class || 'chat'}`)
         );
         return distinctGroups.size > 1;
     }, [isGroupedByModel, selectedModelFamily, selectedWorkload, dataset]);
@@ -119,17 +160,18 @@ export default function LeaderboardTable({
         const items = dataset || [];
         if (items.length === 0) return [];
         const qualifying = items.filter((r) => !r.missesSlo);
-        const missed = items.filter((r) => r.missesSlo);
+        const overLimit = items.filter((r) => r.missesSlo && r.sloReason !== 'not-recorded');
+        const notRecorded = items.filter((r) => r.missesSlo && r.sloReason === 'not-recorded');
 
         const hasGroupAnnotations = qualifying.every((r) => r.groupKey && typeof r.groupRank === 'number');
         const withAnnotations = hasGroupAnnotations ? qualifying : annotateModelWorkloadGroupRanks(qualifying);
 
-        if (!effectiveGrouped) return [...withAnnotations, ...missed];
+        if (!effectiveGrouped) return [...withAnnotations, ...overLimit, ...notRecorded];
 
         // Keep runs of the same (model × workload) group contiguous in order of first appearance
         const groupedMap = new Map();
         withAnnotations.forEach((item) => {
-            const key = item.groupKey || `${item.model_family || 'Model'}|||${item.workload_class || 'chat'}`;
+            const key = groupKeyOf(item);
             if (!groupedMap.has(key)) groupedMap.set(key, []);
             groupedMap.get(key).push(item);
         });
@@ -143,15 +185,15 @@ export default function LeaderboardTable({
                 });
             });
         });
-        return [...contiguous, ...missed];
+        return [...contiguous, ...overLimit, ...notRecorded];
     }, [dataset, effectiveGrouped]);
 
     // Cost quartiles and per-group minimum cost so only top cost performers are highlighted green
     const costStats = useMemo(() => {
         const costs = (annotatedDataset || [])
             .filter((r) => !r.missesSlo)
-            .map((r) => r.cost_analysis?.cost_per_1m_output_tokens_usd ?? r.cost_per_1m)
-            .filter((c) => typeof c === 'number' && Number.isFinite(c) && c > 0)
+            .map(costOf)
+            .filter((c) => c != null)
             .sort((a, b) => a - b);
 
         if (costs.length === 0) {
@@ -163,9 +205,9 @@ export default function LeaderboardTable({
         const groupCounts = new Map();
         annotatedDataset.forEach((r) => {
             if (r.missesSlo) return;
-            const c = r.cost_analysis?.cost_per_1m_output_tokens_usd ?? r.cost_per_1m;
-            if (typeof c !== 'number' || !Number.isFinite(c) || c <= 0) return;
-            const gKey = r.groupKey || `${r.model_family}|||${r.workload_class}`;
+            const c = costOf(r);
+            if (c == null) return;
+            const gKey = groupKeyOf(r);
             groupCounts.set(gKey, (groupCounts.get(gKey) || 0) + 1);
             if (!groupMin.has(gKey) || c < groupMin.get(gKey)) {
                 groupMin.set(gKey, c);
@@ -197,9 +239,8 @@ export default function LeaderboardTable({
         }
     };
 
-    const normalizedObjective = rankingMetric === 'upvotes' ? 'reproductions' : rankingMetric;
-    const indicatorField = sortField ?? normalizedObjective;
-    const indicatorDirection = sortField ? sortDirection : (LOWER_IS_BETTER.has(normalizedObjective) ? 'asc' : 'desc');
+    const indicatorField = sortField ?? rankingMetric;
+    const indicatorDirection = sortField ? sortDirection : (LOWER_IS_BETTER.has(rankingMetric) ? 'asc' : 'desc');
     const sortArrow = (field) => indicatorField === field && (
         <span className="text-accent-600">{indicatorDirection === 'asc' ? '↑' : '↓'}</span>
     );
@@ -216,12 +257,15 @@ export default function LeaderboardTable({
         };
     });
 
+    // Latency columns sort at the active percentile, the one they display.
     const sortValue = ({ item, rank }) => {
-        if (sortField === 'rank') return rank ?? 9999;
-        if (sortField === 'contributor') return (item.author?.github_id || item.author?.name || '').toLowerCase();
-        if (sortField === 'cost_per_1m') return item.cost_analysis?.cost_per_1m_output_tokens_usd || 0;
-        if (sortField === 'reproductions' || sortField === 'upvotes') return getRecipeReproductionCount(item);
-        if (sortField === 'views') return getRecipeViewCount(item.id);
+        if (sortField === 'rank') return rank ?? Infinity;
+        if (sortField === 'contributor') return (item.author?.github_id || item.author?.username || '').toLowerCase();
+        if (sortField === 'model_family') return String(item.model_family || '').toLowerCase();
+        if (sortField === 'hardware_summary') return formatHardwareShort(item).toLowerCase();
+        if (sortField === 'cost_per_1m') return costOf(item);
+        if (sortField === 'ttft_p50') return latencyFor(item, 'ttft', pct);
+        if (sortField === 'itl_p50') return latencyFor(item, 'itl', pct);
         return item[sortField];
     };
 
@@ -231,64 +275,65 @@ export default function LeaderboardTable({
         }
         const valA = sortValue(a);
         const valB = sortValue(b);
-
+        // Missing values always sort last, whichever way the column points.
+        if (valA == null && valB == null) return 0;
+        if (valA == null) return 1;
+        if (valB == null) return -1;
         if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
         if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
         return 0;
     });
 
+    const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const handleExportCsv = () => {
         const metadata = [
             '# llm-d Prism Serving Performance Leaderboard',
             `# Export Timestamp: ${new Date().toISOString()}`,
+            `# Operating point: each run's highest-throughput point within ${describeSlo(slo)}`,
             `# Total Evaluated Configurations: ${sortedData.length}`,
             '# Platform: llm-d-prism (https://github.com/llm-d/llm-d)',
             '#'
         ];
         const headers = [
             'Rank',
+            'Source',
             'Model Family',
             'Recipe Name',
             'Contributor',
-            'Team',
-            'Hardware Summary',
-            'Engine',
+            'Hardware',
+            'Stack',
             'Workload Class',
             'Operating Concurrency',
-            'Throughput (tok/s)',
+            'Total Throughput (tok/s)',
             'Throughput per Chip (tok/s)',
-            'TTFT P50 (ms)',
-            'TPOT P50 (ms)',
-            'Cost per 1M ($)',
-            'Tokens per Dollar ($)',
-            'Hourly Rate ($/hr)',
-            'Reproductions',
+            'Throughput Estimated',
+            `TTFT ${pctLabel} (ms)`,
+            `TPOT ${pctLabel} (ms)`,
+            'Cost per 1M tokens ($)',
+            'Tokens per Dollar',
             'Container Image',
             'Run Date',
-            'Verification Status',
             'Git SHA'
         ];
         const rows = sortedData.map(({ item, rank }) => [
-            rank ?? 'Misses SLO',
-            `"${(item.model_family || '').replace(/"/g, '""')}"`,
-            `"${(item.recipe_name || '').replace(/"/g, '""')}"`,
-            `"${(item.author?.github_id || item.author?.display_name || item.author?.username || '').replace(/"/g, '""')}"`,
-            `"${(item.author?.team || '').replace(/"/g, '""')}"`,
-            `"${(item.hardware_summary || '').replace(/"/g, '""')}"`,
-            engineLabel(item.stack?.engine),
+            rank ?? (item.sloReason === 'not-recorded' ? 'SLO not checkable' : 'Misses SLO'),
+            provenanceStatus(item),
+            csvCell(item.model_family),
+            csvCell(item.recipe_name),
+            csvCell(item.author?.github_id || item.author?.display_name || item.author?.username || ''),
+            csvCell(formatHardwareShort(item)),
+            csvCell(item.stack?.engine ? engineLabel(item.stack.engine) : ''),
             item.workload_class || '',
-            item.operatingConcurrency ?? item.workload?.concurrency ?? 32,
-            Math.round(item.tokens_per_sec || 0),
-            Number(item.tokens_per_sec_per_chip || 0).toFixed(1),
-            item.ttft_p50 || 0,
-            item.itl_p50 || 0,
-            item.cost_analysis?.cost_per_1m_output_tokens_usd || 0,
-            Math.round(item.cost_analysis?.tokens_per_dollar || 0),
-            item.cost_analysis?.hourly_rate_usd || 0,
-            getRecipeReproductionCount(item),
-            `"${(item.container_image || 'Not reported').replace(/"/g, '""')}"`,
-            `"${(formatRunDate(item.created_at) || 'Not reported').replace(/"/g, '""')}"`,
-            item.verification_status || '',
+            item.operatingConcurrency ?? '',
+            isNum(item.tokens_per_sec) ? Math.round(item.tokens_per_sec) : '',
+            isNum(item.tokens_per_sec_per_chip) ? item.tokens_per_sec_per_chip.toFixed(1) : '',
+            item.operatingPoint?.total_estimated ? 'yes' : 'no',
+            latencyFor(item, 'ttft', pct) ?? '',
+            latencyFor(item, 'itl', pct) ?? '',
+            costOf(item) ?? '',
+            isNum(item.cost_analysis?.tokens_per_dollar) ? Math.round(item.cost_analysis.tokens_per_dollar) : '',
+            csvCell(item.container_image || 'Not reported'),
+            csvCell(formatRunDate(item.created_at) || 'Not reported'),
             item.git_commit_sha || ''
         ]);
         const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent([...metadata, headers.join(','), ...rows.map(e => e.join(','))].join('\n'));
@@ -300,14 +345,20 @@ export default function LeaderboardTable({
         document.body.removeChild(link);
     };
 
-    const getRankBadge = (rank, missesSlo) => {
-        if (missesSlo || rank === null) {
+    const getRankBadge = (rank, item) => {
+        if (item.missesSlo || rank === null) {
+            const notRecorded = item.sloReason === 'not-recorded';
             return (
                 <span
-                    className="inline-flex items-center rounded-full bg-rose-50 px-1.5 py-0.5 font-mono text-tiny font-medium text-rose-700 ring-1 ring-inset ring-rose-600/20"
-                    title="Does not meet the active latency SLO at any measured concurrency point"
+                    className={cn(
+                        'inline-flex items-center rounded-full px-1.5 py-0.5 font-mono text-tiny font-medium ring-1 ring-inset',
+                        notRecorded ? 'bg-zinc-100 text-zinc-600 ring-zinc-300/60' : 'bg-rose-50 text-rose-700 ring-rose-600/20'
+                    )}
+                    title={notRecorded
+                        ? `This run didn't record ${pctLabel} latency, so it can't be checked against the SLO`
+                        : 'Doesn’t meet the active latency SLO at any measured load'}
                 >
-                    SLO
+                    {notRecorded ? 'n/a' : 'SLO'}
                 </span>
             );
         }
@@ -337,6 +388,8 @@ export default function LeaderboardTable({
     const qualifyingCount = sortedData.filter((d) => !d.item.missesSlo).length;
     const missesCount = sortedData.length - qualifyingCount;
 
+    const { baselineAdds, count: effectiveCompareCount, crossesGroups } = compareSummary;
+
     return (
         <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden mb-12">
             {/* Table Header with Summary & Actions */}
@@ -346,14 +399,17 @@ export default function LeaderboardTable({
                         <span>Serving performance rankings</span>
                         <span className="inline-flex items-center rounded-full bg-zinc-200/70 px-2.5 py-0.5 text-micro font-mono font-medium text-zinc-700">
                             {missesCount > 0
-                                ? `${qualifyingCount} ranked · ${missesCount} miss SLO`
+                                ? `${qualifyingCount} ranked · ${missesCount} below the line`
                                 : `${sortedData.length} ${sortedData.length === 1 ? 'run' : 'runs'}`}
                         </span>
                     </h3>
+                    <p className="text-micro text-zinc-600 mt-0.5">
+                        Each run at its highest-throughput point within {describeSlo(slo)}.
+                    </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {selectedForCompare.length >= 2 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    {effectiveCompareCount >= 2 && (
                         <Button
                             variant="primary"
                             size="sm"
@@ -361,15 +417,18 @@ export default function LeaderboardTable({
                             className="flex items-center gap-1.5 cursor-pointer"
                         >
                             <ArrowLeftRight className="w-3.5 h-3.5" />
-                            <span>Compare {selectedForCompare.length} selected →</span>
+                            <span>Compare {effectiveCompareCount} →</span>
                         </Button>
                     )}
 
                     {baseline && (
-                        <div className="flex items-center gap-2 px-3 py-1 bg-accent-50 border border-accent-200 rounded-full text-xs">
+                        <div
+                            className="flex items-center gap-2 px-3 py-1 bg-accent-50 border border-accent-200 rounded-full text-xs"
+                            title="Rows of the same model and workload show their difference from this run"
+                        >
                             <Star className="w-3.5 h-3.5 text-accent-600 fill-accent-500" />
                             <span className="text-zinc-700">
-                                Baseline: <strong className="text-zinc-900 font-semibold">{baseline.recipe_name}</strong>
+                                Baseline: <strong className="text-zinc-900 font-semibold">{baseline.recipeName}</strong>
                             </span>
                             <button
                                 type="button"
@@ -399,7 +458,7 @@ export default function LeaderboardTable({
                 <table className="w-full text-sm text-left text-zinc-700 border-collapse">
                     <thead className="label-caps text-zinc-700 font-semibold bg-zinc-100/80 border-b border-zinc-200 select-none">
                         <tr>
-                            <th scope="col" className="px-1.5 py-2.5 w-7 text-center" title="Select up to 3 setups to compare side-by-side">
+                            <th scope="col" className="px-1.5 py-2.5 w-7 text-center" title="Select up to 3 setups to compare side by side">
                                 <span className="sr-only">Compare</span>
                             </th>
                             <th scope="col" className="px-1 py-2.5 w-9 text-center cursor-pointer hover:text-zinc-900 transition-colors" onClick={() => handleSort('rank')}>
@@ -427,20 +486,30 @@ export default function LeaderboardTable({
                                 scope="col"
                                 className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap"
                                 onClick={() => handleSort('tokens_per_sec_per_chip')}
-                                title="Output tokens per second per chip at the active SLO operating point."
+                                title="Total (input + output) tokens per second, per chip, at each run's operating point. The line below shows total throughput and the concurrency it was measured at."
                             >
                                 <div className="flex items-center justify-end gap-1 text-zinc-900">
                                     <span>Tok/s/chip</span> {sortArrow('tokens_per_sec_per_chip')}
                                 </div>
                             </th>
-                            <th scope="col" className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap" onClick={() => handleSort('ttft_p50')}>
+                            <th
+                                scope="col"
+                                className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap"
+                                onClick={() => handleSort('ttft_p50')}
+                                title={`Time to first token at ${pctLabel}, the percentile the SLO uses`}
+                            >
                                 <div className="flex items-center justify-end gap-1">
-                                    <span>TTFT</span> {sortArrow('ttft_p50')}
+                                    <span>TTFT {pctLabel}</span> {sortArrow('ttft_p50')}
                                 </div>
                             </th>
-                            <th scope="col" className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap" onClick={() => handleSort('itl_p50')}>
+                            <th
+                                scope="col"
+                                className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap"
+                                onClick={() => handleSort('itl_p50')}
+                                title={`Time per output token at ${pctLabel}, the percentile the SLO uses`}
+                            >
                                 <div className="flex items-center justify-end gap-1">
-                                    <span>TPOT</span> {sortArrow('itl_p50')}
+                                    <span>TPOT {pctLabel}</span> {sortArrow('itl_p50')}
                                 </div>
                             </th>
                             <th scope="col" className="px-1.5 py-2.5 text-right cursor-pointer hover:text-zinc-900 transition-colors whitespace-nowrap" onClick={() => handleSort('cost_per_1m')}>
@@ -484,16 +553,18 @@ export default function LeaderboardTable({
                             const isSelected = selectedRecipe && selectedRecipe.id === item.id;
                             const isCompared = selectedForCompare.includes(item.id);
                             const isBaseline = baseline && baseline.id === item.id;
-                            const chips = Math.max(1, item.hardware?.accelerator_count || 1);
-                            const tpsPerChip = item.tokens_per_sec_per_chip ?? (item.tokens_per_sec || 0) / chips;
-                            const concurrency = item.operatingConcurrency ?? item.workload?.concurrency ?? 32;
+                            const showDeltas = Boolean(baseline && !isBaseline && !item.missesSlo && groupKeyOf(item) === baseline.group);
+                            const tpsPerChip = item.tokens_per_sec_per_chip;
+                            const concurrency = item.operatingConcurrency;
+                            const estimated = Boolean(item.operatingPoint?.total_estimated);
 
-                            const groupKey = item.groupKey || `${item.model_family || 'Model'}|||${item.workload_class || 'chat'}`;
+                            const groupKey = groupKeyOf(item);
                             const prevItem = idx > 0 ? sortedData[idx - 1].item : null;
-                            const prevGroupKey = prevItem
-                                ? (prevItem.groupKey || `${prevItem.model_family || 'Model'}|||${prevItem.workload_class || 'chat'}`)
-                                : null;
-                            const isFirstMissSlo = Boolean(item.missesSlo && (!prevItem || !prevItem.missesSlo));
+                            const prevGroupKey = prevItem ? groupKeyOf(prevItem) : null;
+                            const isNotRecorded = item.missesSlo && item.sloReason === 'not-recorded';
+                            const prevNotRecorded = Boolean(prevItem?.missesSlo && prevItem?.sloReason === 'not-recorded');
+                            const isFirstOverLimit = Boolean(item.missesSlo && !isNotRecorded && (!prevItem || !prevItem.missesSlo));
+                            const isFirstNotRecorded = Boolean(isNotRecorded && !prevNotRecorded);
                             const isNewGroup = showGroupHeaders && !item.missesSlo && groupKey !== prevGroupKey;
 
                             const wlMeta = workloadFor(item.workload_class);
@@ -504,41 +575,57 @@ export default function LeaderboardTable({
                             const runDate = formatRunDate(item.created_at);
                             const stale = isStaleRun(item);
                             const githubHandle = item.author?.github_id || item.author?.username;
-                            const authorDisplay = githubHandle ? `@${githubHandle}` : (item.author?.display_name || item.author?.name || 'Community');
+                            const authorDisplay = githubHandle ? `@${githubHandle}` : (item.author?.display_name || 'Not recorded');
                             const authorTeam = item.author?.team || '';
 
-                            const shortHw = formatShortHardware(item);
+                            const shortHw = formatHardwareShort(item);
+                            const hasStack = Boolean(item.stack?.engine);
                             const stackName = engineLabel(item.stack?.engine);
                             const isLlmdStack = String(item.stack?.engine || '').toLowerCase() === 'llm-d';
                             const quantLabel = item.stack?.quantization ? String(item.stack.quantization).toUpperCase() : null;
+                            const tpLabel = item.stack?.tensor_parallel_size ? `TP${item.stack.tensor_parallel_size}` : null;
 
-                            const ttftP50 = latencyFor(item, 'ttft', 'p50');
-                            const ttftP90 = latencyFor(item, 'ttft', 'p90');
-                            const tpotP50 = latencyFor(item, 'itl', 'p50');
-                            const tpotP90 = latencyFor(item, 'itl', 'p90');
+                            const ttft = latencyFor(item, 'ttft', pct);
+                            const tpot = latencyFor(item, 'itl', pct);
+                            const otherPcts = (kind) => ['p50', 'p90', 'p99']
+                                .filter((p) => p !== pct)
+                                .map((p) => [p, latencyFor(item, kind, p)])
+                                .filter(([, v]) => v != null)
+                                .map(([p, v]) => `${p.toUpperCase()}: ${v.toFixed(1)} ms`)
+                                .join(' · ');
 
-                            const costVal = item.cost_analysis?.cost_per_1m_output_tokens_usd ?? item.cost_per_1m ?? 0;
-                            const isGroupMinCost = !item.missesSlo && costStats.groupMin.has(groupKey) && costVal <= costStats.groupMin.get(groupKey);
-                            const isLowestQuartileCost = !item.missesSlo && costVal > 0 && (costVal <= costStats.q25 || isGroupMinCost);
-                            const isHighestQuartileCost = costVal > costStats.q25 && costVal >= costStats.q75;
+                            const costVal = costOf(item);
+                            const isGroupMinCost = !item.missesSlo && costVal != null && costStats.groupMin.has(groupKey) && costVal <= costStats.groupMin.get(groupKey);
+                            const isLowestQuartileCost = !item.missesSlo && costVal != null && (costVal <= costStats.q25 || isGroupMinCost);
+                            const isHighestQuartileCost = costVal != null && costVal > costStats.q25 && costVal >= costStats.q75;
 
-                            const rowStatus = item.missesSlo
-                                ? 'misses_slo'
-                                : item.well_lit_path
-                                    ? 'well_lit_path'
-                                    : item.verification_status || 'verified';
+                            const rowStatus = provenanceStatus(item);
 
                             return (
                                 <React.Fragment key={item.id}>
-                                    {isFirstMissSlo && (
+                                    {isFirstOverLimit && (
                                         <tr className="bg-rose-50/60 border-y border-rose-200/80">
                                             <td colSpan={11} className="px-3.5 py-1.5">
-                                                <div className="flex items-center justify-between gap-2 text-xs text-rose-900">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-rose-900">
                                                     <span className="font-semibold">
-                                                        Exceeds active latency SLO across all concurrency levels
+                                                        Doesn&apos;t meet {describeSlo(slo)} at any measured load
                                                     </span>
                                                     <span className="text-micro font-mono text-rose-700">
-                                                        Showing lowest-latency operating point (8c) for reference
+                                                        Each row shows the point that comes closest
+                                                    </span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                    {isFirstNotRecorded && (
+                                        <tr className="bg-zinc-100/80 border-y border-zinc-200">
+                                            <td colSpan={11} className="px-3.5 py-1.5">
+                                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-800">
+                                                    <span className="font-semibold">
+                                                        Can&apos;t be checked against this SLO: these runs didn&apos;t record {pctLabel} latency
+                                                    </span>
+                                                    <span className="text-micro font-mono text-zinc-600">
+                                                        Try another percentile · rows show their peak for reference
                                                     </span>
                                                 </div>
                                             </td>
@@ -580,14 +667,19 @@ export default function LeaderboardTable({
                                                 onChange={() => onToggleCompare && onToggleCompare(item.id)}
                                                 className="w-4 h-4 rounded border-zinc-300 bg-white text-accent-600 focus:ring-accent-500/20 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer accent-accent-600"
                                                 aria-label={`Compare ${item.model_family || item.model_name} on ${shortHw}`}
-                                                title={!isCompared && selectedForCompare.length >= 3 ? 'Max 3 setups can be compared.' : 'Select to compare side-by-side (up to 3)'}
+                                                title={!isCompared && selectedForCompare.length >= 3
+                                                    ? 'You can compare up to 3 setups. Clear one to add another.'
+                                                    : 'Select to compare side by side (up to 3)'}
                                             />
                                         </td>
 
                                         {/* 2. Rank */}
                                         <td className="py-2 px-1 w-9 text-center whitespace-nowrap">
-                                            <div className="flex items-center justify-center">
-                                                {getRankBadge(rank, item.missesSlo)}
+                                            <div className="flex flex-col items-center justify-center gap-0.5">
+                                                {getRankBadge(rank, item)}
+                                                {isBaseline && (
+                                                    <span className="text-tiny font-mono font-semibold text-accent-700">Base</span>
+                                                )}
                                             </div>
                                         </td>
 
@@ -626,7 +718,7 @@ export default function LeaderboardTable({
                                         {/* 4. Contributor */}
                                         <td className="py-2 px-1.5 max-w-[118px] whitespace-nowrap">
                                             <span
-                                                className="font-mono text-xs font-medium text-zinc-700 truncate block"
+                                                className={cn('font-mono text-xs font-medium truncate block', githubHandle ? 'text-zinc-700' : 'text-zinc-500')}
                                                 title={authorTeam ? `${authorDisplay} (${authorTeam})` : authorDisplay}
                                             >
                                                 {authorDisplay}
@@ -643,17 +735,21 @@ export default function LeaderboardTable({
                                         {/* 6. Stack components */}
                                         <td className="py-2 px-1.5 whitespace-nowrap">
                                             <div className="inline-flex items-center gap-1.5 font-mono text-xs">
-                                                <span
-                                                    className={cn(
-                                                        'font-semibold',
-                                                        isLlmdStack
-                                                            ? 'px-1.5 py-0.5 rounded-md bg-accent-50 text-accent-700 border border-accent-200/80'
-                                                            : 'text-zinc-900'
-                                                    )}
-                                                >
-                                                    {stackName}
-                                                </span>
-                                                <span className="text-zinc-600 font-medium">TP{item.stack?.tensor_parallel_size || 1}</span>
+                                                {hasStack ? (
+                                                    <span
+                                                        className={cn(
+                                                            'font-semibold',
+                                                            isLlmdStack
+                                                                ? 'px-1.5 py-0.5 rounded-md bg-accent-50 text-accent-700 border border-accent-200/80'
+                                                                : 'text-zinc-900'
+                                                        )}
+                                                    >
+                                                        {stackName}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-zinc-500" title="The run didn't record its serving stack">Not recorded</span>
+                                                )}
+                                                {tpLabel && <span className="text-zinc-600 font-medium">{tpLabel}</span>}
                                                 {quantLabel && (
                                                     <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-tiny text-zinc-600">
                                                         {quantLabel}
@@ -662,50 +758,67 @@ export default function LeaderboardTable({
                                             </div>
                                         </td>
 
-                                        {/* 7. Tok/s/chip */}
+                                        {/* 7. Tok/s/chip with total throughput and the concurrency it was measured at */}
                                         <td
                                             className="py-2 px-1.5 text-right font-mono tabular-nums whitespace-nowrap"
-                                            title={`${Math.round(item.tokens_per_sec || 0).toLocaleString()} total tok/s @ ${concurrency}c`}
+                                            title={estimated
+                                                ? 'Total throughput estimated from the measured output rate and the result’s prompt and output lengths'
+                                                : undefined}
                                         >
                                             <span className="font-semibold text-zinc-900 text-sm">
-                                                {Math.round(tpsPerChip).toLocaleString()}
+                                                {estimated && <span className="text-zinc-500 font-normal">≈</span>}
+                                                {isNum(tpsPerChip) ? Math.round(tpsPerChip).toLocaleString() : '—'}
                                             </span>
+                                            <span className="block text-tiny text-zinc-600">
+                                                {isNum(item.tokens_per_sec) ? `${estimated ? '≈' : ''}${Math.round(item.tokens_per_sec).toLocaleString()} total` : ''}
+                                                {concurrency != null ? ` · ${concurrency}c` : ''}
+                                            </span>
+                                            {showDeltas && <DeltaLine value={tpsPerChip} base={baseline.perChip} />}
+                                            {isBaseline && <span className="block text-tiny font-mono text-accent-700">baseline</span>}
                                         </td>
 
-                                        {/* 8. TTFT */}
+                                        {/* 8. TTFT at the active percentile */}
                                         <td
                                             className="py-2 px-1.5 text-right font-mono tabular-nums whitespace-nowrap"
-                                            title={ttftP90 != null ? `P90: ${ttftP90.toFixed(0)} ms` : undefined}
+                                            title={otherPcts('ttft') || undefined}
                                         >
-                                            <span className="font-medium text-zinc-900 text-sm">
-                                                {ttftP50 != null ? `${ttftP50.toFixed(1)} ms` : '—'}
+                                            <span className={cn('font-medium text-sm', ttft != null ? 'text-zinc-900' : 'text-zinc-500')}>
+                                                {ttft != null ? `${ttft.toFixed(1)} ms` : '—'}
                                             </span>
+                                            {showDeltas && <DeltaLine value={ttft} base={baseline.ttft} lowerIsBetter />}
                                         </td>
 
-                                        {/* 9. TPOT */}
+                                        {/* 9. TPOT at the active percentile */}
                                         <td
                                             className="py-2 px-1.5 text-right font-mono tabular-nums whitespace-nowrap"
-                                            title={tpotP90 != null ? `P90: ${tpotP90.toFixed(1)} ms` : undefined}
+                                            title={otherPcts('itl') || undefined}
                                         >
-                                            <span className="font-medium text-zinc-900 text-sm">
-                                                {tpotP50 != null ? `${tpotP50.toFixed(1)} ms` : '—'}
+                                            <span className={cn('font-medium text-sm', tpot != null ? 'text-zinc-900' : 'text-zinc-500')}>
+                                                {tpot != null ? `${tpot.toFixed(1)} ms` : '—'}
                                             </span>
+                                            {showDeltas && <DeltaLine value={tpot} base={baseline.tpot} lowerIsBetter />}
                                         </td>
 
                                         {/* 10. $/1M tokens */}
-                                        <td className="py-2 px-1.5 text-right font-mono tabular-nums whitespace-nowrap">
+                                        <td
+                                            className="py-2 px-1.5 text-right font-mono tabular-nums whitespace-nowrap"
+                                            title={costVal == null ? 'No list price for this accelerator. Set your own rate under Pricing.' : undefined}
+                                        >
                                             <span
                                                 className={cn(
                                                     'text-sm',
-                                                    isLowestQuartileCost
-                                                        ? 'text-emerald-700 font-semibold'
-                                                        : isHighestQuartileCost
-                                                            ? 'text-zinc-700'
-                                                            : 'text-zinc-900 font-medium'
+                                                    costVal == null
+                                                        ? 'text-zinc-500'
+                                                        : isLowestQuartileCost
+                                                            ? 'text-emerald-700 font-semibold'
+                                                            : isHighestQuartileCost
+                                                                ? 'text-zinc-700'
+                                                                : 'text-zinc-900 font-medium'
                                                 )}
                                             >
-                                                ${costVal.toFixed(3)}
+                                                {costVal != null ? `$${costVal.toFixed(3)}` : '—'}
                                             </span>
+                                            {showDeltas && <DeltaLine value={costVal} base={baseline.cost} lowerIsBetter />}
                                         </td>
 
                                         {/* 11. Status + Compact Row Actions Menu */}
@@ -732,7 +845,7 @@ export default function LeaderboardTable({
 
                                                     {openActionMenuId === item.id && (
                                                         <div
-                                                            className="absolute right-0 mt-1 w-48 rounded-xl border border-zinc-200 bg-white py-1 shadow-lg z-30 text-left text-xs font-sans"
+                                                            className="absolute right-0 mt-1 w-52 rounded-xl border border-zinc-200 bg-white py-1 shadow-lg z-30 text-left text-xs font-sans"
                                                             onClick={(e) => e.stopPropagation()}
                                                         >
                                                             <button
@@ -757,6 +870,19 @@ export default function LeaderboardTable({
                                                                 >
                                                                     <Star className="w-3.5 h-3.5 text-zinc-600" />
                                                                     <span>{isBaseline ? 'Clear baseline' : 'Set as baseline'}</span>
+                                                                </button>
+                                                            )}
+                                                            {baseline && !isBaseline && onCompareWithBaseline && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setOpenActionMenuId(null);
+                                                                        onCompareWithBaseline(item.id);
+                                                                    }}
+                                                                    className="w-full px-3 py-1.5 text-left text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 flex items-center gap-2 cursor-pointer"
+                                                                >
+                                                                    <ArrowLeftRight className="w-3.5 h-3.5 text-zinc-600" />
+                                                                    <span>Compare with baseline</span>
                                                                 </button>
                                                             )}
                                                             {item.well_lit_path && (
@@ -805,10 +931,20 @@ export default function LeaderboardTable({
             {selectedForCompare.length > 0 && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-zinc-900 text-white rounded-full px-5 py-2.5 shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom duration-200">
                     <div className="flex items-center gap-2 text-xs font-medium text-zinc-200">
-                        <ArrowLeftRight className="w-3.5 h-3.5 text-accent-600" />
+                        <ArrowLeftRight className="w-3.5 h-3.5 text-accent-400" />
                         <span>
                             <strong className="text-white font-mono">{selectedForCompare.length}/3</strong> selected
+                            {baselineAdds && effectiveCompareCount > selectedForCompare.length && ' · plus baseline'}
                         </span>
+                        {crossesGroups && (
+                            <span
+                                className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-micro text-amber-200"
+                                title="These setups ran different models or workloads. Compare will list what differs, so throughput gaps aren't read as stack gains."
+                            >
+                                <AlertTriangle className="w-3 h-3" />
+                                Different models or workloads
+                            </span>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -822,10 +958,10 @@ export default function LeaderboardTable({
                         <button
                             type="button"
                             onClick={onOpenCompareModal}
-                            disabled={selectedForCompare.length < 2}
+                            disabled={effectiveCompareCount < 2}
                             className="px-3.5 py-1 rounded-full bg-accent-600 hover:bg-accent-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs transition-colors cursor-pointer"
                         >
-                            Compare side-by-side {selectedForCompare.length < 2 ? '(Select 1 more)' : '→'}
+                            Compare side by side {effectiveCompareCount < 2 ? '(select 1 more)' : '→'}
                         </button>
                     </div>
                 </div>

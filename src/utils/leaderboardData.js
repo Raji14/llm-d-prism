@@ -13,9 +13,7 @@
 // limitations under the License.
 
 import { evaluateRecipeCost, normalizeAcceleratorId, extractAcceleratorCount } from './pricingEngine.js';
-import { computeParetoFrontier } from './paretoFrontier.js';
-import { evaluateEntryTier } from './gamificationEngine.js';
-import { classifyWorkload } from './leaderboardFacets.js';
+import { classifyWorkload, engineKey, normalizePercentile, DEFAULT_SLA_PERCENTILE } from './leaderboardFacets.js';
 
 /**
  * Illustrative sample recipes across GCP accelerators. These are NOT measured
@@ -1248,193 +1246,289 @@ const ILLUSTRATIVE_RECIPES = [
 
 export const SEED_LEADERBOARD_RECIPES = ILLUSTRATIVE_RECIPES.map((recipe) => ({ ...recipe, is_sample: true }));
 
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
 const finiteOrNull = (...candidates) => {
     for (const c of candidates) {
-        if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c;
+        if (isNum(c) && c > 0) return c;
     }
     return null;
 };
 
-// Concurrency sweep profile multipliers anchored at 1.0x (the nominal operating point).
-// Reflects realistic batching behavior: lower concurrency yields lower latency and higher
-// per-user interactivity at lower chip utilization; higher concurrency saturates chip throughput
-// while queueing and KV pressure increase TTFT and TPOT.
-const SWEEP_PROFILE = [
+const LATENCY_PERCENTILES = ['p50', 'p90', 'p99'];
+
+// Samples state one operating point each. Their curves are drawn at lighter
+// loads only (lower latency, less throughput), so a sample never shows more
+// throughput than the number it states. Measured results never get a curve
+// like this: they plot exactly the points that were run.
+const SAMPLE_SWEEP_PROFILE = [
     { concMult: 0.125, tpsMult: 0.24, ttftMult: 0.52, itlMult: 0.68 },
     { concMult: 0.25, tpsMult: 0.44, ttftMult: 0.63, itlMult: 0.76 },
     { concMult: 0.5, tpsMult: 0.72, ttftMult: 0.78, itlMult: 0.86 },
     { concMult: 1.0, tpsMult: 1.0, ttftMult: 1.0, itlMult: 1.0, isNominal: true },
-    { concMult: 1.5, tpsMult: 1.13, ttftMult: 1.38, itlMult: 1.26 },
-    { concMult: 2.0, tpsMult: 1.19, ttftMult: 1.88, itlMult: 1.58 },
 ];
 
 /**
- * Generates or normalizes the concurrency sweep points for a leaderboard entry so that:
- * 1) The chart can plot true throughput-vs-latency trade-off curves across concurrency levels.
- * 2) Changing the active SLO threshold re-evaluates which operating point on each curve is eligible.
+ * Cost of one operating point. An accelerator without a list price stays
+ * unpriced (null) unless you set your own rate, rather than borrowing a
+ * placeholder rate that would make its $/1M look real.
  */
-export function buildConcurrencySweep(entry, customPricing = {}) {
-    if (Array.isArray(entry.sweep_points) && entry.sweep_points.length > 1) {
-        return entry.sweep_points;
+export function pointCost(entry, tokensPerSec, customPricing = {}) {
+    const accType = entry?.hardware?.accelerator_type || entry?.hardware_summary || '';
+    const accId = normalizeAcceleratorId(accType);
+    if (accId === 'other' && typeof customPricing?.other !== 'number') {
+        return { tokensPerDollar: null, costPer1MTokens: null, hourlyRate: null, isCustomPricing: false, unpriced: true };
     }
+    const chips = Math.max(1, entry?.hardware?.accelerator_count || 1);
+    const priced = isNum(tokensPerSec) && tokensPerSec > 0;
+    const cost = evaluateRecipeCost(accType, chips, priced ? tokensPerSec : 0, customPricing);
+    return {
+        tokensPerDollar: priced ? cost.tokensPerDollar : null,
+        costPer1MTokens: priced ? cost.costPer1MTokens : null,
+        hourlyRate: cost.totalHourlyCost,
+        isCustomPricing: cost.isCustomPricing,
+        unpriced: false,
+    };
+}
 
-    const baseConc = Math.max(8, entry.workload?.concurrency || 64);
-    const baseTps = entry.tokens_per_sec || 1000;
-    const baseOutTps = entry.output_tokens_per_sec || Math.round(baseTps * 0.33);
+function withPointCost(entry, point, customPricing) {
+    const cost = pointCost(entry, point.tokens_per_sec, customPricing);
+    return { ...point, tokens_per_dollar: cost.tokensPerDollar, cost_per_1m: cost.costPer1MTokens };
+}
+
+function illustrativeSweep(entry) {
+    const baseConc = Math.max(1, entry.workload?.concurrency || 64);
     const chips = Math.max(1, entry.hardware?.accelerator_count || 1);
-    const baseTtftP50 = entry.ttft_p50 || 45;
-    const baseTtftP90 = entry.ttft_p90 || baseTtftP50 * 1.45;
-    const baseTtftP99 = entry.ttft_p99 || baseTtftP50 * 2.05;
-    const baseItlP50 = entry.itl_p50 || 18;
-    const baseItlP90 = entry.itl_p90 || baseItlP50 * 1.28;
-    const baseItlP99 = entry.itl_p99 || baseItlP50 * 1.65;
-    const baseQps = entry.workload?.target_qps || Number((baseConc / 6).toFixed(1));
-
-    return SWEEP_PROFILE.map((step) => {
-        const concurrency = Math.max(1, Math.round(baseConc * step.concMult));
-        const tps = Number((baseTps * step.tpsMult).toFixed(1));
-        const tpsPerChip = Number((tps / chips).toFixed(1));
-        const outTps = Number((baseOutTps * step.tpsMult).toFixed(1));
-        const ttft_p50 = Number((baseTtftP50 * step.ttftMult).toFixed(1));
-        const ttft_p90 = Number((baseTtftP90 * step.ttftMult).toFixed(1));
-        const ttft_p99 = Number((baseTtftP99 * step.ttftMult).toFixed(1));
-        const itl_p50 = Number((baseItlP50 * step.itlMult).toFixed(1));
-        const itl_p90 = Number((baseItlP90 * step.itlMult).toFixed(1));
-        const itl_p99 = Number((baseItlP99 * step.itlMult).toFixed(1));
-        const interactivity = Number((1000 / Math.max(1, itl_p50)).toFixed(1));
-        const qps = Number((baseQps * step.tpsMult).toFixed(1));
-
-        const stepCost = evaluateRecipeCost(
-            entry.hardware?.accelerator_type || entry.hardware_summary,
-            chips,
-            tps,
-            customPricing
-        );
-
-        return {
-            concurrency,
-            qps,
+    const scale = (v, m) => (isNum(v) ? Number((v * m).toFixed(1)) : null);
+    return SAMPLE_SWEEP_PROFILE.map((step) => {
+        const tps = scale(entry.tokens_per_sec, step.tpsMult);
+        const pt = {
+            concurrency: Math.max(1, Math.round(baseConc * step.concMult)),
+            qps: scale(entry.workload?.target_qps, step.tpsMult),
             isNominal: Boolean(step.isNominal),
+            illustrative: true,
+            measured: false,
             tokens_per_sec: tps,
-            tokens_per_sec_per_chip: tpsPerChip,
-            output_tokens_per_sec: outTps,
-            interactivity,
-            ttft_p50,
-            ttft_p90,
-            ttft_p99,
-            itl_p50,
-            itl_p90,
-            itl_p99,
-            tokens_per_dollar: stepCost.tokensPerDollar,
-            cost_per_1m: stepCost.costPer1MTokens,
+            tokens_per_sec_per_chip: isNum(tps) ? Number((tps / chips).toFixed(1)) : null,
+            output_tokens_per_sec: scale(entry.output_tokens_per_sec, step.tpsMult),
+            ttft_mean: step.isNominal ? entry.ttft_mean ?? null : null,
+            itl_mean: step.isNominal ? entry.itl_mean ?? null : null,
         };
+        LATENCY_PERCENTILES.forEach((pct) => {
+            pt[`ttft_${pct}`] = scale(entry[`ttft_${pct}`], step.ttftMult);
+            pt[`itl_${pct}`] = scale(entry[`itl_${pct}`], step.itlMult);
+        });
+        return pt;
     });
 }
 
+function singleMeasuredPoint(entry) {
+    const pt = {
+        concurrency: isNum(entry.workload?.concurrency) ? entry.workload.concurrency : null,
+        qps: isNum(entry.workload?.target_qps) ? entry.workload.target_qps : null,
+        isNominal: true,
+        illustrative: false,
+        measured: true,
+        tokens_per_sec: entry.tokens_per_sec ?? null,
+        tokens_per_sec_per_chip: entry.tokens_per_sec_per_chip ?? null,
+        output_tokens_per_sec: entry.output_tokens_per_sec ?? null,
+        ttft_mean: entry.ttft_mean ?? null,
+        itl_mean: entry.itl_mean ?? null,
+    };
+    LATENCY_PERCENTILES.forEach((pct) => {
+        pt[`ttft_${pct}`] = entry[`ttft_${pct}`] ?? null;
+        pt[`itl_${pct}`] = entry[`itl_${pct}`] ?? null;
+    });
+    return pt;
+}
+
 /**
- * Evaluates a dataset at an active SLO boundary (maxTtftSla, maxTpotSla at slaPercentile).
- * When an SLO threshold is active:
- * - Picks the highest-throughput concurrency point on each entry's sweep curve that meets the SLO.
- * - Marks entries where no concurrency point meets the SLO with `missesSlo: true` (at their lowest-latency point)
- *   so the UI can display them below ranked rows as "Misses SLO" instead of hiding or mis-ranking them.
+ * The load points a leaderboard entry can be ranked at, each priced:
+ *  - a measured sweep (Results Store) keeps exactly the points that were run;
+ *  - a run with one measured point keeps that one point, never a made-up curve;
+ *  - a sample gets an illustrative curve that tops out at the point it states.
  */
-export function evaluateDatasetAtSlo(dataset = [], { maxTtftSla = null, maxTpotSla = null, slaPercentile = 'p90' } = {}) {
-    const hasTtftSla = typeof maxTtftSla === 'number' && maxTtftSla > 0;
-    const hasTpotSla = typeof maxTpotSla === 'number' && maxTpotSla > 0;
-    if (!hasTtftSla && !hasTpotSla) {
-        return dataset.map((item) => ({
-            ...item,
-            missesSlo: false,
-            active_concurrency: item.workload?.concurrency || 64,
+export function buildConcurrencySweep(entry, customPricing = {}) {
+    if (!entry) return [];
+    const chips = Math.max(1, entry.hardware?.accelerator_count || 1);
+    let points;
+    if (Array.isArray(entry.sweep_points) && entry.sweep_points.length > 0) {
+        points = entry.sweep_points.map((pt) => ({
+            ...pt,
+            tokens_per_sec_per_chip: isNum(pt.tokens_per_sec_per_chip)
+                ? pt.tokens_per_sec_per_chip
+                : isNum(pt.tokens_per_sec)
+                    ? pt.tokens_per_sec / chips
+                    : null,
         }));
+    } else if (entry.is_sample) {
+        points = illustrativeSweep(entry);
+    } else {
+        points = [singleMeasuredPoint(entry)];
     }
+    return points.map((pt) => withPointCost(entry, pt, customPricing));
+}
 
-    const ttftKey = slaPercentile === 'p50' ? 'ttft_p50' : slaPercentile === 'p99' ? 'ttft_p99' : 'ttft_p90';
-    const itlKey = slaPercentile === 'p50' ? 'itl_p50' : slaPercentile === 'p99' ? 'itl_p99' : 'itl_p90';
+const ttftAt = (pt, pct) => pt?.[`ttft_${pct}`];
+const itlAt = (pt, pct) => pt?.[`itl_${pct}`];
 
-    return dataset.map((item) => {
+/**
+ * Picks the point a run is ranked at:
+ *  - with no latency limit, its highest-throughput healthy point;
+ *  - with a limit, its highest-throughput point that meets it;
+ *  - when no point meets it, the point that comes closest, flagged
+ *    `missesSlo` with `reason` 'over-limit', so the row still shows real
+ *    numbers from a real load level;
+ *  - when the limit's percentile was never recorded, `reason` 'not-recorded'.
+ * Points flagged overloaded (by the Results Store's checks) are never picked.
+ */
+export function selectOperatingPoint(
+    sweep = [],
+    { maxTtftSla = null, maxTpotSla = null, slaPercentile = DEFAULT_SLA_PERCENTILE } = {}
+) {
+    const points = (sweep || []).filter(Boolean);
+    if (!points.length) return { point: null, missesSlo: false, reason: null };
+    const healthy = points.filter((pt) => !pt.overloaded);
+    const rankable = healthy.filter((pt) => isNum(pt.tokens_per_sec_per_chip) && pt.tokens_per_sec_per_chip > 0);
+    if (!rankable.length) return { point: healthy[0] || points[0], missesSlo: false, reason: null };
+    const highest = (pts) => pts.reduce((a, b) => (b.tokens_per_sec_per_chip > a.tokens_per_sec_per_chip ? b : a));
+
+    const hasTtft = isNum(maxTtftSla) && maxTtftSla > 0;
+    const hasTpot = isNum(maxTpotSla) && maxTpotSla > 0;
+    if (!hasTtft && !hasTpot) return { point: highest(rankable), missesSlo: false, reason: null };
+
+    const pct = normalizePercentile(slaPercentile, DEFAULT_SLA_PERCENTILE);
+    const checkable = rankable.filter(
+        (pt) => (!hasTtft || isNum(ttftAt(pt, pct))) && (!hasTpot || isNum(itlAt(pt, pct)))
+    );
+    if (!checkable.length) return { point: highest(rankable), missesSlo: true, reason: 'not-recorded' };
+
+    const within = checkable.filter(
+        (pt) => (!hasTtft || ttftAt(pt, pct) <= maxTtftSla) && (!hasTpot || itlAt(pt, pct) <= maxTpotSla)
+    );
+    if (within.length) return { point: highest(within), missesSlo: false, reason: null };
+
+    const excess = (pt) =>
+        Math.max(hasTtft ? ttftAt(pt, pct) / maxTtftSla : 0, hasTpot ? itlAt(pt, pct) / maxTpotSla : 0);
+    const closest = checkable.reduce((a, b) => (excess(b) < excess(a) ? b : a));
+    return { point: closest, missesSlo: true, reason: 'over-limit' };
+}
+
+// Every headline number on a row comes from one point, so a row never mixes
+// one load level's throughput with another's latency or concurrency.
+function applyOperatingPoint(item, point, { missesSlo = false, reason = null } = {}) {
+    if (!point) {
+        return { ...item, missesSlo, sloReason: reason, operatingPoint: null, operatingConcurrency: null };
+    }
+    const pick = (key) => (isNum(point[key]) ? point[key] : null);
+    return {
+        ...item,
+        missesSlo,
+        sloReason: reason,
+        operatingPoint: point,
+        operatingConcurrency: pick('concurrency'),
+        tokens_per_sec: pick('tokens_per_sec'),
+        tokens_per_sec_per_chip: pick('tokens_per_sec_per_chip'),
+        output_tokens_per_sec: pick('output_tokens_per_sec'),
+        ttft_mean: pick('ttft_mean'),
+        ttft_p50: pick('ttft_p50'),
+        ttft_p90: pick('ttft_p90'),
+        ttft_p99: pick('ttft_p99'),
+        itl_mean: pick('itl_mean'),
+        itl_p50: pick('itl_p50'),
+        itl_p90: pick('itl_p90'),
+        itl_p99: pick('itl_p99'),
+        tokens_per_dollar: pick('tokens_per_dollar'),
+        cost_per_1m: pick('cost_per_1m'),
+        cost_analysis: {
+            ...item.cost_analysis,
+            cost_per_1m_output_tokens_usd: pick('cost_per_1m'),
+            tokens_per_dollar: pick('tokens_per_dollar'),
+        },
+        metrics: {
+            ...item.metrics,
+            ttft_ms: { mean: pick('ttft_mean'), p50: pick('ttft_p50'), p90: pick('ttft_p90'), p99: pick('ttft_p99') },
+            itl_ms: { mean: pick('itl_mean'), p50: pick('itl_p50'), p90: pick('itl_p90'), p99: pick('itl_p99') },
+        },
+    };
+}
+
+/**
+ * Evaluates every entry at the active SLO (maxTtftSla, maxTpotSla at
+ * slaPercentile) and sets the numbers it's ranked by from one operating
+ * point: `operatingPoint`, `operatingConcurrency`, throughput, latency and
+ * cost. Entries with no point inside the SLO stay in the list, flagged
+ * `missesSlo` with `sloReason`, so the UI can show them below ranked rows.
+ */
+export function evaluateDatasetAtSlo(
+    dataset = [],
+    { maxTtftSla = null, maxTpotSla = null, slaPercentile = DEFAULT_SLA_PERCENTILE } = {}
+) {
+    return (dataset || []).map((item) => {
         const sweep = Array.isArray(item.sweep_points) && item.sweep_points.length > 0
             ? item.sweep_points
             : buildConcurrencySweep(item);
-
-        const eligible = sweep.filter((pt) => {
-            if (hasTtftSla && pt[ttftKey] > maxTtftSla) return false;
-            if (hasTpotSla && pt[itlKey] > maxTpotSla) return false;
-            return true;
-        });
-
-        if (eligible.length > 0) {
-            // Best operating point at SLO = highest tokens_per_sec_per_chip that satisfies SLO
-            const best = [...eligible].sort((a, b) => b.tokens_per_sec_per_chip - a.tokens_per_sec_per_chip)[0];
-            return {
-                ...item,
-                missesSlo: false,
-                active_concurrency: best.concurrency,
-                tokens_per_sec: best.tokens_per_sec,
-                tokens_per_sec_per_chip: best.tokens_per_sec_per_chip,
-                output_tokens_per_sec: best.output_tokens_per_sec,
-                ttft_p50: best.ttft_p50,
-                ttft_p90: best.ttft_p90,
-                ttft_p99: best.ttft_p99,
-                itl_p50: best.itl_p50,
-                itl_p90: best.itl_p90,
-                itl_p99: best.itl_p99,
-                tokens_per_dollar: best.tokens_per_dollar,
-                cost_per_1m: best.cost_per_1m,
-                cost_analysis: {
-                    ...item.cost_analysis,
-                    cost_per_1m_output_tokens_usd: best.cost_per_1m,
-                    tokens_per_dollar: best.tokens_per_dollar,
-                },
-                metrics: {
-                    ...item.metrics,
-                    ttft_ms: { ...item.metrics?.ttft_ms, p50: best.ttft_p50, p90: best.ttft_p90, p99: best.ttft_p99 },
-                    itl_ms: { ...item.metrics?.itl_ms, p50: best.itl_p50, p90: best.itl_p90, p99: best.itl_p99 },
-                },
-            };
-        }
-
-        // No point on the curve meets the SLO: use lowest-latency point (sweep[0]) and flag missesSlo
-        const lowestLat = sweep[0];
-        return {
-            ...item,
-            missesSlo: true,
-            active_concurrency: lowestLat.concurrency,
-        };
+        const { point, missesSlo, reason } = selectOperatingPoint(sweep, { maxTtftSla, maxTpotSla, slaPercentile });
+        return applyOperatingPoint({ ...item, sweep_points: sweep }, point, { missesSlo, reason });
     });
 }
 
+// Family names the samples use, matched exactly so another model that only
+// shares a size ("Qwen3-8B") never lands in a Llama group.
+const KNOWN_MODEL_FAMILIES = [
+    [/llama[-_\s.]*3\.1[-_\s.]*70b/i, 'Llama 3.1 70B'],
+    [/llama[-_\s.]*3\.1[-_\s.]*8b/i, 'Llama 3.1 8B'],
+    [/deepseek[-_\s.]*r1(?![-_\s.]*distill)/i, 'DeepSeek R1 671B'],
+    [/mistral[-_\s.]*large/i, 'Mistral Large'],
+    [/qwen[-_\s.]*2\.5[-_\s.]*72b/i, 'Qwen 2.5 72B'],
+];
+
+const shortModelName = (name) => {
+    const s = String(name || '').trim();
+    const i = s.lastIndexOf('/');
+    return i >= 0 ? s.slice(i + 1) : s;
+};
+
+/** The family a run is grouped under: declared, a known family, else its own name. */
+export function modelFamilyFor(raw, modelName) {
+    if (raw?.model_family) return raw.model_family;
+    const hit = KNOWN_MODEL_FAMILIES.find(([rx]) => rx.test(String(modelName || '')));
+    return hit ? hit[1] : shortModelName(modelName) || 'Model not recorded';
+}
+
+const SHORT_ACCELERATOR_NAMES = {
+    'nvidia-h100-80gb': 'H100',
+    'nvidia-a100-80gb': 'A100',
+    'nvidia-a100-40gb': 'A100 40GB',
+    'nvidia-l4': 'L4',
+    'tpu-v6e-trillium': 'TPU v6e',
+    'tpu-v5e': 'TPU v5e',
+};
+
+const boolOrNull = (v) => (typeof v === 'boolean' ? v : null);
+
 /**
- * Normalizes an entry from either seed data, benchmark report v0.2, or Prism results store.
- * Never fabricates missing metrics, container images, git commits, or run dates.
+ * Normalizes an entry from the samples, a Results Store result or a single
+ * run. Never fabricates what a run didn't record: a missing stack, tensor
+ * parallelism, prefix-caching setting, dataset, author, region, container
+ * image, commit or run date stays null, and the UI says "Not reported".
  */
 export function normalizeLeaderboardEntry(raw, customPricing = {}) {
     if (!raw) return null;
 
     const id = raw.id || raw.run_uid || `run-${Math.random().toString(36).substring(2, 9)}`;
-    const modelName = raw.model_name || raw.model || raw.name || 'Unknown model';
-    const modelFamily =
-        raw.model_family ||
-        (modelName.includes('70B') || modelName.includes('70b')
-            ? 'Llama 3.1 70B'
-            : modelName.includes('8B') || modelName.includes('8b')
-              ? 'Llama 3.1 8B'
-              : modelName.includes('DeepSeek')
-                ? 'DeepSeek R1 671B'
-                : modelName.includes('Mistral')
-                  ? 'Mistral Large'
-                  : modelName.includes('Qwen')
-                    ? 'Qwen 2.5 72B'
-                    : modelName);
+    const modelName = raw.model_name || raw.model || raw.name || 'Model not recorded';
+    const modelFamily = modelFamilyFor(raw, modelName);
 
-    const author = raw.author || {
-        username: raw.submitted_by || 'community_contributor',
-        display_name: raw.submitted_by || 'Community Contributor',
-        github_id: raw.submitted_by || null,
-        team: raw.team || 'Community',
-    };
+    const author = raw.author || (raw.submitted_by
+        ? { username: raw.submitted_by, display_name: raw.submitted_by, github_id: raw.submitted_by, team: raw.team || null }
+        : null);
 
-    const hardwareStr = raw.hardware_summary || raw.hardware?.accelerator_type || raw.hardware || raw.accelerator || 'Accelerator';
+    const hardwareStr = raw.hardware_summary
+        || raw.hardware?.accelerator_type
+        || (typeof raw.hardware === 'string' ? raw.hardware : '')
+        || raw.accelerator
+        || '';
     const declaredAccelerator = normalizeAcceleratorId(raw.hardware?.accelerator_type);
     const acceleratorType = declaredAccelerator !== 'other' ? declaredAccelerator : normalizeAcceleratorId(hardwareStr);
     const acceleratorCount = extractAcceleratorCount(hardwareStr, raw.hardware?.accelerator_count || raw.accelerator_count);
@@ -1454,24 +1548,17 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         raw.metrics?.output_tokens_per_sec?.p50
     );
 
-    const ttftP50 = finiteOrNull(raw.ttft_p50, raw.metrics?.ttft_ms?.p50, raw.ttft_mean, raw.ttft);
-    const ttftMean = finiteOrNull(raw.ttft_mean, raw.metrics?.ttft_ms?.mean, ttftP50);
+    const ttftP50 = finiteOrNull(raw.ttft_p50, raw.metrics?.ttft_ms?.p50);
+    const ttftMean = finiteOrNull(raw.ttft_mean, raw.metrics?.ttft_ms?.mean);
     const ttftP90 = finiteOrNull(raw.ttft_p90, raw.metrics?.ttft_ms?.p90);
     const ttftP99 = finiteOrNull(raw.ttft_p99, raw.metrics?.ttft_ms?.p99);
 
-    const itlP50 = finiteOrNull(raw.itl_p50, raw.metrics?.itl_ms?.p50, raw.tpot_mean, raw.itl_mean);
-    const itlMean = finiteOrNull(raw.itl_mean, raw.metrics?.itl_ms?.mean, itlP50);
+    const itlP50 = finiteOrNull(raw.itl_p50, raw.metrics?.itl_ms?.p50);
+    const itlMean = finiteOrNull(raw.itl_mean, raw.metrics?.itl_ms?.mean, raw.tpot_mean);
     const itlP90 = finiteOrNull(raw.itl_p90, raw.metrics?.itl_ms?.p90);
     const itlP99 = finiteOrNull(raw.itl_p99, raw.metrics?.itl_ms?.p99);
 
-    const cost = evaluateRecipeCost(
-        raw.hardware?.accelerator_type || hardwareStr,
-        acceleratorCount,
-        tps || 0,
-        customPricing
-    );
-
-    const engine = raw.stack?.engine || raw.engine || (raw.source?.includes('vllm') ? 'vllm' : 'llm-d');
+    const engine = engineKey(raw.stack?.engine || raw.engine);
     const rawRecipeName = raw.recipe_name || raw.label || raw.description || '';
     const cleanedRecipe = String(rawRecipeName)
         .replace(/^(?:llm-d|vllm|sglang|tensorrt-llm)\s+/i, '')
@@ -1482,30 +1569,30 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         .trim();
     const recipeName = cleanedRecipe && cleanedRecipe.toLowerCase() !== 'serving'
         ? cleanedRecipe
-        : 'Continuous Batching Baseline';
+        : String(rawRecipeName).trim() || 'Unnamed setup';
     const workload = raw.workload || {
         input_tokens: raw.input_len ?? null,
         output_tokens: raw.output_len ?? null,
         concurrency: raw.concurrency ?? null,
-        dataset_name: raw.dataset_name || 'Custom workload',
+        dataset_name: raw.dataset_name || null,
     };
 
-    const reproductions = Array.isArray(raw.reproductions) ? raw.reproductions : [];
-    const reproducedCount =
-        typeof raw.reproduced_count === 'number' ? raw.reproduced_count : reproductions.length;
-
-    const SHORT_ACCELERATOR_NAMES = {
-        'nvidia-h100-80gb': 'H100',
-        'nvidia-a100-80gb': 'A100',
-        'nvidia-a100-40gb': 'A100 40GB',
-        'nvidia-l4': 'L4',
-        'tpu-v6e-trillium': 'TPU v6e',
-        'tpu-v5e': 'TPU v5e',
-    };
     const shortAccName = SHORT_ACCELERATOR_NAMES[acceleratorType];
-    const cleanHardwareSummary = shortAccName
+    const hardwareSummary = shortAccName
         ? `${acceleratorCount}× ${shortAccName}`
-        : hardwareStr;
+        : raw.hardware?.accelerator_label
+            ? `${acceleratorCount}× ${raw.hardware.accelerator_label}`
+            : hardwareStr || 'Hardware not recorded';
+
+    const hardware = {
+        accelerator_type: acceleratorType,
+        accelerator_count: acceleratorCount,
+        accelerator_label: raw.hardware?.accelerator_label || null,
+        machine_type: raw.hardware?.machine_type || null,
+        cloud_provider: raw.hardware?.cloud_provider || null,
+        region: raw.hardware?.region || null,
+    };
+    const cost = pointCost({ hardware }, tps, customPricing);
 
     const entry = {
         id,
@@ -1513,27 +1600,21 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         model_name: modelName,
         model_family: modelFamily,
         author,
-        hardware_summary: cleanHardwareSummary,
-        hardware: {
-            accelerator_type: acceleratorType,
-            accelerator_count: acceleratorCount,
-            machine_type: raw.hardware?.machine_type || cost.standardVmType,
-            cloud_provider: raw.hardware?.cloud_provider || 'gcp',
-            region: raw.hardware?.region || 'us-central1',
-        },
+        hardware_summary: hardwareSummary,
+        hardware,
         stack: {
             engine,
             engine_version: raw.stack?.engine_version || null,
-            tensor_parallel_size: raw.stack?.tensor_parallel_size || raw.tp || acceleratorCount,
-            pipeline_parallel_size: raw.stack?.pipeline_parallel_size || raw.pp || 1,
-            expert_parallel_size: raw.stack?.expert_parallel_size || 1,
-            replicas: raw.stack?.replicas || 1,
+            tensor_parallel_size: raw.stack?.tensor_parallel_size || raw.tp || null,
+            pipeline_parallel_size: raw.stack?.pipeline_parallel_size || raw.pp || null,
+            expert_parallel_size: raw.stack?.expert_parallel_size || null,
+            replicas: raw.stack?.replicas || null,
             routing: raw.stack?.routing || null,
-            pd_disaggregation: Boolean(raw.stack?.pd_disaggregation),
+            pd_disaggregation: boolOrNull(raw.stack?.pd_disaggregation),
             quantization: raw.stack?.quantization || raw.quantization || null,
             kv_cache_dtype: raw.stack?.kv_cache_dtype || null,
-            prefix_caching: raw.stack?.prefix_caching !== false,
-            speculative_decoding: raw.stack?.speculative_decoding || { enabled: false },
+            prefix_caching: boolOrNull(raw.stack?.prefix_caching),
+            speculative_decoding: raw.stack?.speculative_decoding || null,
             launch_args: raw.stack?.launch_args || null,
         },
         container_image: raw.container_image || raw.stack?.container_image || null,
@@ -1568,15 +1649,14 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         itl_p90: itlP90,
         itl_p99: itlP99,
         cost_analysis: {
-            hourly_rate_usd: cost.totalHourlyCost,
+            hourly_rate_usd: cost.hourlyRate,
             cost_per_1m_output_tokens_usd: cost.costPer1MTokens,
             tokens_per_dollar: cost.tokensPerDollar,
             is_custom_pricing: cost.isCustomPricing,
+            unpriced: cost.unpriced,
         },
         tokens_per_dollar: cost.tokensPerDollar,
         cost_per_1m: cost.costPer1MTokens,
-        reproductions,
-        reproduced_count: reproducedCount,
         benchmark_scope: raw.benchmark_scope || 'system',
         git_commit_sha: raw.git_commit_sha || null,
         git_branch: raw.git_branch || null,
@@ -1584,64 +1664,28 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         fairness_audit: raw.fairness_audit || null,
         stability_telemetry: raw.stability_telemetry || null,
         is_sample: raw.is_sample === true,
-        verification_status: raw.well_lit_path
-            ? 'well_lit_path'
-            : raw.verification_status || (raw.is_verified ? 'verified' : 'community_validated'),
+        source: raw.source || (raw.is_sample === true ? 'sample' : 'upload'),
+        results_store: raw.results_store || null,
+        verification_status: raw.verification_status || (raw.is_verified ? 'verified' : 'community_validated'),
         reproduction_command: raw.reproduction_command || null,
         created_at: raw.created_at || null,
     };
 
-    entry.sweep_points = buildConcurrencySweep(entry, customPricing);
+    entry.sweep_points = buildConcurrencySweep({ ...entry, sweep_points: raw.sweep_points }, customPricing);
     return entry;
 }
 
 /**
- * Builds the complete processed leaderboard dataset:
- * Combines seed recipes + staged brv02 runs + live Prism benchmark items,
- * computes Pareto optimality, sorts by rank, and evaluates tiers.
+ * The entries the Leaderboard ranks: results published from the Results
+ * Store, then (when shown) the illustrative samples. Each is normalized once;
+ * `evaluateDatasetAtSlo` then picks the point every entry is ranked at.
  */
 export function buildLeaderboardDataset({
     seedRecipes = SEED_LEADERBOARD_RECIPES,
-    brv02Runs = [],
+    publishedResults = [],
     customPricing = {},
-    activeLatencyMetric = 'ttft_p50',
-    activeThroughputMetric = 'tokens_per_sec_per_chip',
-}) {
-    const rawItems = [...seedRecipes];
-
-    if (Array.isArray(brv02Runs) && brv02Runs.length > 0) {
-        brv02Runs.forEach((run) => {
-            if (run && (run.tokens_per_sec || run.tps || run.ttft)) {
-                rawItems.push(run);
-            }
-        });
-    }
-
-    const normalized = rawItems.map((item) => normalizeLeaderboardEntry(item, customPricing)).filter(Boolean);
-
-    const paretoAnnotated = computeParetoFrontier(
-        normalized,
-        activeLatencyMetric,
-        activeThroughputMetric,
-        'min',
-        'max'
-    );
-
-    paretoAnnotated.sort((a, b) => {
-        if (a.isParetoOptimal && !b.isParetoOptimal) return -1;
-        if (!a.isParetoOptimal && b.isParetoOptimal) return 1;
-        return (b[activeThroughputMetric] || 0) - (a[activeThroughputMetric] || 0);
-    });
-
-    return paretoAnnotated.map((entry, idx) => {
-        const rank = idx + 1;
-        const tier = evaluateEntryTier(entry, rank, paretoAnnotated.length);
-        return {
-            ...entry,
-            rank,
-            tier: tier.name,
-            tierConfig: tier,
-        };
-    });
+} = {}) {
+    return [...(publishedResults || []), ...(seedRecipes || [])]
+        .map((item) => normalizeLeaderboardEntry(item, customPricing))
+        .filter(Boolean);
 }
-

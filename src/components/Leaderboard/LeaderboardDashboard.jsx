@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { UploadCloud, RotateCcw, FilterX, Inbox, MessageSquarePlus } from 'lucide-react';
+import { UploadCloud, RotateCcw, FilterX, Inbox, MessageSquarePlus, Database, Eye } from 'lucide-react';
 import { WellLitHeader } from '../ui/WellLitHeader.jsx';
 import { Button } from '../ui/Button.jsx';
 import { EmptyState } from '../ui/EmptyState.jsx';
@@ -24,29 +24,30 @@ import ParetoCurveChart from './ParetoCurveChart.jsx';
 import LeaderboardTable from './LeaderboardTable.jsx';
 import PricingConfigModal from './PricingConfigModal.jsx';
 import RecipeDetailDrawer from './RecipeDetailDrawer.jsx';
-import RecipeComparisonModal from './RecipeComparisonModal.jsx';
 import LeaderboardFeedbackModal from './LeaderboardFeedbackModal.jsx';
 import { SUBMIT, METHODOLOGY } from '../layout/navigation.js';
+import { readInstanceMode } from '../ResultsStore/instance.js';
 import {
     buildLeaderboardDataset,
     evaluateDatasetAtSlo,
     SEED_LEADERBOARD_RECIPES
 } from '../../utils/leaderboardData.js';
+import { loadPublishedResults, RESULTS_WORKSPACE_KEY } from '../../utils/leaderboardSources.js';
 import {
     DEFAULT_OBJECTIVE,
+    DEFAULT_SLO,
     normalizeObjective,
     objectiveFor,
     workloadFor,
     matchesSearchQuery,
-    DEFAULT_SLA_PERCENTILE,
-    normalizePercentile,
+    readSloParams,
+    writeSloParams,
     latencyFor,
     removeDimensionTokens,
     removeQueryToken,
 } from '../../utils/leaderboardFacets.js';
 import { pickDefaultScope, annotateModelWorkloadGroupRanks } from '../../utils/runParity.js';
 import { loadCustomPricingRates, saveCustomPricingRates } from '../../utils/pricingEngine.js';
-import { recordRecipeView, getRecipeReproductionCount } from '../../utils/communityRewards.js';
 
 // "a code generation run", "an offline batch run".
 const withArticle = (phrase) => `${/^[aeiou]/i.test(phrase) ? 'an' : 'a'} ${phrase}`;
@@ -56,97 +57,101 @@ const VALID_X_METRICS = ['ttft_p50', 'itl_p50', 'output_tokens_per_sec', 'worklo
 const VALID_Y_METRICS = ['tokens_per_sec_per_chip', 'tokens_per_sec', 'tokens_per_dollar'];
 const VALID_SCALE_MODES = ['linear', 'log'];
 
-const readInitialUrlParams = (navigationParams) => {
+const currentParams = () => {
     try {
-        const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-        const modelParam = navigationParams?.model ?? params.get('model');
-        const workloadParam = navigationParams?.workload ?? params.get('workload');
-        const hwParam = navigationParams?.hardware ?? params.get('hardware');
-        const engineParam = navigationParams?.engine ?? params.get('engine');
-        const sortParam = navigationParams?.sort ?? params.get('sort');
-        const ttftParam = params.get('ttft_sla');
-        const tpotParam = params.get('tpot_sla');
-        const slaPctParam = params.get('sla_pct');
-        const qParam = params.get('q') || '';
-        const curvesParam = params.get('curves');
-        const xParam = params.get('x');
-        const yParam = params.get('y');
-        const scaleParam = params.get('scale');
-        const recipeParam = navigationParams?.recipe ?? params.get('recipe');
-        const seedMatch = recipeParam ? SEED_LEADERBOARD_RECIPES.find((r) => r.id === recipeParam) : null;
+        return new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    } catch {
+        return new URLSearchParams();
+    }
+};
 
-        const initialHardware = hwParam || 'all';
-        const initialEngine = engineParam || 'all';
-        const initialWorkloadHint = workloadParam && (workloadParam === 'all' || workloadFor(workloadParam)) ? workloadParam : null;
-        const hasQueryModel = /(?:^|\s)model:/i.test(qParam);
+// Samples are shown by default only while nothing has been published, so the
+// page is never empty but real results never sit behind made-up ones.
+const readInitialState = (navigationParams, publishedEntries) => {
+    const params = currentParams();
+    const defaultIncludeSamples = publishedEntries.length === 0;
+    const samplesParam = params.get('samples');
+    const includeSamples = samplesParam === '1' ? true : samplesParam === '0' ? false : defaultIncludeSamples;
 
-        const defaultScope = pickDefaultScope(SEED_LEADERBOARD_RECIPES, {
-            workload: initialWorkloadHint || 'all',
-            hardware: initialHardware,
-            engine: initialEngine,
-        });
+    const modelParam = navigationParams?.model ?? params.get('model');
+    const workloadParam = navigationParams?.workload ?? params.get('workload');
+    const hwParam = navigationParams?.hardware ?? params.get('hardware');
+    const engineParam = navigationParams?.engine ?? params.get('engine');
+    const sortParam = navigationParams?.sort ?? params.get('sort');
+    const qParam = params.get('q') || '';
+    const curvesParam = params.get('curves');
+    const xParam = params.get('x');
+    const yParam = params.get('y');
+    const scaleParam = params.get('scale');
+    const recipeParam = navigationParams?.recipe ?? params.get('recipe');
+    const slo = readSloParams(params);
 
-        const resolvedModel = modelParam
-            ? modelParam
-            : hasQueryModel
-                ? 'all'
-                : defaultScope.model;
+    const initialHardware = hwParam || 'all';
+    const initialEngine = engineParam || 'all';
+    const initialWorkloadHint = workloadParam && (workloadParam === 'all' || workloadFor(workloadParam)) ? workloadParam : null;
+    const hasQueryModel = /(?:^|\s)model:/i.test(qParam);
 
-        const resolvedWorkload = initialWorkloadHint
+    const scopePool = buildLeaderboardDataset({
+        seedRecipes: includeSamples ? SEED_LEADERBOARD_RECIPES : [],
+        publishedResults: publishedEntries,
+    });
+    const defaultScope = pickDefaultScope(scopePool, {
+        workload: initialWorkloadHint || 'all',
+        hardware: initialHardware,
+        engine: initialEngine,
+    });
+
+    return {
+        defaultIncludeSamples,
+        includeSamples,
+        searchQuery: qParam,
+        model: modelParam ? modelParam : hasQueryModel ? 'all' : defaultScope.model,
+        workload: initialWorkloadHint
             ? initialWorkloadHint
             : modelParam === 'all' || hasQueryModel
                 ? 'all'
-                : defaultScope.workload;
-
-        return {
-            searchQuery: qParam,
-            model: resolvedModel,
-            workload: resolvedWorkload,
-            hardware: initialHardware,
-            engine: initialEngine,
-            rankingMetric: sortParam ? normalizeObjective(sortParam) : DEFAULT_OBJECTIVE,
-            maxTtftSla: ttftParam ? Number(ttftParam) : null,
-            maxTpotSla: tpotParam ? Number(tpotParam) : null,
-            slaPercentile: normalizePercentile(slaPctParam, DEFAULT_SLA_PERCENTILE),
-            chartCurveMode: VALID_CURVE_MODES.includes(curvesParam) ? curvesParam : 'stack',
-            chartXMetric: VALID_X_METRICS.includes(xParam) ? xParam : 'ttft_p50',
-            chartYMetric: VALID_Y_METRICS.includes(yParam) ? yParam : 'tokens_per_sec_per_chip',
-            chartScaleMode: VALID_SCALE_MODES.includes(scaleParam) ? scaleParam : 'linear',
-            selectedRecipe: seedMatch || null,
-            isRecipeDrawerOpen: Boolean(seedMatch),
-        };
-    } catch {
-        const fallbackScope = pickDefaultScope(SEED_LEADERBOARD_RECIPES);
-        return {
-            searchQuery: '',
-            model: fallbackScope.model,
-            workload: fallbackScope.workload,
-            hardware: 'all',
-            engine: 'all',
-            rankingMetric: DEFAULT_OBJECTIVE,
-            maxTtftSla: null,
-            maxTpotSla: null,
-            slaPercentile: DEFAULT_SLA_PERCENTILE,
-            chartCurveMode: 'stack',
-            chartXMetric: 'ttft_p50',
-            chartYMetric: 'tokens_per_sec_per_chip',
-            chartScaleMode: 'linear',
-            selectedRecipe: null,
-            isRecipeDrawerOpen: false,
-        };
-    }
+                : defaultScope.workload,
+        hardware: initialHardware,
+        engine: initialEngine,
+        rankingMetric: sortParam ? normalizeObjective(sortParam) : DEFAULT_OBJECTIVE,
+        maxTtftSla: slo.ttft,
+        maxTpotSla: slo.tpot,
+        slaPercentile: slo.percentile,
+        chartCurveMode: VALID_CURVE_MODES.includes(curvesParam) ? curvesParam : 'stack',
+        chartXMetric: VALID_X_METRICS.includes(xParam) ? xParam : 'ttft_p50',
+        chartYMetric: VALID_Y_METRICS.includes(yParam) ? yParam : 'tokens_per_sec_per_chip',
+        chartScaleMode: VALID_SCALE_MODES.includes(scaleParam) ? scaleParam : 'linear',
+        selectedRecipeId: recipeParam || null,
+        isRecipeDrawerOpen: Boolean(recipeParam),
+    };
 };
+
+// Rows that meet the SLO rank first, then rows that miss it, then rows whose
+// numbers can't be checked because the run never recorded that percentile.
+const missOrder = (r) => (!r.missesSlo ? 0 : r.sloReason === 'not-recorded' ? 2 : 1);
+const numberOr = (v, fallback) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
 
 export default function LeaderboardDashboard({
     onNavigate,
     onNavigateBack,
     onToggleMobileNav,
-    dashboardData,
     navigationParams
 }) {
-    const [initial] = useState(() => readInitialUrlParams(navigationParams));
+    const instance = useMemo(() => readInstanceMode(), []);
+    const [published, setPublished] = useState(() => loadPublishedResults({ instance }));
+    const [initial] = useState(() => readInitialState(navigationParams, published.entries));
+
+    // Results published in another tab show up without a reload.
+    useEffect(() => {
+        const onStorage = (e) => {
+            if (e.key === RESULTS_WORKSPACE_KEY) setPublished(loadPublishedResults({ instance }));
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+    }, [instance]);
 
     // Filter and metric states
+    const [includeSamples, setIncludeSamples] = useState(initial.includeSamples);
     const [searchQuery, setSearchQuery] = useState(initial.searchQuery);
     const [selectedModelFamily, setSelectedModelFamily] = useState(initial.model);
     const [selectedWorkload, setSelectedWorkload] = useState(initial.workload);
@@ -166,8 +171,7 @@ export default function LeaderboardDashboard({
     // Modals and Drawers
     const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
     const [isRecipeDrawerOpen, setIsRecipeDrawerOpen] = useState(initial.isRecipeDrawerOpen);
-    const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
-    const [selectedRecipe, setSelectedRecipe] = useState(initial.selectedRecipe);
+    const [selectedRecipeId, setSelectedRecipeId] = useState(initial.selectedRecipeId);
     const [feedbackModal, setFeedbackModal] = useState({
         isOpen: false,
         type: 'missing_workload',
@@ -208,11 +212,8 @@ export default function LeaderboardDashboard({
             if (navigationParams.engine) setSelectedEngine(navigationParams.engine);
             if (navigationParams.sort) setRankingMetric(normalizeObjective(navigationParams.sort));
             if (navigationParams.recipe) {
-                const seedMatch = SEED_LEADERBOARD_RECIPES.find((r) => r.id === navigationParams.recipe);
-                if (seedMatch) {
-                    setSelectedRecipe(seedMatch);
-                    setIsRecipeDrawerOpen(true);
-                }
+                setSelectedRecipeId(navigationParams.recipe);
+                setIsRecipeDrawerOpen(true);
             }
         }
     }
@@ -242,15 +243,11 @@ export default function LeaderboardDashboard({
         saveCustomPricingRates({});
     };
 
+    // Up to three setups; a fourth checkbox stays disabled until one is cleared.
     const handleToggleCompare = (recipeId) => {
-        setSelectedForCompare(prev => {
-            if (prev.includes(recipeId)) {
-                return prev.filter(id => id !== recipeId);
-            }
-            if (prev.length >= 3) {
-                return [prev[1], prev[2], recipeId];
-            }
-            return [...prev, recipeId];
+        setSelectedForCompare((prev) => {
+            if (prev.includes(recipeId)) return prev.filter((id) => id !== recipeId);
+            return prev.length >= 3 ? prev : [...prev, recipeId];
         });
     };
 
@@ -261,22 +258,20 @@ export default function LeaderboardDashboard({
             const current = new URLSearchParams(window.location.search);
             const params = new URLSearchParams();
             if (current.get('view')) params.set('view', current.get('view'));
+            if (current.get('instance')) params.set('instance', current.get('instance'));
             if (searchQuery.trim()) params.set('q', searchQuery.trim());
             params.set('model', selectedModelFamily);
             params.set('workload', selectedWorkload);
             if (selectedHardware !== 'all') params.set('hardware', selectedHardware);
             if (selectedEngine !== 'all') params.set('engine', selectedEngine);
             if (rankingMetric !== DEFAULT_OBJECTIVE) params.set('sort', rankingMetric);
-            if (maxTtftSla !== null && maxTtftSla !== undefined) params.set('ttft_sla', String(maxTtftSla));
-            if (maxTpotSla !== null && maxTpotSla !== undefined) params.set('tpot_sla', String(maxTpotSla));
-            if (slaPercentile !== DEFAULT_SLA_PERCENTILE || maxTtftSla !== null || maxTpotSla !== null) {
-                params.set('sla_pct', slaPercentile);
-            }
+            writeSloParams(params, { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile });
+            if (includeSamples !== initial.defaultIncludeSamples) params.set('samples', includeSamples ? '1' : '0');
             if (chartCurveMode !== 'stack') params.set('curves', chartCurveMode);
             if (chartXMetric !== 'ttft_p50') params.set('x', chartXMetric);
             if (chartYMetric !== 'tokens_per_sec_per_chip') params.set('y', chartYMetric);
             if (chartScaleMode !== 'linear') params.set('scale', chartScaleMode);
-            if (selectedRecipe && isRecipeDrawerOpen) params.set('recipe', selectedRecipe.id);
+            if (selectedRecipeId && isRecipeDrawerOpen) params.set('recipe', selectedRecipeId);
 
             const queryString = params.toString();
             const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
@@ -294,27 +289,26 @@ export default function LeaderboardDashboard({
         maxTtftSla,
         maxTpotSla,
         slaPercentile,
+        includeSamples,
+        initial.defaultIncludeSamples,
         chartCurveMode,
         chartXMetric,
         chartYMetric,
         chartScaleMode,
-        selectedRecipe,
+        selectedRecipeId,
         isRecipeDrawerOpen,
     ]);
 
-    // Construct raw dataset from seed recipes + uploaded runs
+    // Published Results Store results, plus the illustrative samples when shown.
     const rawDataset = useMemo(() => {
         return buildLeaderboardDataset({
-            seedRecipes: SEED_LEADERBOARD_RECIPES,
-            brv02Runs: dashboardData?.brv02Runs || [],
-            liveBenchmarkData: dashboardData?.data || [],
+            seedRecipes: includeSamples ? SEED_LEADERBOARD_RECIPES : [],
+            publishedResults: published.entries,
             customPricing,
-            activeLatencyMetric: chartXMetric,
-            activeThroughputMetric: chartYMetric,
         });
-    }, [dashboardData?.brv02Runs, dashboardData?.data, customPricing, chartXMetric, chartYMetric]);
+    }, [includeSamples, published.entries, customPricing]);
 
-    // Dynamically evaluate each run's optimal concurrency operating point at the active SLO
+    // Each run's operating point at the active SLO: every number on its row comes from it.
     const evaluatedDataset = useMemo(() => {
         return evaluateDatasetAtSlo(rawDataset, {
             maxTtftSla,
@@ -323,21 +317,10 @@ export default function LeaderboardDashboard({
         });
     }, [rawDataset, maxTtftSla, maxTpotSla, slaPercentile]);
 
-    // Extract available filter values and counts
-    const { availableModels } = useMemo(() => {
-        const counts = {};
-        const models = [];
-        evaluatedDataset.forEach(d => {
-            if (d.model_family) {
-                if (!counts[d.model_family]) {
-                    counts[d.model_family] = 0;
-                    models.push(d.model_family);
-                }
-                counts[d.model_family]++;
-            }
-        });
-        return { availableModels: models };
-    }, [evaluatedDataset]);
+    const availableModels = useMemo(
+        () => [...new Set(evaluatedDataset.map((d) => d.model_family).filter(Boolean))],
+        [evaluatedDataset]
+    );
 
     // Filter and rank dataset
     const filteredDataset = useMemo(() => {
@@ -360,26 +343,21 @@ export default function LeaderboardDashboard({
             return true;
         });
 
+        // Latency objectives rank at the active percentile, the same one every
+        // latency column shows.
         const compareRuns = (a, b) => {
-            // Qualifying runs always rank above runs that miss the active SLO
-            if (Boolean(a.missesSlo) !== Boolean(b.missesSlo)) {
-                return a.missesSlo ? 1 : -1;
-            }
+            const byMiss = missOrder(a) - missOrder(b);
+            if (byMiss) return byMiss;
             if (rankingMetric === 'ttft_p50') {
-                return (latencyFor(a, 'ttft', 'p50') ?? 99999) - (latencyFor(b, 'ttft', 'p50') ?? 99999);
+                return numberOr(latencyFor(a, 'ttft', slaPercentile), 1e12) - numberOr(latencyFor(b, 'ttft', slaPercentile), 1e12);
             }
             if (rankingMetric === 'itl_p50') {
-                return (latencyFor(a, 'itl', 'p50') ?? 99999) - (latencyFor(b, 'itl', 'p50') ?? 99999);
+                return numberOr(latencyFor(a, 'itl', slaPercentile), 1e12) - numberOr(latencyFor(b, 'itl', slaPercentile), 1e12);
             }
             if (rankingMetric === 'cost_per_1m') {
-                const costA = a.cost_analysis?.cost_per_1m_output_tokens_usd ?? 99999;
-                const costB = b.cost_analysis?.cost_per_1m_output_tokens_usd ?? 99999;
-                return costA - costB;
+                return numberOr(a.cost_per_1m, 1e12) - numberOr(b.cost_per_1m, 1e12);
             }
-            if (rankingMetric === 'reproductions' || rankingMetric === 'upvotes') {
-                return getRecipeReproductionCount(b) - getRecipeReproductionCount(a);
-            }
-            return (b.tokens_per_sec_per_chip || 0) - (a.tokens_per_sec_per_chip || 0);
+            return numberOr(b.tokens_per_sec_per_chip, 0) - numberOr(a.tokens_per_sec_per_chip, 0);
         };
 
         const sorted = filtered.sort(compareRuns);
@@ -392,17 +370,19 @@ export default function LeaderboardDashboard({
         selectedHardware,
         selectedEngine,
         rankingMetric,
+        slaPercentile,
     ]);
 
-    const missesSloCount = useMemo(
-        () => filteredDataset.filter((r) => r.missesSlo).length,
-        [filteredDataset]
-    );
+    const sloCounts = useMemo(() => ({
+        overLimit: filteredDataset.filter((r) => r.missesSlo && r.sloReason !== 'not-recorded').length,
+        notRecorded: filteredDataset.filter((r) => r.missesSlo && r.sloReason === 'not-recorded').length,
+    }), [filteredDataset]);
 
     const isScoped = selectedModelFamily !== 'all' || selectedWorkload !== 'all' || selectedHardware !== 'all' || selectedEngine !== 'all';
     const isGroupedByModel = selectedModelFamily === 'all';
 
-    const hasSamples = filteredDataset.some((r) => r.is_sample);
+    const publishedCount = published.entries.length;
+    const sampleCount = includeSamples ? SEED_LEADERBOARD_RECIPES.length : 0;
     const selectedWorkloadMeta = workloadFor(selectedWorkload);
     const isUnmeasuredWorkload = Boolean(selectedWorkloadMeta) && !evaluatedDataset.some((r) => r.workload_class === selectedWorkload);
 
@@ -413,10 +393,32 @@ export default function LeaderboardDashboard({
         setSelectedWorkload(defaultScope.workload);
         setSelectedHardware('all');
         setSelectedEngine('all');
-        setMaxTtftSla(null);
-        setMaxTpotSla(null);
-        setSlaPercentile(DEFAULT_SLA_PERCENTILE);
+        setMaxTtftSla(DEFAULT_SLO.ttft);
+        setMaxTpotSla(DEFAULT_SLO.tpot);
+        setSlaPercentile(DEFAULT_SLO.percentile);
         setRankingMetric(DEFAULT_OBJECTIVE);
+    };
+
+    const handleToggleSamples = () => {
+        const next = !includeSamples;
+        setIncludeSamples(next);
+        // Hiding samples drops only the sample picks; real ones stay selected.
+        if (!next) {
+            const sampleIds = new Set(SEED_LEADERBOARD_RECIPES.map((r) => r.id));
+            setSelectedForCompare((prev) => prev.filter((id) => !sampleIds.has(id)));
+            setBaselineRecipeId((prev) => (prev && sampleIds.has(prev) ? null : prev));
+        }
+        // Re-scope to where the data is, so hiding samples never strands the
+        // sentence on a model that only samples had.
+        const pool = buildLeaderboardDataset({
+            seedRecipes: next ? SEED_LEADERBOARD_RECIPES : [],
+            publishedResults: published.entries,
+        });
+        if (selectedModelFamily !== 'all' && !pool.some((r) => r.model_family === selectedModelFamily)) {
+            const scope = pickDefaultScope(pool);
+            setSelectedModelFamily(scope.model);
+            setSelectedWorkload(scope.workload);
+        }
     };
 
     const go = (e, view) => {
@@ -426,9 +428,8 @@ export default function LeaderboardDashboard({
     };
 
     const handleSelectRecipe = (recipe) => {
-        setSelectedRecipe(recipe);
+        setSelectedRecipeId(recipe.id);
         setIsRecipeDrawerOpen(true);
-        recordRecipeView(recipe.id);
         setTimeout(() => {
             const rowElem = document.getElementById(`recipe-row-${recipe.id}`);
             if (rowElem) {
@@ -437,26 +438,35 @@ export default function LeaderboardDashboard({
         }, 100);
     };
 
-    const comparedRecipes = useMemo(() => {
-        return evaluatedDataset.filter(r => selectedForCompare.includes(r.id));
-    }, [evaluatedDataset, selectedForCompare]);
-
-    const drawerRecipe = useMemo(
-        () => (selectedRecipe && evaluatedDataset.find((r) => r.id === selectedRecipe.id)) || selectedRecipe,
-        [evaluatedDataset, selectedRecipe]
+    const selectedRecipe = useMemo(
+        () => (selectedRecipeId ? evaluatedDataset.find((r) => r.id === selectedRecipeId) || null : null),
+        [evaluatedDataset, selectedRecipeId]
     );
 
-    const handleOpenCompare = () => {
-        if (selectedForCompare.length >= 2) {
-            if (onNavigate) {
-                onNavigate('recipe-comparison', {
-                    recipes: selectedForCompare,
-                    baseline: baselineRecipeId || selectedForCompare[0]
-                });
-            } else {
-                setIsCompareModalOpen(true);
-            }
+    // The Comparison page reads the SLO from the URL, which carries over within
+    // the leaderboard flow, so it evaluates every setup at the same points.
+    const openComparison = (ids, baseline) => {
+        if (ids.length < 2) return;
+        if (onNavigate) {
+            onNavigate('recipe-comparison', { recipes: ids, baseline });
+            return;
         }
+        const params = currentParams();
+        params.set('view', 'recipe-comparison');
+        params.set('recipes', ids.join(','));
+        params.set('baseline', baseline);
+        window.location.assign(`${window.location.pathname}?${params.toString()}`);
+    };
+
+    const handleOpenCompare = () => {
+        let ids = [...selectedForCompare];
+        if (baselineRecipeId && !ids.includes(baselineRecipeId)) ids = [baselineRecipeId, ...ids].slice(0, 3);
+        openComparison(ids, baselineRecipeId && ids.includes(baselineRecipeId) ? baselineRecipeId : ids[0]);
+    };
+
+    const handleCompareWithBaseline = (recipeId) => {
+        if (!baselineRecipeId || recipeId === baselineRecipeId) return;
+        openComparison([baselineRecipeId, recipeId], baselineRecipeId);
     };
 
     const clearFiltersButton = (
@@ -470,13 +480,16 @@ export default function LeaderboardDashboard({
         ? `${selectedModelFamily}${selectedWorkloadMeta ? ` · ${selectedWorkloadMeta.label}` : ''}`
         : 'Multiple models';
 
+    const slo = { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile };
+    const nothingToRank = rawDataset.length === 0;
+
     return (
         <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden">
             {/* Editorial Page Header */}
             <WellLitHeader
                 kicker="Leaderboard"
                 pageTitle="Find the top-performing serving stack"
-                subtitle="Compare validated throughput and latency across models, accelerators, and stack components."
+                subtitle="Compare throughput and latency across models, accelerators, and serving stacks. Every run is ranked at a load it can actually serve."
                 badgeLabel={null}
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
@@ -513,8 +526,14 @@ export default function LeaderboardDashboard({
                         setSelectedEngine={handleEngineChange}
                         availableModels={availableModels}
                         matchCount={filteredDataset.length}
-                        missesSloCount={missesSloCount}
-                        hasSamples={hasSamples}
+                        overLimitCount={sloCounts.overLimit}
+                        notRecordedCount={sloCounts.notRecorded}
+                        publishedCount={publishedCount}
+                        sampleCount={sampleCount}
+                        includeSamples={includeSamples}
+                        onToggleSamples={handleToggleSamples}
+                        skippedResults={published.skipped}
+                        instance={instance}
                         onOpenFeedback={handleOpenFeedback}
                     />
                     <MetricFiltersBar
@@ -535,13 +554,33 @@ export default function LeaderboardDashboard({
                     />
                 </div>
 
-                {filteredDataset.length === 0 ? (
+                {nothingToRank ? (
+                    <div className="surface-light rounded-3xl border border-zinc-200 bg-white">
+                        <EmptyState
+                            icon={<Database className="w-9 h-9 text-zinc-400 mx-auto" />}
+                            title="Nothing published yet"
+                            message="The Leaderboard ranks results once they're published from the Results Store. Publish one there, or show the illustrative samples to see how ranking works."
+                            action={
+                                <div className="flex flex-wrap items-center justify-center gap-2">
+                                    <Button variant="primary" size="sm" href="?view=results-store" onClick={(e) => go(e, 'results-store')}>
+                                        <UploadCloud className="w-3.5 h-3.5" />
+                                        Open the Results Store
+                                    </Button>
+                                    <Button variant="secondary" size="sm" onClick={handleToggleSamples}>
+                                        <Eye className="w-3.5 h-3.5" />
+                                        Show samples
+                                    </Button>
+                                </div>
+                            }
+                        />
+                    </div>
+                ) : filteredDataset.length === 0 ? (
                     <div className="surface-light rounded-3xl border border-zinc-200 bg-white">
                         {isUnmeasuredWorkload ? (
                             <EmptyState
                                 icon={<Inbox className="w-9 h-9 text-zinc-400 mx-auto" />}
                                 title={`No ${selectedWorkloadMeta.label} runs yet`}
-                                message={`Be the first to submit ${withArticle(selectedWorkloadMeta.display)} run — or request a benchmark for this workload.`}
+                                message={`Be the first to submit ${withArticle(selectedWorkloadMeta.display)} run, or request a benchmark for this workload.`}
                                 action={
                                     <div className="flex flex-wrap items-center justify-center gap-2">
                                         <Button variant="primary" size="sm" href={`?view=${SUBMIT.view}`} onClick={(e) => go(e, SUBMIT.view)}>
@@ -582,6 +621,8 @@ export default function LeaderboardDashboard({
                             onSelectModel={handleModelChange}
                             onSelectRecipe={handleSelectRecipe}
                             objective={objectiveFor(rankingMetric)}
+                            latencyPercentile={slaPercentile}
+                            slo={slo}
                             customPricing={customPricing}
                             onOpenPricingModal={() => setIsPricingModalOpen(true)}
                         />
@@ -612,6 +653,8 @@ export default function LeaderboardDashboard({
                             rankingMetric={rankingMetric}
                             onChangeRankingMetric={setRankingMetric}
                             isGroupedByModel={isGroupedByModel}
+                            latencyPercentile={slaPercentile}
+                            slo={slo}
                             onSelectRecipe={handleSelectRecipe}
                             selectedRecipe={selectedRecipe}
                             selectedForCompare={selectedForCompare}
@@ -619,6 +662,7 @@ export default function LeaderboardDashboard({
                             onOpenCompareModal={handleOpenCompare}
                             baselineRecipeId={baselineRecipeId}
                             onSetBaseline={setBaselineRecipeId}
+                            onCompareWithBaseline={handleCompareWithBaseline}
                             onResetFilters={handleResetAllFilters}
                             onClearCompare={() => setSelectedForCompare([])}
                             onOpenFeedback={handleOpenFeedback}
@@ -640,23 +684,13 @@ export default function LeaderboardDashboard({
             <RecipeDetailDrawer
                 isOpen={isRecipeDrawerOpen}
                 onClose={() => setIsRecipeDrawerOpen(false)}
-                recipe={drawerRecipe}
+                recipe={selectedRecipe}
+                latencyPercentile={slaPercentile}
+                slo={slo}
                 onNavigate={onNavigate}
                 onOpenFeedback={(type, recipe) => {
                     setIsRecipeDrawerOpen(false);
                     handleOpenFeedback(type, recipe);
-                }}
-            />
-
-            <RecipeComparisonModal
-                isOpen={isCompareModalOpen}
-                onClose={() => setIsCompareModalOpen(false)}
-                recipes={comparedRecipes}
-                baselineRecipeId={baselineRecipeId}
-                onSetBaseline={setBaselineRecipeId}
-                onInspectRecipe={(recipe) => {
-                    setIsCompareModalOpen(false);
-                    handleSelectRecipe(recipe);
                 }}
             />
 

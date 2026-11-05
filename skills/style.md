@@ -33,9 +33,7 @@ pipeline and its approval gates are documented in
    Never re-implement one inline. If a variant you need is missing, extend the
    primitive (new `variant`/`tone`/`size`) in the same PR — don't fork it.
 2. **Colors come from tokens or the chart palette. No hex literals.**
-   - No `#rrggbb` anywhere in `src/components/` outside `src/components/ui/`
-     (the single exception is the `CERT_THEME` block in `CertificateModal.jsx`,
-     which styles a downloadable export artifact, not themed UI).
+   - No `#rrggbb` anywhere in `src/components/` outside `src/components/ui/`.
    - **Brand accent is `accent-*`** (`text-accent-600`, `bg-accent-50`,
      `border-accent-200`, `ring-accent-500/20`…). Never `orange-*`, `cyan-*`,
      or any other hue for brand chrome. See **Brand accent** below.

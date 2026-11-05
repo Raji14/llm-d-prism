@@ -22,26 +22,28 @@ import {
     Terminal,
     Cpu,
     Layers,
-    ShieldCheck,
     GitBranch,
     GitPullRequest,
     GitCommit,
     ExternalLink,
     Flag,
     Gauge,
-    CheckCircle2,
     AlertTriangle,
     Calendar,
     Route,
     Activity,
-    Compass
+    Compass,
+    Database,
+    Info
 } from 'lucide-react';
-import {
-    getRecipeReproductionCount,
-    getRecipeReproductions
-} from '../../utils/communityRewards.js';
 import { formatRunDate, isStaleRun } from '../../utils/runParity.js';
-import { engineLabel } from '../../utils/leaderboardFacets.js';
+import {
+    DEFAULT_SLO,
+    describeSlo,
+    engineLabel,
+    formatHardwareShort,
+    provenanceStatus,
+} from '../../utils/leaderboardFacets.js';
 import { Button } from '../ui/Button.jsx';
 import { Badge, StatusChip } from '../ui/Badge.jsx';
 import { cn } from '../../utils/cn';
@@ -53,11 +55,30 @@ const WELL_LIT_PATH_LABELS = {
     'pd-disaggregation': 'Prefill/decode disaggregation'
 };
 
-export default function RecipeDetailDrawer({ isOpen, onClose, recipe, onOpenFeedback, onNavigate }) {
+const NOT_REPORTED = 'Not reported';
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+const fmtMs = (v) => (isNum(v) ? `${v.toFixed(1)} ms` : '—');
+const fmtInt = (v) => (isNum(v) ? Math.round(v).toLocaleString() : '—');
+const fmtCost = (v) => (isNum(v) ? `$${v.toFixed(3)}` : '—');
+// What a template shows for a value the run didn't record.
+const orPlaceholder = (v, name) => (v == null || v === '' ? `<${name}>` : v);
+
+export default function RecipeDetailDrawer({
+    isOpen,
+    onClose,
+    recipe,
+    latencyPercentile = DEFAULT_SLO.percentile,
+    slo = DEFAULT_SLO,
+    onOpenFeedback,
+    onNavigate
+}) {
     const [activeTab, setActiveTab] = useState('agent');
     const [copied, setCopied] = useState(false);
     const [copiedImage, setCopiedImage] = useState(false);
     const [copiedRecipeLink, setCopiedRecipeLink] = useState(false);
+    // The load point being previewed, tied to the recipe it was picked on so a
+    // different recipe always opens on its own operating point.
+    const [preview, setPreview] = useState({ recipeId: null, index: null });
 
     useEffect(() => {
         const handleKeyDown = (e) => {
@@ -81,10 +102,15 @@ export default function RecipeDetailDrawer({ isOpen, onClose, recipe, onOpenFeed
 
     if (!isOpen || !recipe) return null;
 
-    const githubUrl = recipe.pull_request_url || `https://github.com/llm-d/llm-d/tree/main/recipes/${(recipe.model_family || 'llama').toLowerCase().replace(/\s+/g, '-')}`;
+    const pct = latencyPercentile;
+    const pctLabel = String(pct).toUpperCase();
+    const status = provenanceStatus(recipe);
+    const isSample = Boolean(recipe.is_sample);
+    const resultsStore = recipe.results_store || null;
+
+    const githubUrl = recipe.pull_request_url || null;
     const containerImage = recipe.container_image || recipe.stack?.container_image || null;
-    const containerImageInSnippet = containerImage || '<container-image-not-reported>';
-    const gitCommitSha = recipe.git_commit_sha || 'Not reported';
+    const gitCommitSha = recipe.git_commit_sha || NOT_REPORTED;
     const runDateLabel = formatRunDate(recipe.created_at) || 'Date not reported';
     const stale = isStaleRun(recipe);
     const stackBrand = engineLabel(recipe.stack?.engine);
@@ -92,44 +118,65 @@ export default function RecipeDetailDrawer({ isOpen, onClose, recipe, onOpenFeed
         ? recipe.stack.engine_version
         : null;
 
-    const chips = Math.max(1, recipe.hardware?.accelerator_count || 1);
-    const tpsPerChip = recipe.tokens_per_sec_per_chip ?? (recipe.tokens_per_sec || 0) / chips;
-    const activeConcurrency = recipe.operatingConcurrency ?? recipe.workload?.concurrency ?? 32;
     const sweepPoints = Array.isArray(recipe.sweep_points) ? recipe.sweep_points : [];
-    const statusKey = recipe.missesSlo
-        ? 'misses_slo'
-        : recipe.well_lit_path
-            ? 'well_lit_path'
-            : recipe.verification_status || 'verified';
+    const operatingIndex = recipe.operatingPoint ? sweepPoints.indexOf(recipe.operatingPoint) : -1;
+    const previewIndex = preview.recipeId === recipe.id && preview.index != null && sweepPoints[preview.index] ? preview.index : null;
+    const isPreviewing = previewIndex != null && previewIndex !== operatingIndex;
+    const shownPoint = (isPreviewing ? sweepPoints[previewIndex] : recipe.operatingPoint) || {};
+    const shownConcurrency = shownPoint.concurrency ?? recipe.operatingConcurrency ?? null;
+    const shownQps = shownPoint.qps ?? null;
+    const estimated = Boolean(shownPoint.total_estimated);
+    const hasP90 = sweepPoints.some((pt) => isNum(pt.ttft_p90) || isNum(pt.itl_p90));
+    const tailPct = pct === 'p99' ? (hasP90 ? 'p90' : 'p50') : 'p99';
 
-    // Independent reproductions
-    const reproCount = getRecipeReproductionCount(recipe);
-    const reproductions = getRecipeReproductions(recipe);
+    const selectPoint = (index) => setPreview({ recipeId: recipe.id, index: index === operatingIndex ? null : index });
 
-    const dockerCommand = recipe.reproduction_command || `docker run --gpus all -p 8000:8000 ${containerImageInSnippet} --model ${recipe.model_name} --tp ${recipe.stack?.tensor_parallel_size || 8} --quantization ${recipe.stack?.quantization || 'fp8'}`;
+    const tp = recipe.stack?.tensor_parallel_size || null;
+    const pp = recipe.stack?.pipeline_parallel_size || null;
+    const quant = recipe.stack?.quantization || null;
+    const kvDtype = recipe.stack?.kv_cache_dtype || null;
+    const prefixCaching = recipe.stack?.prefix_caching;
+    const chips = Math.max(1, recipe.hardware?.accelerator_count || 1);
+    const accType = recipe.hardware?.accelerator_type && recipe.hardware.accelerator_type !== 'other'
+        ? recipe.hardware.accelerator_type
+        : null;
+    const isTpu = Boolean(accType?.includes('tpu'));
+    const isl = recipe.workload?.input_tokens ?? null;
+    const osl = recipe.workload?.output_tokens ?? null;
+
+    const templateNote = '# Template from what this run recorded. <placeholders> mark values it didn\'t record.';
+
+    const dockerCommand = recipe.reproduction_command || [
+        templateNote,
+        `docker run --gpus all -p 8000:8000 ${orPlaceholder(containerImage, 'container-image')} \\`,
+        `  --model ${recipe.model_name} \\`,
+        `  --tensor-parallel-size ${orPlaceholder(tp, 'tensor-parallel-size')}${quant ? ` \\\n  --quantization ${quant}` : ''}`,
+    ].join('\n');
 
     const helmValues = `# Helm values for deploying ${recipe.recipe_name}
+${templateNote}
 replicaCount: 1
 image:
-  repository: ${containerImage ? containerImage.split(':')[0] : '<container-repository-not-reported>'}
-  tag: ${containerImage && containerImage.includes(':') ? containerImage.split(':')[1] : (stackVersion || 'latest')}
+  repository: ${containerImage ? containerImage.split(':')[0] : '<container-repository>'}
+  tag: ${containerImage && containerImage.includes(':') ? containerImage.split(':')[1] : orPlaceholder(stackVersion, 'tag')}
 model:
   name: "${recipe.model_name}"
-  tensorParallelSize: ${recipe.stack?.tensor_parallel_size || 8}
-  pipelineParallelSize: ${recipe.stack?.pipeline_parallel_size || 1}
-  quantization: "${recipe.stack?.quantization || 'fp8'}"
-  kvCacheDtype: "${recipe.stack?.kv_cache_dtype || 'fp8_e4m3'}"
-  prefixCaching: ${recipe.stack?.prefix_caching ? 'true' : 'false'}
+  tensorParallelSize: ${orPlaceholder(tp, 'tensor-parallel-size')}
+  pipelineParallelSize: ${orPlaceholder(pp, 'pipeline-parallel-size')}
+  quantization: "${orPlaceholder(quant, 'quantization')}"
+  kvCacheDtype: "${orPlaceholder(kvDtype, 'kv-cache-dtype')}"
+  prefixCaching: ${prefixCaching == null ? '<prefix-caching>' : prefixCaching ? 'true' : 'false'}
 resources:
   limits:
-    ${recipe.hardware?.accelerator_type?.includes('tpu') ? 'google.com/tpu' : 'nvidia.com/gpu'}: ${recipe.hardware?.accelerator_count || 8}
+    ${isTpu ? 'google.com/tpu' : 'nvidia.com/gpu'}: ${chips}
 `;
 
-    const k8sManifest = `# Production KubeRay / GKE Reference Architecture Manifest
+    const k8sManifest = `# KubeRay / GKE reference manifest
+${templateNote}
 apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
-  name: llmd-${(recipe.model_family || 'serving').toLowerCase().replace(/\s+/g, '-')}-cluster
+  name: llmd-${String(recipe.model_family || 'serving').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-cluster
   namespace: llm-inference
 spec:
   rayVersion: '2.35.0'
@@ -140,35 +187,36 @@ spec:
       spec:
         containers:
         - name: ray-head
-          image: ${containerImageInSnippet}
+          image: ${orPlaceholder(containerImage, 'container-image')}
           resources:
             limits:
               cpu: "8"
               memory: "32Gi"
   workerGroupSpecs:
-  - groupName: gpu-worker
-    replicas: ${recipe.hardware?.accelerator_count && recipe.hardware.accelerator_count > 8 ? Math.ceil(recipe.hardware.accelerator_count / 8) : 1}
+  - groupName: accelerator-worker
+    replicas: ${chips > 8 ? Math.ceil(chips / 8) : 1}
     template:
       spec:
         nodeSelector:
-          cloud.google.com/gke-accelerator: ${recipe.hardware?.accelerator_type || 'nvidia-h100-80gb'}
+          cloud.google.com/gke-accelerator: ${orPlaceholder(accType, 'accelerator')}
         containers:
         - name: ray-worker
-          image: ${containerImageInSnippet}
+          image: ${orPlaceholder(containerImage, 'container-image')}
           env:
           - name: MODEL_NAME
             value: "${recipe.model_name}"
           - name: TENSOR_PARALLEL_SIZE
-            value: "${recipe.stack?.tensor_parallel_size || 8}"
+            value: "${orPlaceholder(tp, 'tensor-parallel-size')}"
           - name: QUANTIZATION
-            value: "${recipe.stack?.quantization || 'fp8'}"
+            value: "${orPlaceholder(quant, 'quantization')}"
           resources:
             limits:
-              ${recipe.hardware?.accelerator_type?.includes('tpu') ? 'google.com/tpu' : 'nvidia.com/gpu'}: ${Math.min(8, recipe.hardware?.accelerator_count || 8)}
+              ${isTpu ? 'google.com/tpu' : 'nvidia.com/gpu'}: ${Math.min(8, chips)}
               memory: "128Gi"
 `;
 
     const agentBenchmarkScript = `# config.yml — kubernetes-sigs/inference-perf
+${templateNote}
 server:
   type: vllm
   model_name: ${recipe.model_name}
@@ -176,17 +224,16 @@ server:
 tokenizer:
   pretrained_model_name_or_path: ${recipe.model_name}
 data:
-  type: shareGPT
+  type: ${orPlaceholder(recipe.workload?.dataset_name ? 'shareGPT' : null, 'dataset')}
   input_distribution:
-    mean: ${recipe.workload?.input_tokens || 1024}
+    mean: ${orPlaceholder(isl, 'prompt-length')}
   output_distribution:
-    mean: ${recipe.workload?.output_tokens || 512}
+    mean: ${orPlaceholder(osl, 'output-length')}
 load:
   type: constant
   stages:
-    - rate: ${recipe.operatingPoint?.qps || recipe.workload?.target_qps || 10}
+    - rate: ${orPlaceholder(shownQps, 'requests-per-second')}${shownConcurrency != null ? `  # measured at ${shownConcurrency} concurrent requests` : ''}
       duration: 120
-  num_workers: ${activeConcurrency}
 report:
   request_lifecycle:
     summary: true
@@ -206,7 +253,7 @@ client = openai.OpenAI(
 response = client.chat.completions.create(
     model="${recipe.model_name}",
     messages=[{"role": "user", "content": "Explain Pareto frontier optimization in distributed LLM serving."}],
-    max_tokens=${recipe.workload?.output_tokens || 512},
+    max_tokens=${osl || 512},
     temperature=0.7
 )
 
@@ -268,6 +315,7 @@ print(response.choices[0].message.content)
         const reportPayload = {
             version: '0.2',
             id: recipe.id,
+            source: isSample ? 'illustrative-sample' : recipe.source,
             recipe_name: recipe.recipe_name,
             model_name: recipe.model_name,
             model_family: recipe.model_family,
@@ -275,7 +323,7 @@ print(response.choices[0].message.content)
             hardware: recipe.hardware,
             stack: recipe.stack,
             workload: recipe.workload,
-            metrics: recipe.metrics,
+            operating_point: { slo: describeSlo(slo), ...recipe.operatingPoint },
             sweep_points: recipe.sweep_points,
             cost_analysis: recipe.cost_analysis,
             provenance: {
@@ -285,7 +333,8 @@ print(response.choices[0].message.content)
                 pull_request_url: recipe.pull_request_url,
                 container_image: containerImage,
                 created_at: recipe.created_at,
-                verification_status: recipe.verification_status
+                status,
+                results_store: resultsStore,
             }
         };
         const blob = new Blob([JSON.stringify(reportPayload, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -297,18 +346,30 @@ print(response.choices[0].message.content)
         URL.revokeObjectURL(url);
     };
 
+    // The page URL already carries this recipe and the active SLO.
     const handleShareRecipeLink = () => {
         if (typeof window !== 'undefined' && navigator?.clipboard?.writeText) {
-            const shareUrl = `${window.location.origin}${window.location.pathname}?view=model-leaderboard&recipe=${recipe.id}`;
-            navigator.clipboard.writeText(shareUrl);
+            navigator.clipboard.writeText(window.location.href);
             setCopiedRecipeLink(true);
             setTimeout(() => setCopiedRecipeLink(false), 2000);
+        }
+    };
+
+    const navigateTo = (view) => (e) => {
+        if (onNavigate && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            onClose();
+            onNavigate(view);
         }
     };
 
     const wellLitPathLabel = recipe.well_lit_path
         ? (WELL_LIT_PATH_LABELS[recipe.well_lit_path] || recipe.well_lit_path)
         : null;
+
+    const stackField = (value) => (
+        <span className={cn('font-semibold', value === NOT_REPORTED ? 'text-zinc-500' : 'text-zinc-900')}>{value}</span>
+    );
 
     return (
         <div
@@ -318,6 +379,9 @@ print(response.choices[0].message.content)
             <div
                 className="surface-light bg-white border-l border-zinc-200 w-full max-w-2xl h-full flex flex-col p-6 shadow-2xl relative text-zinc-900 overflow-y-auto animate-in slide-in-from-right duration-300"
                 onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label={`${recipe.recipe_name} details`}
             >
                 {/* Close Button */}
                 <button
@@ -338,7 +402,8 @@ print(response.choices[0].message.content)
                             <Badge tone="neutral" size="xs">
                                 {stackBrand}{stackVersion ? ` ${stackVersion}` : ''}
                             </Badge>
-                            <StatusChip status={statusKey} size="xs" />
+                            <StatusChip status={status} size="xs" />
+                            {recipe.missesSlo && <StatusChip status="misses_slo" size="xs" />}
                             {stale && (
                                 <Badge tone="warning" size="xs">
                                     <AlertTriangle className="w-3 h-3 mr-1 inline" />
@@ -358,6 +423,38 @@ print(response.choices[0].message.content)
                     </div>
                 </div>
 
+                {/* Where these numbers come from */}
+                {isSample && (
+                    <div className="mb-4 p-3 rounded-2xl bg-zinc-50 border border-zinc-300 flex items-start gap-2.5 text-xs text-zinc-800" role="note">
+                        <Info className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                        <span>
+                            <strong className="font-semibold text-zinc-900">Illustrative sample, not a measured run.</strong>{' '}
+                            It ships with Prism to show how ranking, SLOs and comparisons work. Its numbers, curve, author and
+                            provenance are illustrative, so don&apos;t quote them.
+                        </span>
+                    </div>
+                )}
+                {resultsStore && (
+                    <div className="mb-4 p-3 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950" role="note">
+                        <span className="flex items-start gap-2 min-w-0">
+                            <Database className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                            <span>
+                                <strong className="font-semibold">{status === 'official' ? 'Official' : 'Published'} result from the Results Store</strong>
+                                {` · ${resultsStore.pointCount} measured ${resultsStore.pointCount === 1 ? 'point' : 'points'}`}
+                                {resultsStore.overloadedCount > 0 ? `, ${resultsStore.overloadedCount} overloaded (kept out of ranking)` : ''}
+                                {' · saved in this browser only'}
+                            </span>
+                        </span>
+                        <a
+                            href="?view=results-store"
+                            onClick={navigateTo('results-store')}
+                            className="shrink-0 font-semibold text-emerald-800 hover:text-emerald-950 underline decoration-emerald-300 underline-offset-4"
+                        >
+                            Open in Results Store →
+                        </a>
+                    </div>
+                )}
+
                 {/* Author & Source Action Bar */}
                 <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200 flex flex-wrap items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -365,14 +462,20 @@ print(response.choices[0].message.content)
                             <img src={recipe.author.avatar_url} alt="Author" className="w-8 h-8 rounded-full border border-zinc-200 object-cover shrink-0" />
                         ) : (
                             <div className="w-8 h-8 rounded-full bg-white text-accent-700 border border-zinc-200 flex items-center justify-center font-semibold text-xs shrink-0">
-                                {(recipe.author?.display_name || recipe.author?.username || 'E')[0].toUpperCase()}
+                                {(recipe.author?.display_name || recipe.author?.username || '?')[0].toUpperCase()}
                             </div>
                         )}
                         <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-semibold text-zinc-900 truncate">{recipe.author?.display_name || recipe.author?.username}</span>
-                                <span className="text-micro text-zinc-600 font-mono">@{recipe.author?.github_id || recipe.author?.username}</span>
-                            </div>
+                            {recipe.author ? (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-xs font-semibold text-zinc-900 truncate">{recipe.author.display_name || recipe.author.username}</span>
+                                    {(recipe.author.github_id || recipe.author.username) && (
+                                        <span className="text-micro text-zinc-600 font-mono">@{recipe.author.github_id || recipe.author.username}</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <span className="text-xs font-medium text-zinc-500">Contributor not recorded</span>
+                            )}
                             {recipe.author?.team && (
                                 <div className="text-micro text-zinc-600">
                                     {recipe.author.team}
@@ -391,22 +494,24 @@ print(response.choices[0].message.content)
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                     : 'bg-white hover:bg-zinc-100 text-zinc-700 border-zinc-200'
                             )}
-                            title="Copy direct recipe deep-link to clipboard"
+                            title="Copy a link to this recipe at the current SLO"
                         >
                             {copiedRecipeLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-zinc-500" />}
                             <span>{copiedRecipeLink ? 'Copied' : 'Share'}</span>
                         </button>
 
-                        <a
-                            href={githubUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-700 text-white text-xs font-medium transition-colors"
-                            title="Open recipe source code and PR on GitHub"
-                        >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>GitHub</span>
-                        </a>
+                        {githubUrl && (
+                            <a
+                                href={githubUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-zinc-700 text-white text-xs font-medium transition-colors"
+                                title="Open the pull request behind this recipe"
+                            >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                <span>GitHub</span>
+                            </a>
+                        )}
                     </div>
                 </div>
 
@@ -416,18 +521,12 @@ print(response.choices[0].message.content)
                         <div className="flex items-center gap-2 min-w-0">
                             <Route className="w-4 h-4 text-accent-600 shrink-0" />
                             <span className="text-zinc-800 truncate">
-                                Reference architecture from the <strong className="font-semibold text-zinc-900">{wellLitPathLabel}</strong> well-lit path
+                                {isSample ? 'Illustrates' : 'Reference architecture from'} the <strong className="font-semibold text-zinc-900">{wellLitPathLabel}</strong> well-lit path
                             </span>
                         </div>
                         <a
                             href={`?view=${recipe.well_lit_path}`}
-                            onClick={(e) => {
-                                if (onNavigate && !e.metaKey && !e.ctrlKey) {
-                                    e.preventDefault();
-                                    onClose();
-                                    onNavigate(recipe.well_lit_path);
-                                }
-                            }}
+                            onClick={navigateTo(recipe.well_lit_path)}
                             className="shrink-0 font-semibold text-accent-700 hover:text-accent-900 underline decoration-accent-300 underline-offset-4"
                         >
                             Deploy with llm-d well-lit path →
@@ -435,104 +534,137 @@ print(response.choices[0].message.content)
                     </div>
                 )}
 
-                {/* Key Metrics Grid at Active Operating Point */}
+                {/* Previewing a different load point */}
+                {isPreviewing && (
+                    <div className="mb-2.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-2 text-xs text-amber-950">
+                        <span>
+                            Previewing <strong className="font-semibold">{shownConcurrency != null ? `${shownConcurrency} concurrent` : 'another load point'}</strong>.
+                            The table ranks this run at {recipe.operatingConcurrency != null ? `${recipe.operatingConcurrency} concurrent` : 'its operating point'}.
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setPreview({ recipeId: recipe.id, index: null })}
+                            className="shrink-0 font-semibold underline underline-offset-2 cursor-pointer"
+                        >
+                            Back to operating point
+                        </button>
+                    </div>
+                )}
+
+                {/* Key metrics at the operating point (or the previewed point) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
-                    <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
+                    <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200" title={estimated ? 'Estimated from the output rate and the prompt and output lengths' : undefined}>
                         <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">Tok/s per chip</span>
                         <span className="text-sm font-semibold font-mono text-zinc-900">
-                            {Math.round(tpsPerChip).toLocaleString()} <span className="text-tiny font-normal text-zinc-600">tok/s</span>
+                            {estimated && <span className="text-zinc-500 font-normal">≈</span>}
+                            {fmtInt(shownPoint.tokens_per_sec_per_chip)} <span className="text-tiny font-normal text-zinc-600">tok/s</span>
                         </span>
                         <span className="text-tiny font-mono text-zinc-600 block mt-0.5">
-                            {Math.round(recipe.tokens_per_sec || 0).toLocaleString()} total @ {activeConcurrency}c
+                            {fmtInt(shownPoint.tokens_per_sec)} total{shownConcurrency != null ? ` @ ${shownConcurrency}c` : ''}
                         </span>
                     </div>
                     <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
-                        <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">TTFT P50</span>
-                        <span className="text-sm font-semibold font-mono text-zinc-900">
-                            {recipe.ttft_p50 ? `${recipe.ttft_p50.toFixed(1)} ms` : 'Not reported'}
-                        </span>
+                        <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">TTFT {pctLabel}</span>
+                        <span className="text-sm font-semibold font-mono text-zinc-900">{fmtMs(shownPoint[`ttft_${pct}`])}</span>
                         <span className="text-tiny font-mono text-zinc-600 block mt-0.5">
-                            P99: {recipe.metrics?.ttft_ms?.p99 ? `${recipe.metrics.ttft_ms.p99.toFixed(1)} ms` : '—'}
+                            {tailPct.toUpperCase()}: {fmtMs(shownPoint[`ttft_${tailPct}`])}
                         </span>
                     </div>
                     <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
-                        <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">TPOT P50</span>
-                        <span className="text-sm font-semibold font-mono text-zinc-900">
-                            {recipe.itl_p50 ? `${recipe.itl_p50.toFixed(1)} ms` : 'Not reported'}
-                        </span>
+                        <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">TPOT {pctLabel}</span>
+                        <span className="text-sm font-semibold font-mono text-zinc-900">{fmtMs(shownPoint[`itl_${pct}`])}</span>
                         <span className="text-tiny font-mono text-zinc-600 block mt-0.5">
-                            P99: {recipe.metrics?.itl_ms?.p99 ? `${recipe.metrics.itl_ms.p99.toFixed(1)} ms` : '—'}
+                            {tailPct.toUpperCase()}: {fmtMs(shownPoint[`itl_${tailPct}`])}
                         </span>
                     </div>
-                    <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
+                    <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200" title={isNum(shownPoint.cost_per_1m) ? undefined : 'No list price for this accelerator. Set your own rate under Pricing.'}>
                         <span className="text-tiny text-zinc-600 font-semibold uppercase tracking-wider block">Cost / 1M tokens</span>
-                        <span className="text-sm font-semibold font-mono text-emerald-700">
-                            ${recipe.cost_analysis?.cost_per_1m_output_tokens_usd?.toFixed(3) || '0.000'}
+                        <span className={cn('text-sm font-semibold font-mono', isNum(shownPoint.cost_per_1m) ? 'text-emerald-700' : 'text-zinc-500')}>
+                            {fmtCost(shownPoint.cost_per_1m)}
                         </span>
                         <span className="text-tiny font-mono text-zinc-600 block mt-0.5">
-                            {Math.round(recipe.cost_analysis?.tokens_per_dollar || 0).toLocaleString()} tok/$
+                            {isNum(shownPoint.tokens_per_dollar) ? `${fmtInt(shownPoint.tokens_per_dollar)} tok/$` : 'No list price'}
                         </span>
                     </div>
                 </div>
 
-                {/* Operating Point & Concurrency Sweep Table */}
+                {/* Load sweep: every point the run was measured (or, for samples, illustrated) at */}
                 {sweepPoints.length > 0 && (
                     <div className="bg-zinc-50/80 p-3.5 rounded-2xl border border-zinc-200 text-xs mb-3">
-                        <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                             <h4 className="font-semibold text-zinc-900 flex items-center gap-1.5">
-                                <Activity className="w-4 h-4 text-accent-600" /> Concurrency sweep &amp; operating points
+                                <Activity className="w-4 h-4 text-accent-600" /> Load sweep &amp; operating point
                             </h4>
                             <span className="text-micro font-mono text-zinc-600">
-                                Active point: <strong className="text-accent-700">{activeConcurrency} concurrency</strong>
+                                Ranked within {describeSlo(slo)} · click a row to preview
                             </span>
                         </div>
+                        {isSample && (
+                            <p className="text-micro text-zinc-600 mb-2">
+                                Illustrative curve: drawn below the sample&apos;s stated point, never above it.
+                            </p>
+                        )}
                         <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
                             <table className="w-full text-left font-mono text-micro border-collapse">
                                 <thead className="bg-zinc-100/80 text-zinc-700 font-semibold border-b border-zinc-200">
                                     <tr>
-                                        <th className="py-1.5 px-2.5 font-semibold">Concurrency</th>
+                                        <th className="py-1.5 px-2.5 font-semibold">Load</th>
                                         <th className="py-1.5 px-2 text-right font-semibold">QPS</th>
                                         <th className="py-1.5 px-2 text-right font-semibold">Tok/s/chip</th>
-                                        <th className="py-1.5 px-2 text-right font-semibold">TTFT P50/P99</th>
-                                        <th className="py-1.5 px-2 text-right font-semibold">TPOT P50/P99</th>
+                                        <th className="py-1.5 px-2 text-right font-semibold">TTFT {pctLabel}</th>
+                                        <th className="py-1.5 px-2 text-right font-semibold">TPOT {pctLabel}</th>
                                         <th className="py-1.5 px-2.5 text-right font-semibold">$/1M</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-zinc-100">
-                                    {sweepPoints.map((pt) => {
-                                        const isOperating = pt.concurrency === activeConcurrency;
+                                    {sweepPoints.map((pt, index) => {
+                                        const isOperating = index === operatingIndex;
+                                        const isShown = isPreviewing ? index === previewIndex : isOperating;
                                         return (
                                             <tr
-                                                key={pt.concurrency}
+                                                key={`${pt.concurrency ?? 'pt'}-${index}`}
+                                                onClick={() => selectPoint(index)}
+                                                tabIndex={0}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        selectPoint(index);
+                                                    }
+                                                }}
+                                                aria-selected={isShown}
                                                 className={cn(
-                                                    isOperating
-                                                        ? 'bg-accent-50/75 text-zinc-900 font-semibold'
-                                                        : 'text-zinc-700 hover:bg-zinc-50'
+                                                    'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-500',
+                                                    isShown ? 'bg-accent-50/75 text-zinc-900 font-semibold' : 'text-zinc-700 hover:bg-zinc-50',
+                                                    pt.overloaded && 'text-zinc-500'
                                                 )}
+                                                title={[
+                                                    `P99 TTFT ${fmtMs(pt.ttft_p99)} · P99 TPOT ${fmtMs(pt.itl_p99)}`,
+                                                    pt.overloaded ? 'Overloaded: latency jumped for little extra throughput, so it never ranks' : null,
+                                                ].filter(Boolean).join('\n')}
                                             >
                                                 <td className="py-1.5 px-2.5 whitespace-nowrap">
                                                     <div className="inline-flex items-center gap-1.5">
-                                                        <span>{pt.concurrency}c</span>
+                                                        <span>{pt.concurrency != null ? `${pt.concurrency}c` : '—'}</span>
                                                         {isOperating && (
-                                                            <span className="px-1.5 py-0.2 rounded-full bg-accent-600 text-white text-tiny font-sans font-semibold">
-                                                                Active
+                                                            <span className="px-1.5 py-0.5 rounded-full bg-accent-600 text-white text-tiny font-sans font-semibold">
+                                                                Ranked here
+                                                            </span>
+                                                        )}
+                                                        {pt.overloaded && (
+                                                            <span className="px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-tiny font-sans font-semibold">
+                                                                Overloaded
                                                             </span>
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-1.5 px-2 text-right tabular-nums">{pt.qps}</td>
+                                                <td className="py-1.5 px-2 text-right tabular-nums">{isNum(pt.qps) ? pt.qps : '—'}</td>
                                                 <td className="py-1.5 px-2 text-right tabular-nums">
-                                                    {Math.round(pt.tokens_per_sec_per_chip).toLocaleString()}
+                                                    {pt.total_estimated && <span className="text-zinc-400">≈</span>}
+                                                    {fmtInt(pt.tokens_per_sec_per_chip)}
                                                 </td>
-                                                <td className="py-1.5 px-2 text-right tabular-nums">
-                                                    {pt.ttft_p50} / {pt.ttft_p99} ms
-                                                </td>
-                                                <td className="py-1.5 px-2 text-right tabular-nums">
-                                                    {pt.itl_p50} / {pt.itl_p99} ms
-                                                </td>
-                                                <td className="py-1.5 px-2.5 text-right tabular-nums text-emerald-700">
-                                                    ${Number(pt.cost_per_1m).toFixed(3)}
-                                                </td>
+                                                <td className="py-1.5 px-2 text-right tabular-nums">{fmtMs(pt[`ttft_${pct}`])}</td>
+                                                <td className="py-1.5 px-2 text-right tabular-nums">{fmtMs(pt[`itl_${pct}`])}</td>
+                                                <td className="py-1.5 px-2.5 text-right tabular-nums text-emerald-700">{fmtCost(pt.cost_per_1m)}</td>
                                             </tr>
                                         );
                                     })}
@@ -546,25 +678,20 @@ print(response.choices[0].message.content)
                 <div className="space-y-3 mb-4">
                     <div className="bg-zinc-50/80 p-3.5 rounded-2xl border border-zinc-200 text-xs">
                         <h4 className="font-semibold text-zinc-900 mb-2 flex items-center gap-1.5">
-                            <Layers className="w-4 h-4 text-accent-600" /> Serving stack & LLM flags
+                            <Layers className="w-4 h-4 text-accent-600" /> Serving stack &amp; LLM flags
                         </h4>
                         <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs font-mono text-zinc-600">
-                            <div>
-                                Engine:{' '}
-                                <span className="text-zinc-900 font-semibold">
-                                    {stackBrand}{stackVersion ? ` (${stackVersion})` : ''}
-                                </span>
-                            </div>
-                            <div>Parallelism: <span className="text-zinc-900 font-semibold">TP={recipe.stack?.tensor_parallel_size || 1}, PP={recipe.stack?.pipeline_parallel_size || 1}</span></div>
-                            <div>Weight quant: <span className="text-accent-700 font-semibold">{recipe.stack?.quantization?.toUpperCase() || 'FP8'}</span></div>
-                            <div>KV cache dtype: <span className="text-accent-700 font-semibold">{recipe.stack?.kv_cache_dtype || 'auto'}</span></div>
-                            <div>Prefix caching: <span className="text-emerald-700 font-semibold">{recipe.stack?.prefix_caching ? (recipe.stack?.routing ? `Enabled (${recipe.stack.routing})` : 'Enabled') : 'Disabled'}</span></div>
-                            <div>Speculative: <span className="text-zinc-900 font-semibold">{recipe.stack?.speculative_decoding?.enabled ? `Enabled (${recipe.stack?.speculative_decoding?.num_speculative_tokens || 4} tok)` : 'Disabled'}</span></div>
+                            <div>Engine: {stackField(recipe.stack?.engine ? `${stackBrand}${stackVersion ? ` (${stackVersion})` : ''}` : NOT_REPORTED)}</div>
+                            <div>Parallelism: {stackField(tp ? `TP=${tp}${pp ? `, PP=${pp}` : ''}` : NOT_REPORTED)}</div>
+                            <div>Weight quant: {stackField(quant ? String(quant).toUpperCase() : NOT_REPORTED)}</div>
+                            <div>KV cache dtype: {stackField(kvDtype || NOT_REPORTED)}</div>
+                            <div>Prefix caching: {stackField(prefixCaching == null ? NOT_REPORTED : prefixCaching ? (recipe.stack?.routing ? `Enabled (${recipe.stack.routing})` : 'Enabled') : 'Disabled')}</div>
+                            <div>Speculative: {stackField(!recipe.stack?.speculative_decoding ? NOT_REPORTED : recipe.stack.speculative_decoding.enabled ? `Enabled${recipe.stack.speculative_decoding.num_speculative_tokens ? ` (${recipe.stack.speculative_decoding.num_speculative_tokens} tok)` : ''}` : 'Disabled')}</div>
                             <div className="col-span-2 pt-1.5 border-t border-zinc-200/80 flex items-center justify-between gap-2">
                                 <div className="truncate">
                                     Container:{' '}
                                     <span className={cn('font-semibold', containerImage ? 'text-zinc-900' : 'text-zinc-500')}>
-                                        {containerImage || 'Not reported'}
+                                        {containerImage || NOT_REPORTED}
                                     </span>
                                 </div>
                                 {containerImage && (
@@ -584,13 +711,16 @@ print(response.choices[0].message.content)
 
                     <div className="bg-zinc-50/80 p-3.5 rounded-2xl border border-zinc-200 text-xs">
                         <h4 className="font-semibold text-zinc-900 mb-2 flex items-center gap-1.5">
-                            <Gauge className="w-4 h-4 text-accent-600" /> Workload & traffic profile
+                            <Gauge className="w-4 h-4 text-accent-600" /> Workload &amp; traffic profile
                         </h4>
                         <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs font-mono text-zinc-600">
-                            <div>Dataset: <span className="text-zinc-900 font-semibold">{recipe.workload?.dataset_name || 'Not reported'}</span></div>
+                            <div>Dataset: {stackField(recipe.workload?.dataset_name || NOT_REPORTED)}</div>
                             <div>Workload class: <span className="text-zinc-900 font-semibold uppercase">{recipe.workload_class || 'chat'}</span></div>
-                            <div>Input / Output: <span className="text-zinc-900 font-semibold">{recipe.workload?.input_tokens ?? '—'} ISL / {recipe.workload?.output_tokens ?? '—'} OSL</span></div>
-                            <div>Active point: <span className="text-zinc-900 font-semibold">{activeConcurrency} streams ({recipe.operatingPoint?.qps ?? recipe.workload?.target_qps ?? '—'} QPS)</span></div>
+                            <div>Input / Output: {stackField(isl != null || osl != null ? `${isl ?? '—'} ISL / ${osl ?? '—'} OSL` : NOT_REPORTED)}</div>
+                            <div>Operating point: {stackField(recipe.operatingConcurrency != null ? `${recipe.operatingConcurrency} concurrent${isNum(recipe.operatingPoint?.qps) ? ` (${recipe.operatingPoint.qps} QPS)` : ''}` : NOT_REPORTED)}</div>
+                            {recipe.fairness_audit?.harness && (
+                                <div className="col-span-2">Harness: {stackField(recipe.fairness_audit.harness)}</div>
+                            )}
                         </div>
                     </div>
 
@@ -604,20 +734,14 @@ print(response.choices[0].message.content)
                                     type="button"
                                     onClick={handleDownloadReportJson}
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-zinc-200 bg-white text-tiny font-sans font-medium text-zinc-700 hover:text-zinc-900 cursor-pointer"
-                                    title="Download Benchmark Report v0.2 JSON artifact"
+                                    title="Download this entry, its load sweep and its operating point as JSON"
                                 >
                                     <Download className="w-3 h-3 text-zinc-500" />
                                     <span>Report v0.2 JSON</span>
                                 </button>
                                 <a
                                     href="?view=benchmark-browser"
-                                    onClick={(e) => {
-                                        if (onNavigate && !e.metaKey && !e.ctrlKey) {
-                                            e.preventDefault();
-                                            onClose();
-                                            onNavigate('benchmark-browser');
-                                        }
-                                    }}
+                                    onClick={navigateTo('benchmark-browser')}
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-accent-200 bg-accent-50 text-tiny font-sans font-semibold text-accent-700 hover:bg-accent-100 cursor-pointer"
                                     title="Inspect raw benchmark telemetry in Explorer"
                                 >
@@ -627,23 +751,21 @@ print(response.choices[0].message.content)
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs font-mono text-zinc-600">
-                            <div>Hardware: <span className="text-zinc-900 font-semibold">{recipe.hardware?.accelerator_count || 1}× {({
-                                'nvidia-h100-80gb': 'H100',
-                                'nvidia-a100-80gb': 'A100',
-                                'nvidia-a100-40gb': 'A100 40GB',
-                                'nvidia-l4': 'L4',
-                                'tpu-v6e-trillium': 'TPU v6e',
-                                'tpu-v5e': 'TPU v5e',
-                            })[recipe.hardware?.accelerator_type] || recipe.hardware_summary}</span></div>
-                            <div>Cluster hourly: <span className="text-emerald-700 font-semibold">${recipe.cost_analysis?.hourly_rate_usd?.toFixed(2) || '0.00'}/hr</span></div>
+                            <div>Hardware: <span className="text-zinc-900 font-semibold">{formatHardwareShort(recipe)}</span></div>
+                            <div>
+                                Cluster hourly:{' '}
+                                <span className={cn('font-semibold', isNum(recipe.cost_analysis?.hourly_rate_usd) ? 'text-emerald-700' : 'text-zinc-500')}>
+                                    {isNum(recipe.cost_analysis?.hourly_rate_usd) ? `$${recipe.cost_analysis.hourly_rate_usd.toFixed(2)}/hr` : 'No list price'}
+                                </span>
+                            </div>
                             <div>Run date: <span className="text-zinc-900 font-semibold">{runDateLabel}</span></div>
                             <div className="flex items-center gap-1">
                                 <GitCommit className="w-3.5 h-3.5 text-zinc-500" />
-                                <span>Commit: <strong className="text-zinc-900">{gitCommitSha}</strong></span>
+                                <span>Commit: <strong className={gitCommitSha === NOT_REPORTED ? 'text-zinc-500' : 'text-zinc-900'}>{gitCommitSha}</strong></span>
                             </div>
                             <div className="flex items-center gap-1">
                                 <GitBranch className="w-3.5 h-3.5 text-zinc-500" />
-                                <span>Branch: <strong className="text-zinc-900">{recipe.git_branch || 'Not reported'}</strong></span>
+                                <span>Branch: <strong className={recipe.git_branch ? 'text-zinc-900' : 'text-zinc-500'}>{recipe.git_branch || NOT_REPORTED}</strong></span>
                             </div>
                             {recipe.pull_request_url && (
                                 <div className="col-span-2 flex items-center gap-1.5 text-accent-700 pt-0.5">
@@ -683,6 +805,9 @@ print(response.choices[0].message.content)
                                 </button>
                             ))}
                         </div>
+                        {isPreviewing && activeTab === 'agent' && (
+                            <span className="text-micro font-mono text-amber-800">Load set to the previewed point</span>
+                        )}
                     </div>
 
                     {activeTab === 'agent' && (
@@ -736,7 +861,7 @@ print(response.choices[0].message.content)
 
                 {/* Footer with Challenge / Flag CTA */}
                 <div className="pt-3 border-t border-zinc-200 flex flex-wrap items-center justify-between gap-3">
-                    {onOpenFeedback ? (
+                    {onOpenFeedback && !isSample ? (
                         <button
                             type="button"
                             onClick={() => onOpenFeedback('flag_recipe', recipe)}

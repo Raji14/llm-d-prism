@@ -137,8 +137,14 @@ export default function LeaderboardAsk({
     setSelectedEngine,
     availableModels = [],
     matchCount,
-    missesSloCount = 0,
-    hasSamples = false,
+    overLimitCount = 0,
+    notRecordedCount = 0,
+    publishedCount = 0,
+    sampleCount = 0,
+    includeSamples = false,
+    onToggleSamples,
+    skippedResults = [],
+    instance = 'public',
     onOpenFeedback,
 }) {
     const selection = {
@@ -209,7 +215,12 @@ export default function LeaderboardAsk({
     const total = dataset.length;
     const ranked = results ?? dataset.filter(inScope(selection));
     const n = matchCount ?? ranked.length;
-    const qualifyingCount = Math.max(0, n - missesSloCount);
+    const qualifyingCount = Math.max(0, n - overLimitCount - notRecordedCount);
+    const sloSummary = [
+        `${qualifyingCount} meet SLO`,
+        overLimitCount > 0 ? `${overLimitCount} miss` : null,
+        notRecordedCount > 0 ? `${notRecordedCount} can’t check` : null,
+    ].filter(Boolean).join(' · ');
     const familyCount = new Set(ranked.map((r) => r.model_family).filter(Boolean)).size;
     const mixesModelSizes =
         selectedModelFamily === 'all' && familyCount > 1 && SIZE_SENSITIVE_OBJECTIVES.has(rankingMetric);
@@ -220,7 +231,8 @@ export default function LeaderboardAsk({
         engine: selectedEngine,
     });
     const topModel =
-        recommendedScope.model !== 'all' ? recommendedScope.model : availableModels[0] || 'Llama 3.1 70B';
+        recommendedScope.model !== 'all' ? recommendedScope.model : availableModels[0] || null;
+    const publishedLabel = instance === 'internal' ? 'official' : 'published';
 
     const activeObjective = objectiveFor(rankingMetric);
     const activeWorkload = workloadFor(selectedWorkload);
@@ -307,14 +319,16 @@ export default function LeaderboardAsk({
             <div className="px-3.5 sm:px-4 py-2 bg-zinc-50/90 border-t border-zinc-200/70 flex items-center justify-between gap-3 text-xs text-zinc-700 min-h-[38px]">
                 <div className="flex items-center gap-2 min-w-0 overflow-hidden" aria-live="polite">
                     <span className="inline-flex items-center rounded-full bg-accent-50 border border-accent-200 px-2.5 py-0.5 font-mono text-micro font-semibold text-accent-800 shrink-0">
-                        {missesSloCount > 0
-                            ? `${qualifyingCount} meet SLO · ${missesSloCount} miss`
-                            : n === total
-                                ? `All ${runs(total)}`
-                                : `${n} of ${runs(total)} in scope`}
+                        {overLimitCount > 0 || notRecordedCount > 0
+                            ? sloSummary
+                            : total === 0
+                                ? 'No runs yet'
+                                : n === total
+                                    ? `All ${runs(total)}`
+                                    : `${n} of ${runs(total)} in scope`}
                     </span>
 
-                    {selectedModelFamily === 'all' ? (
+                    {total === 0 ? null : selectedModelFamily === 'all' ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-micro font-medium text-amber-900 shrink-0">
                             <span>{mixesModelSizes ? 'Grouped by model size' : 'Grouped by model'}</span>
                             {setSelectedModelFamily && topModel && (
@@ -339,13 +353,47 @@ export default function LeaderboardAsk({
                         )
                     )}
 
-                    {hasSamples && (
-                        <span className="hidden md:inline-flex items-center gap-1.5 text-micro text-zinc-600 truncate" role="note">
-                            <span className="text-zinc-400" aria-hidden="true">·</span>
-                            <StatusChip status="sample" size="xs" />
-                            <span className="truncate">Includes reference curves</span>
-                        </span>
-                    )}
+                    {/* Where the rows come from: published results, samples, or both */}
+                    <span className="hidden md:inline-flex items-center gap-1.5 text-micro text-zinc-600 min-w-0" role="note">
+                        <span className="text-zinc-400" aria-hidden="true">·</span>
+                        {publishedCount > 0 && (
+                            <span
+                                className="inline-flex items-center gap-1 shrink-0"
+                                title={`Results ${publishedLabel} in the Results Store. Until results are stored on the server, they're saved in this browser only.`}
+                            >
+                                <StatusChip status={publishedLabel} size="xs" />
+                                <span>{publishedCount} {publishedCount === 1 ? 'result' : 'results'}</span>
+                            </span>
+                        )}
+                        {includeSamples && (
+                            <span
+                                className="inline-flex items-center gap-1 min-w-0"
+                                title="Illustrative entries that ship with Prism to show how ranking works. Never measured, never verified."
+                            >
+                                <StatusChip status="sample" size="xs" />
+                                <span className="truncate">
+                                    {publishedCount > 0 ? `${sampleCount} illustrative` : 'Illustrative only · nothing published yet'}
+                                </span>
+                            </span>
+                        )}
+                        {onToggleSamples && (
+                            <button
+                                type="button"
+                                onClick={onToggleSamples}
+                                className="shrink-0 font-semibold text-zinc-800 underline decoration-zinc-300 underline-offset-2 hover:text-accent-700 hover:decoration-accent-400 cursor-pointer"
+                            >
+                                {includeSamples ? 'Hide samples' : 'Show samples'}
+                            </button>
+                        )}
+                        {skippedResults.length > 0 && (
+                            <span
+                                className="shrink-0 text-amber-800"
+                                title={skippedResults.map((s) => `${s.name}: ${s.reason === 'no-throughput' ? 'no total throughput to rank by (record the input rate, or the prompt and output lengths)' : 'no measured points left'}`).join('\n')}
+                            >
+                                · {skippedResults.length} can’t be ranked
+                            </span>
+                        )}
+                    </span>
                 </div>
 
                 {onOpenFeedback && (
@@ -354,7 +402,7 @@ export default function LeaderboardAsk({
                         onClick={() => onOpenFeedback('missing_workload')}
                         className="text-micro font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-accent-700 hover:decoration-accent-400 cursor-pointer shrink-0 whitespace-nowrap"
                     >
-                        Missing a workload or hardware? Request one →
+                        Request a workload →
                     </button>
                 )}
             </div>

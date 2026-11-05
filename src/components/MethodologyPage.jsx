@@ -20,7 +20,7 @@
 import React, { useEffect } from 'react';
 import { ArrowRight, ArrowUpRight, UploadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { OBJECTIVES, WORKLOADS } from '../utils/leaderboardFacets.js';
+import { DEFAULT_SLO, OBJECTIVES, WORKLOADS, describeSlo } from '../utils/leaderboardFacets.js';
 import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF, shortModelName } from '../utils/wellLitProofs.js';
 import { PageHeader } from './ui/PageHeader.jsx';
 import { Button } from './ui/Button.jsx';
@@ -40,9 +40,11 @@ const SECTIONS = [
 
 const LOWER_IS_BETTER = new Set(['ttft_p50', 'itl_p50', 'cost_per_1m']);
 
+// The status chips a leaderboard entry can carry. Real entries come from the
+// Results Store (src/utils/leaderboardSources.js); samples ship with the UI.
 const STATUSES = [
-    { status: 'verified', meaning: 'Passed the Benchmark Report v0.2 schema check and peer review.' },
-    { status: 'community_validated', meaning: 'Passed the schema check; peer review is still pending.' },
+    { status: 'published', meaning: 'Reviewed and approved in the Results Store, then listed publicly. This is what ranks on the public leaderboard.' },
+    { status: 'official', meaning: 'Marked Official by an approver on an internal Results Store. Ranks on that instance’s leaderboard only.' },
     { status: 'sample', meaning: 'Illustrative entry that ships with the UI. Never counts as a verified result.' },
 ];
 
@@ -240,7 +242,8 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
                     <Section id="validation" kicker="02" title="Validation">
                         <p>
                             Submitted reports are checked against the Benchmark Report v0.2 schema, then peer-reviewed before
-                            they rank. Each entry on the leaderboard carries its status:
+                            they rank. That review happens in the Results Store, and only results that make it through reach
+                            the leaderboard. Each entry carries its status:
                         </p>
                         <ul className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200/90 bg-white shadow-xs">
                             {STATUSES.map((s) => (
@@ -260,6 +263,21 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
                             <strong className="font-semibold text-zinc-900">throughput per chip</strong> by default: the
                             setup&apos;s total tokens per second divided by its accelerator count. That compares a single L4
                             with a 32-GPU cluster like for like, instead of rewarding whoever ran the biggest cluster.
+                        </p>
+                        <p>
+                            Every result is a sweep across load levels, so the leaderboard has to pick one point to rank. It
+                            takes the{' '}
+                            <strong className="font-semibold text-zinc-900">
+                                highest-throughput point that stays inside the latency SLO
+                            </strong>
+                            , which is {describeSlo(DEFAULT_SLO)} unless you change it, so nothing wins by queueing requests.
+                            A result that never gets inside the SLO is listed below the ranked ones at its closest point, and
+                            one that didn&apos;t record the chosen percentile is marked as can&apos;t be checked. Points the
+                            Results Store flags as overloaded never rank.
+                        </p>
+                        <p>
+                            The percentile you pick (P50, P90 or P99) applies to the SLO and to every latency on the page, so a
+                            row never shows one percentile next to a verdict made with another.
                         </p>
                         <Table
                             caption="Ranking objectives"
@@ -412,9 +430,10 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
 
                     <Section id="samples" kicker="06" title="Sample data">
                         <p>
-                            Until verified runs land, the leaderboard shows illustrative entries so you can explore how it
+                            Until results are published, the leaderboard shows illustrative entries so you can explore how it
                             works. They are labelled <StatusChip status="sample" size="xs" className="align-middle" />, never
-                            counted on Home, and give way to real runs as they are verified.
+                            counted on Home, and their curves are drawn dashed so they can&apos;t pass for measurements. Once a
+                            real result is published they step aside; you can still turn them back on from the leaderboard.
                         </p>
                         <div className="flex flex-col gap-4 rounded-3xl border border-zinc-200/90 bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 shadow-xs">
                             <div>

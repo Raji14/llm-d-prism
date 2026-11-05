@@ -26,22 +26,38 @@ import {
     Sparkles
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { PERCENTILES, DEFAULT_SLA_PERCENTILE, parseQueryTokens, workloadFor } from '../../utils/leaderboardFacets.js';
+import {
+    PERCENTILES,
+    DEFAULT_SLO,
+    TTFT_SLO_PRESETS,
+    TPOT_SLO_PRESETS,
+    describeSlo,
+    formatLimitMs,
+    isDefaultSlo,
+    parseQueryTokens,
+    workloadFor
+} from '../../utils/leaderboardFacets.js';
 
 const SEARCH_SYNTAX_CHIPS = [
     { label: 'stack:llm-d', query: 'stack:llm-d' },
     { label: 'hw:h100', query: 'hw:h100' },
-    { label: 'status:verified', query: 'status:verified' },
     { label: 'quant:fp8', query: 'quant:fp8' },
     { label: 'tp:8', query: 'tp:8' },
 ];
 
+// Suggested when no workload is picked: the chat target.
 const FALLBACK_INTERACTIVE_SLO = {
-    percentile: 'p90',
-    ttft: 100,
-    tpot: 25,
-    label: 'Interactive',
+    percentile: 'p99',
+    ttft: 500,
+    tpot: 50,
+    label: 'Chat',
 };
+
+const presetLabel = (slo) =>
+    `${slo.percentile.toUpperCase()} TTFT ≤ ${formatLimitMs(slo.ttft)}${slo.tpot ? `, TPOT ≤ ${formatLimitMs(slo.tpot)}` : ''}`;
+
+// "Chat (ShareGPT)" -> "Chat": keeps the suggestion chip short enough for one row.
+const shortWorkloadLabel = (label = '') => label.replace(/\s*\(.*\)\s*$/, '');
 
 // Secondary controls docked directly below LeaderboardAsk: free-text + property:value
 // + regex search, SLO latency operating-point selector, and cloud pricing overrides.
@@ -51,11 +67,11 @@ export default function MetricFiltersBar({
     onRemoveQueryToken,
     selectedWorkload = 'all',
     isScoped = false,
-    maxTtftSla = null,
+    maxTtftSla = DEFAULT_SLO.ttft,
     setMaxTtftSla,
-    maxTpotSla = null,
+    maxTpotSla = DEFAULT_SLO.tpot,
     setMaxTpotSla,
-    slaPercentile = DEFAULT_SLA_PERCENTILE,
+    slaPercentile = DEFAULT_SLO.percentile,
     setSlaPercentile,
     onOpenPricingModal,
     onResetFilters,
@@ -65,54 +81,34 @@ export default function MetricFiltersBar({
     const [showSyntaxHelp, setShowSyntaxHelp] = useState(false);
 
     const activeWorkload = useMemo(() => workloadFor(selectedWorkload), [selectedWorkload]);
-    const defaultSlo = useMemo(() => {
+    const suggestedSlo = useMemo(() => {
         if (activeWorkload?.defaultSlo) {
             return { ...activeWorkload.defaultSlo, label: activeWorkload.label };
         }
+        if (activeWorkload) return null; // e.g. offline batch: no latency target
         return FALLBACK_INTERACTIVE_SLO;
     }, [activeWorkload]);
 
-    const isSlaActive = (maxTtftSla !== null && maxTtftSla > 0) || (maxTpotSla !== null && maxTpotSla > 0);
-    const isFiltered = isScoped || searchQuery.trim() !== '' || isSlaActive;
+    const slo = { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile };
+    const sloIsDefault = isDefaultSlo(slo);
+    const isFiltered = isScoped || searchQuery.trim() !== '' || !sloIsDefault;
     const hasStructuredOrRegex = /(?:^|\s)(model|hardware|hw|gpu|tpu|acc|stack|engine|workload|quant|tp|author|contributor|status):|^\/.+\/[gimsuy]*$|[|^*+?[\]()]/.test(searchQuery.trim());
 
     const activeTokens = useMemo(() => parseQueryTokens(searchQuery), [searchQuery]);
-    const activePercentileLabel = PERCENTILES.find((p) => p.value === slaPercentile)?.label || 'P90';
+    const activePercentileLabel = PERCENTILES.find((p) => p.value === slaPercentile)?.label || 'P50';
+    const sloButtonLabel = `SLO: ${describeSlo(slo)}${sloIsDefault ? ' (default)' : ''}`;
 
-    const sloButtonLabel = useMemo(() => {
-        if (!isSlaActive) return 'Latency SLO: Any (peak)';
-        const parts = [];
-        if (maxTtftSla !== null && maxTtftSla > 0) parts.push(`TTFT ≤${maxTtftSla}ms`);
-        if (maxTpotSla !== null && maxTpotSla > 0) parts.push(`TPOT ≤${maxTpotSla}ms`);
-        return `SLO (${activePercentileLabel}): ${parts.join(' · ')}`;
-    }, [isSlaActive, activePercentileLabel, maxTtftSla, maxTpotSla]);
-
-    const TTFT_PRESETS = [
-        { label: 'Any', value: null },
-        { label: '≤ 50ms', value: 50 },
-        { label: '≤ 100ms', value: 100 },
-        { label: '≤ 250ms', value: 250 },
-        { label: '≤ 500ms', value: 500 }
-    ];
-
-    const TPOT_PRESETS = [
-        { label: 'Any', value: null },
-        { label: '≤ 15ms', value: 15 },
-        { label: '≤ 25ms', value: 25 },
-        { label: '≤ 40ms', value: 40 },
-        { label: '≤ 60ms', value: 60 }
-    ];
-
-    const handleApplyWorkloadSlo = () => {
-        if (!defaultSlo) return;
-        if (setSlaPercentile && defaultSlo.percentile) setSlaPercentile(defaultSlo.percentile);
-        if (setMaxTtftSla) setMaxTtftSla(defaultSlo.ttft ?? null);
-        if (setMaxTpotSla) setMaxTpotSla(defaultSlo.tpot ?? null);
+    const handleApplySuggestedSlo = () => {
+        if (!suggestedSlo) return;
+        if (setSlaPercentile && suggestedSlo.percentile) setSlaPercentile(suggestedSlo.percentile);
+        if (setMaxTtftSla) setMaxTtftSla(suggestedSlo.ttft ?? null);
+        if (setMaxTpotSla) setMaxTpotSla(suggestedSlo.tpot ?? null);
     };
 
-    const handleClearSlo = () => {
-        if (setMaxTtftSla) setMaxTtftSla(null);
-        if (setMaxTpotSla) setMaxTpotSla(null);
+    const handleResetSlo = () => {
+        if (setMaxTtftSla) setMaxTtftSla(DEFAULT_SLO.ttft);
+        if (setMaxTpotSla) setMaxTpotSla(DEFAULT_SLO.tpot);
+        if (setSlaPercentile) setSlaPercentile(DEFAULT_SLO.percentile);
     };
 
     const handleToggleSyntaxChip = (chipQuery) => {
@@ -150,7 +146,7 @@ export default function MetricFiltersBar({
         }
         const num = Number(val);
         if (Number.isFinite(num) && num > 0) {
-            setMaxTtftSla(Math.min(10000, Math.round(num)));
+            setMaxTtftSla(Math.min(60000, Math.round(num)));
         }
     };
 
@@ -178,7 +174,7 @@ export default function MetricFiltersBar({
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Filter by text, regex, or key:value (e.g. stack:llm-d hw:h100 status:verified)..."
+                        placeholder="Filter by text, regex, or key:value (e.g. stack:llm-d hw:h100 quant:fp8)..."
                         aria-label="Filter leaderboard by text, property:value, or regular expression"
                         className="w-full pl-9 pr-20 py-1.5 bg-white border border-zinc-200 rounded-full text-xs text-zinc-900 placeholder-zinc-500 focus:outline-none focus:border-accent-400 focus:ring-2 focus:ring-accent-500/15 transition-all font-sans"
                     />
@@ -220,41 +216,42 @@ export default function MetricFiltersBar({
                 <button
                     type="button"
                     onClick={() => setShowSlaControls(!showSlaControls)}
+                    aria-expanded={showSlaControls}
                     className={cn(
                         'flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all cursor-pointer shrink-0',
-                        isSlaActive
-                            ? 'bg-accent-50 text-accent-800 border-accent-300 font-semibold'
-                            : 'bg-white text-zinc-700 border-zinc-200 hover:text-zinc-900 hover:border-zinc-300'
+                        sloIsDefault
+                            ? 'bg-white text-zinc-700 border-zinc-200 hover:text-zinc-900 hover:border-zinc-300'
+                            : 'bg-accent-50 text-accent-800 border-accent-300 font-semibold'
                     )}
-                    title="Set TTFT / TPOT latency SLO to evaluate each run's optimal concurrency operating point"
+                    title="Each run is ranked at its highest-throughput point inside this latency SLO. Click to change it."
                 >
                     <SlidersHorizontal className="w-3.5 h-3.5 text-accent-600" />
                     <span className="font-mono text-micro">{sloButtonLabel}</span>
                     <ChevronDown className={cn('w-3 h-3 transition-transform', showSlaControls && 'rotate-180')} />
                 </button>
 
-                {/* Stable SLO Preset / Clear Slot: swaps in-place without adding/removing a vertical row */}
-                {isSlaActive ? (
+                {/* Stable slot: a reset when the SLO is changed, else the workload's interactive target */}
+                {!sloIsDefault ? (
                     <button
                         type="button"
-                        onClick={handleClearSlo}
+                        onClick={handleResetSlo}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-accent-200 bg-white hover:bg-accent-50 text-micro font-mono font-semibold text-accent-800 transition-colors cursor-pointer shrink-0"
-                        title="Clear active latency SLO constraint"
+                        title={`Back to the default: ${describeSlo(DEFAULT_SLO)}`}
                     >
-                        <span>Clear SLO</span>
+                        <span>Reset SLO</span>
                         <X className="w-3 h-3 text-accent-600" />
                     </button>
-                ) : (
+                ) : suggestedSlo ? (
                     <button
                         type="button"
-                        onClick={handleApplyWorkloadSlo}
+                        onClick={handleApplySuggestedSlo}
                         className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-dashed border-accent-300 bg-white/80 hover:bg-accent-50/70 text-micro font-mono font-medium text-accent-800 transition-colors cursor-pointer shrink-0"
-                        title={`Apply recommended ${defaultSlo.label} SLO (${defaultSlo.percentile.toUpperCase()} TTFT ≤ ${defaultSlo.ttft}ms, TPOT ≤ ${defaultSlo.tpot}ms)`}
+                        title={`${shortWorkloadLabel(suggestedSlo.label)} interactive target: ${presetLabel(suggestedSlo)}. Click to rank at it.`}
                     >
                         <Sparkles className="w-3 h-3 text-accent-600" />
-                        <span>{defaultSlo.label} SLO ({defaultSlo.percentile.toUpperCase()} ≤{defaultSlo.ttft}ms / ≤{defaultSlo.tpot}ms)</span>
+                        <span>{shortWorkloadLabel(suggestedSlo.label)} target</span>
                     </button>
-                )}
+                ) : null}
 
                 {/* Pricing Rates Modal Button */}
                 {onOpenPricingModal && (
@@ -289,7 +286,7 @@ export default function MetricFiltersBar({
                                 ? 'bg-white hover:bg-zinc-50 border-zinc-200 text-zinc-700 cursor-pointer'
                                 : 'bg-zinc-100/60 border-zinc-200/60 text-zinc-400 cursor-not-allowed'
                         )}
-                        title="Reset all active filters and SLO limits"
+                        title="Reset the scope, search and SLO to their defaults"
                     >
                         <RotateCcw className="w-3 h-3" />
                         <span>Reset</span>
@@ -362,16 +359,18 @@ export default function MetricFiltersBar({
             {showSlaControls && (
                 <div className="pt-2.5 border-t border-zinc-200/80 space-y-2 text-xs animate-in slide-in-from-top-1 duration-150">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-micro text-zinc-700">
-                        <span>
-                            Each submission is a throughput-vs-latency sweep across concurrency levels. Setting a latency SLO selects each run&apos;s highest-throughput operating point that meets your threshold.
+                        <span className="max-w-3xl">
+                            Each result is a sweep across load levels. It&apos;s ranked at its highest-throughput point inside the SLO,
+                            so nothing wins by queueing requests. By default that&apos;s {describeSlo(DEFAULT_SLO)}; pick Any to rank raw peaks.
+                            The percentile applies to the SLO and to every latency on the page.
                         </span>
-                        {defaultSlo && (
+                        {suggestedSlo && (
                             <button
                                 type="button"
-                                onClick={handleApplyWorkloadSlo}
+                                onClick={handleApplySuggestedSlo}
                                 className="inline-flex items-center gap-1 font-mono font-semibold text-accent-700 hover:text-accent-900 underline decoration-accent-300 underline-offset-2 cursor-pointer"
                             >
-                                Apply {defaultSlo.label} default ({defaultSlo.percentile.toUpperCase()} TTFT ≤{defaultSlo.ttft}ms, TPOT ≤{defaultSlo.tpot}ms)
+                                Use the {shortWorkloadLabel(suggestedSlo.label)} target ({presetLabel(suggestedSlo)})
                             </button>
                         )}
                     </div>
@@ -383,7 +382,7 @@ export default function MetricFiltersBar({
                                 <span className="text-zinc-700 font-semibold">Percentile:</span>
                                 <div
                                     role="group"
-                                    aria-label="SLO latency percentile"
+                                    aria-label="Latency percentile for the SLO and every latency on the page"
                                     className="inline-flex items-center rounded-full border border-zinc-200 bg-white p-0.5"
                                 >
                                     {PERCENTILES.map((p) => (
@@ -391,6 +390,7 @@ export default function MetricFiltersBar({
                                             key={p.value}
                                             type="button"
                                             onClick={() => setSlaPercentile(p.value)}
+                                            aria-pressed={slaPercentile === p.value}
                                             className={cn(
                                                 'px-2 py-0.5 rounded-full font-mono text-micro font-medium transition-colors cursor-pointer',
                                                 slaPercentile === p.value
@@ -412,11 +412,12 @@ export default function MetricFiltersBar({
                                 <span>Max {activePercentileLabel} TTFT:</span>
                             </span>
                             <div className="flex flex-wrap items-center gap-1">
-                                {TTFT_PRESETS.map((preset) => (
+                                {TTFT_SLO_PRESETS.map((preset) => (
                                     <button
                                         key={preset.label}
                                         type="button"
                                         onClick={() => setMaxTtftSla && setMaxTtftSla(preset.value)}
+                                        aria-pressed={maxTtftSla === preset.value}
                                         className={cn(
                                             'px-2.5 py-0.5 rounded-full text-micro font-mono font-medium transition-all cursor-pointer',
                                             maxTtftSla === preset.value
@@ -430,7 +431,7 @@ export default function MetricFiltersBar({
                                 <input
                                     type="number"
                                     min="1"
-                                    max="10000"
+                                    max="60000"
                                     value={maxTtftSla ?? ''}
                                     onChange={handleCustomTtftChange}
                                     placeholder="Custom ms"
@@ -447,11 +448,12 @@ export default function MetricFiltersBar({
                                 <span>Max {activePercentileLabel} TPOT:</span>
                             </span>
                             <div className="flex flex-wrap items-center gap-1">
-                                {TPOT_PRESETS.map((preset) => (
+                                {TPOT_SLO_PRESETS.map((preset) => (
                                     <button
                                         key={preset.label}
                                         type="button"
                                         onClick={() => setMaxTpotSla && setMaxTpotSla(preset.value)}
+                                        aria-pressed={maxTpotSla === preset.value}
                                         className={cn(
                                             'px-2.5 py-0.5 rounded-full text-micro font-mono font-medium transition-all cursor-pointer',
                                             maxTpotSla === preset.value

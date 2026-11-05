@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Activity, BarChart2, Blocks, Bot, FileCode, Trophy, UploadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { normalizeLeaderboardEntry } from '../utils/leaderboardData.js';
 import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF } from '../utils/wellLitProofs.js';
+import { readInstanceMode } from './ResultsStore/instance.js';
 import { Badge } from './ui/Badge.jsx';
 import { Button } from './ui/Button.jsx';
 import { DOCS_URL, METHODOLOGY, NAV, REPO_URL, SUBMIT } from './layout/navigation';
@@ -143,20 +144,39 @@ const fmtDate = (iso) => {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-// What the freshness pill may claim: only runs that passed review. Never the
-// illustrative seed recipes, never uploads still waiting for validation. The
-// inclusion rule matches buildLeaderboardDataset's for uploaded runs.
-function summarizeVerified(runs) {
-    const verified = (Array.isArray(runs) ? runs : [])
-        .filter((raw) => raw && (raw.tokens_per_sec || raw.tps || raw.ttft))
-        .map((raw) => ({ raw, run: normalizeLeaderboardEntry(raw) }))
-        .filter(({ run }) => run && !run.is_sample && run.verification_status === 'verified');
-    return {
-        count: verified.length,
-        models: new Set(verified.map(({ run }) => run.model_family)).size,
-        // Only a date the run itself carries; normalization would default to now.
-        updated: fmtDate(verified.map(({ raw }) => raw.created_at).filter(Boolean).sort().pop()),
-    };
+// What the freshness pill may claim: exactly what the Leaderboard ranks, i.e.
+// results that made it through the Results Store (Published on the public
+// store, Official on an internal instance). Never the illustrative samples,
+// never drafts. The source module is loaded on demand so the Results Store's
+// catalog code stays out of Home's bundle.
+const EMPTY_SUMMARY = { count: 0, models: 0, updated: null };
+
+function usePublishedSummary(instance) {
+    const [summary, setSummary] = useState(EMPTY_SUMMARY);
+    useEffect(() => {
+        let cancelled = false;
+        const refresh = () =>
+            import('../utils/leaderboardSources.js')
+                .then(({ loadPublishedResults }) => {
+                    if (cancelled) return;
+                    const published = loadPublishedResults({ instance })
+                        .entries.map((raw) => ({ raw, run: normalizeLeaderboardEntry(raw) }))
+                        .filter(({ run }) => run);
+                    setSummary({
+                        count: published.length,
+                        models: new Set(published.map(({ run }) => run.model_family)).size,
+                        updated: fmtDate(published.map(({ raw }) => raw.created_at).filter(Boolean).sort().pop()),
+                    });
+                })
+                .catch(() => {});
+        refresh();
+        window.addEventListener('storage', refresh);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('storage', refresh);
+        };
+    }, [instance]);
+    return summary;
 }
 
 function SectionHeader({ eyebrow, title, body }) {
@@ -362,8 +382,9 @@ function ProofBand({ go }) {
     );
 }
 
-const PrismHome = ({ onNavigate, submittedRuns }) => {
-    const verified = useMemo(() => summarizeVerified(submittedRuns), [submittedRuns]);
+const PrismHome = ({ onNavigate }) => {
+    const instance = readInstanceMode();
+    const published = usePublishedSummary(instance);
 
     // In-app navigation for plain clicks; modified clicks (new tab / window)
     // fall through to the href.
@@ -373,13 +394,13 @@ const PrismHome = ({ onNavigate, submittedRuns }) => {
         onNavigate?.(view, params);
     };
 
-    // Freshness pill: what the community leaderboard holds right now. Until a
-    // verified run lands it invites the first one; sample entries never count.
-    const pill = verified.count
+    // Freshness pill: what the leaderboard ranks right now. Until a result is
+    // published it invites the first one; sample entries never count.
+    const pill = published.count
         ? {
               view: LEADERBOARD,
-              text: `${plural(verified.count, 'verified run')} across ${plural(verified.models, 'model')}`,
-              detail: verified.updated ? `updated ${verified.updated}` : null,
+              text: `${plural(published.count, instance === 'internal' ? 'official result' : 'published result')} across ${plural(published.models, 'model')}`,
+              detail: published.updated ? `updated ${published.updated}` : null,
           }
         : { view: SUBMIT.view, text: 'The community leaderboard is open', detail: 'Submit the first verified run' };
 

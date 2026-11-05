@@ -52,6 +52,7 @@ const LEADERBOARD_PARAMS = [
   'ttft_sla',
   'tpot_sla',
   'sla_pct',
+  'samples',
   'layout',
   'curves',
   'x',
@@ -294,7 +295,7 @@ function App() {
 
           <Suspense fallback={<LoadingState size="md" />}>
             {/* Global staged benchmarks banner removed in favor of localized Results Store dashboard alert banner */}
-            {currentView === 'home' && <PrismHome onNavigate={handleNavigate} submittedRuns={dashboardData.brv02Runs} />}
+            {currentView === 'home' && <PrismHome onNavigate={handleNavigate} />}
             {currentView === 'methodology' && <MethodologyPage onNavigate={handleNavigate} onNavigateBack={() => handleNavigate('home')} />}
             {currentView === 'model-leaderboard' && (
               <LeaderboardDashboard 

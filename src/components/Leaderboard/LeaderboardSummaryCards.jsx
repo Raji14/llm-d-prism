@@ -21,16 +21,17 @@ import {
 } from 'lucide-react';
 import { GoogleMark, StatusChip } from '../ui';
 import { getActivePricingLabel } from '../../utils/pricingEngine.js';
-import { OBJECTIVES, HARDWARE_OPTIONS, engineLabel } from '../../utils/leaderboardFacets.js';
+import {
+    OBJECTIVES,
+    DEFAULT_SLO,
+    describeSlo,
+    engineLabel,
+    formatHardwareShort,
+    latencyFor,
+    provenanceStatus,
+} from '../../utils/leaderboardFacets.js';
 
-function formatConciseHardware(item) {
-    const count = item?.hardware?.accelerator_count || 1;
-    const accId = item?.hardware?.accelerator_type;
-    const match = HARDWARE_OPTIONS.find((h) => h.value === accId);
-    if (match) return `${count}× ${match.short}`;
-    if (accId === 'nvidia-a100-40gb') return `${count}× A100 40G`;
-    return `${count}× ${accId || 'GPU'}`;
-}
+const fmtMs = (v) => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1)}ms` : '—');
 
 export default function LeaderboardSummaryCards({
     dataset = [],
@@ -38,10 +39,13 @@ export default function LeaderboardSummaryCards({
     onSelectModel,
     onSelectRecipe,
     objective = OBJECTIVES[0],
+    latencyPercentile = DEFAULT_SLO.percentile,
+    slo = DEFAULT_SLO,
     customPricing = {},
     onOpenPricingModal
 }) {
     const activePricingLabel = useMemo(() => getActivePricingLabel(customPricing), [customPricing]);
+    const pctLabel = String(latencyPercentile).toUpperCase();
 
     const qualifyingDataset = useMemo(
         () => (dataset || []).filter((r) => !r.missesSlo),
@@ -72,7 +76,7 @@ export default function LeaderboardSummaryCards({
                 <div className="flex items-center gap-2.5">
                     <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
-                        No runs in the current scope meet your active latency SLO across their concurrency sweeps. Relax the TTFT/TPOT limit above or inspect the closest runs below.
+                        No run in this scope meets {describeSlo(slo)} at any measured load. Relax the SLO above, or inspect the closest runs below.
                     </span>
                 </div>
             </div>
@@ -96,10 +100,7 @@ export default function LeaderboardSummaryCards({
                         </div>
                         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar text-micro">
                             {perModelLeaders.map(({ model, recipe }) => {
-                                const tputPerChip = Math.round(
-                                    recipe.tokens_per_sec_per_chip ?? (recipe.tokens_per_sec || 0) / Math.max(1, recipe.hardware?.accelerator_count || 1)
-                                );
-                                const eng = engineLabel(recipe.stack?.engine);
+                                const tputPerChip = recipe.tokens_per_sec_per_chip;
                                 return (
                                     <button
                                         key={model}
@@ -110,10 +111,11 @@ export default function LeaderboardSummaryCards({
                                     >
                                         <span className="font-semibold text-zinc-900">{model}</span>
                                         <span className="text-zinc-300">·</span>
-                                        <span className="font-mono text-micro text-accent-700 font-semibold">{eng}</span>
+                                        <span className="font-mono text-micro text-accent-700 font-semibold">{engineLabel(recipe.stack?.engine)}</span>
                                         <span className="font-mono text-micro text-zinc-700 tabular-nums font-medium">
-                                            {tputPerChip.toLocaleString()} tok/s/chip
+                                            {typeof tputPerChip === 'number' ? `${Math.round(tputPerChip).toLocaleString()} tok/s/chip` : '—'}
                                         </span>
+                                        {recipe.is_sample && <StatusChip status="sample" size="xs" />}
                                     </button>
                                 );
                             })}
@@ -137,24 +139,20 @@ export default function LeaderboardSummaryCards({
     const winnerRecipe = qualifyingDataset[0];
     if (!winnerRecipe) return null;
 
-    const winnerThroughput = winnerRecipe.tokens_per_sec || 0;
-    const winnerChips = Math.max(1, winnerRecipe.hardware?.accelerator_count || 1);
-    const winnerThroughputPerChip = winnerRecipe.tokens_per_sec_per_chip ?? winnerThroughput / winnerChips;
-    const winnerTtftP50 = winnerRecipe.ttft_p50 ?? winnerRecipe.metrics?.ttft_ms?.p50;
-    const winnerTpotP50 = winnerRecipe.metrics?.itl_ms?.p50 ?? winnerRecipe.itl_p50;
-    const winnerCostPer1M = winnerRecipe.cost_analysis?.cost_per_1m_output_tokens_usd || 0;
-    const winnerEngine = engineLabel(winnerRecipe.stack?.engine);
-    const winnerTp = winnerRecipe.stack?.tensor_parallel_size || 1;
-    const winnerQuant = (winnerRecipe.stack?.quantization || 'fp16').toUpperCase();
-    const winnerModel = winnerRecipe.model_family || winnerRecipe.model_name || 'Target Model';
-    const winnerConcurrency = winnerRecipe.operatingConcurrency ?? winnerRecipe.workload?.concurrency ?? 32;
-    const winnerContributor = winnerRecipe.author?.github_id
-        ? `@${winnerRecipe.author.github_id}`
-        : winnerRecipe.author?.name || 'llm-d team';
-    const winnerStatus = winnerRecipe.well_lit_path
-        ? 'well_lit_path'
-        : winnerRecipe.verification_status || 'verified';
-    const winnerShortHw = formatConciseHardware(winnerRecipe);
+    const winnerThroughput = winnerRecipe.tokens_per_sec;
+    const winnerThroughputPerChip = winnerRecipe.tokens_per_sec_per_chip;
+    const winnerTtft = latencyFor(winnerRecipe, 'ttft', latencyPercentile);
+    const winnerTpot = latencyFor(winnerRecipe, 'itl', latencyPercentile);
+    const winnerCostPer1M = winnerRecipe.cost_analysis?.cost_per_1m_output_tokens_usd;
+    const winnerModel = winnerRecipe.model_family || winnerRecipe.model_name || 'Model not recorded';
+    const winnerConcurrency = winnerRecipe.operatingConcurrency;
+    const winnerHandle = winnerRecipe.author?.github_id || winnerRecipe.author?.username || null;
+    const winnerStatus = provenanceStatus(winnerRecipe);
+    const stackParts = [
+        engineLabel(winnerRecipe.stack?.engine),
+        winnerRecipe.stack?.tensor_parallel_size ? `TP${winnerRecipe.stack.tensor_parallel_size}` : null,
+        winnerRecipe.stack?.quantization ? String(winnerRecipe.stack.quantization).toUpperCase() : null,
+    ].filter(Boolean);
 
     return (
         <div className="surface-light rounded-2xl border border-accent-200/85 bg-gradient-to-r from-accent-50/80 via-white to-zinc-50/70 px-4 py-2.5 min-h-[68px] flex items-center">
@@ -173,16 +171,18 @@ export default function LeaderboardSummaryCards({
                     </div>
                     <div className="flex items-center gap-2 text-micro min-w-0 overflow-hidden">
                         <span className="font-mono font-semibold text-accent-700 bg-white border border-accent-200 px-2 py-0.5 rounded-full shrink-0">
-                            {winnerEngine} · TP{winnerTp} · {winnerQuant}
+                            {stackParts.join(' · ')}
                         </span>
                         <span className="inline-flex items-center gap-1 font-mono text-zinc-700 shrink-0">
-                            <GoogleMark />
-                            <span>{winnerShortHw}</span>
+                            {winnerRecipe.hardware?.cloud_provider === 'gcp' && <GoogleMark />}
+                            <span>{formatHardwareShort(winnerRecipe)}</span>
                         </span>
-                        <span className="text-zinc-400 shrink-0">·</span>
-                        <span className="text-zinc-600 font-mono shrink-0">
-                            by {winnerContributor}
-                        </span>
+                        {winnerHandle && (
+                            <>
+                                <span className="text-zinc-400 shrink-0">·</span>
+                                <span className="text-zinc-600 font-mono shrink-0">by @{winnerHandle}</span>
+                            </>
+                        )}
                     </div>
                 </div>
 
@@ -192,28 +192,29 @@ export default function LeaderboardSummaryCards({
                         <div className="pr-3">
                             <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">Tok/s/chip</span>
                             <span className="font-mono font-bold text-sm text-zinc-900 tabular-nums">
-                                {Math.round(winnerThroughputPerChip).toLocaleString()}
+                                {typeof winnerThroughputPerChip === 'number' ? Math.round(winnerThroughputPerChip).toLocaleString() : '—'}
                             </span>
-                            <span className="text-tiny font-mono text-zinc-600 ml-1 tabular-nums hidden sm:inline">
-                                ({Math.round(winnerThroughput).toLocaleString()} @ {winnerConcurrency}c)
-                            </span>
+                            {typeof winnerThroughput === 'number' && (
+                                <span className="text-tiny font-mono text-zinc-600 ml-1 tabular-nums hidden sm:inline">
+                                    ({Math.round(winnerThroughput).toLocaleString()}{winnerConcurrency != null ? ` @ ${winnerConcurrency}c` : ''})
+                                </span>
+                            )}
                         </div>
                         <div className="px-3">
-                            <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">TTFT</span>
-                            <span className="font-mono font-semibold text-zinc-900 tabular-nums">
-                                {typeof winnerTtftP50 === 'number' ? `${winnerTtftP50.toFixed(1)}ms` : '—'}
-                            </span>
+                            <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">TTFT {pctLabel}</span>
+                            <span className="font-mono font-semibold text-zinc-900 tabular-nums">{fmtMs(winnerTtft)}</span>
                         </div>
                         <div className="px-3">
-                            <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">TPOT</span>
-                            <span className="font-mono font-semibold text-zinc-900 tabular-nums">
-                                {typeof winnerTpotP50 === 'number' ? `${winnerTpotP50.toFixed(1)}ms` : '—'}
-                            </span>
+                            <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">TPOT {pctLabel}</span>
+                            <span className="font-mono font-semibold text-zinc-900 tabular-nums">{fmtMs(winnerTpot)}</span>
                         </div>
                         <div className="pl-3">
                             <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">$/1M</span>
-                            <span className="font-mono font-semibold text-emerald-700 tabular-nums">
-                                ${winnerCostPer1M.toFixed(3)}
+                            <span
+                                className="font-mono font-semibold text-emerald-700 tabular-nums"
+                                title={typeof winnerCostPer1M === 'number' ? undefined : 'No list price for this accelerator. Set your own rate under Pricing.'}
+                            >
+                                {typeof winnerCostPer1M === 'number' ? `$${winnerCostPer1M.toFixed(3)}` : '—'}
                             </span>
                         </div>
                     </div>

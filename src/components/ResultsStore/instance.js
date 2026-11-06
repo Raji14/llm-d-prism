@@ -33,10 +33,12 @@ export { INSTANCE_MODES, readInstanceMode } from '../../config/site.js';
 // header, the store header, My work and the publish dialog.
 // `unofficialLabel` marks results that aren't Official / Published yet, for
 // example a draft priced in a report. `steps` is the journey in three words.
+// `tagline` is the store header's subtitle.
 export const INSTANCE_COPY = {
     internal: {
         // The badge shows the instance's own name when it has one (copyFor).
         name: 'Internal',
+        tagline: 'Find benchmark results, curate them, and mark the best ones official.',
         rule: 'Only approvers can mark a result official. Prism records who did it and when.',
         publishVerb: 'Mark official',
         publishSweepVerb: 'Mark sweep official',
@@ -57,6 +59,7 @@ export const INSTANCE_COPY = {
     },
     public: {
         name: 'Public store',
+        tagline: 'Find, curate and publish benchmark results.',
         rule: 'Results are published after a reviewer approves them.',
         publishVerb: 'Submit for review',
         publishSweepVerb: 'Submit sweep for review',

@@ -82,6 +82,16 @@ export const TPOT_SLO_PRESETS = [
 export const formatLimitMs = (ms) =>
     typeof ms === 'number' && ms >= 1000 ? `${Number((ms / 1000).toFixed(2))} s` : `${ms} ms`;
 
+// A request rate as people read it. Runs record the measured rate unrounded
+// (0.3655179367259668), so show three significant figures: 0.366, 13.5, 250.
+// Null when there's no number, so callers pick their own placeholder.
+export const formatQps = (qps) => {
+    if (typeof qps !== 'number' || !Number.isFinite(qps)) return null;
+    return Math.abs(qps) >= 100
+        ? Math.round(qps).toLocaleString('en-US')
+        : qps.toLocaleString('en-US', { maximumSignificantDigits: 3 });
+};
+
 const positiveOrNull = (value) => {
     const n = Number(value);
     return Number.isFinite(n) && n > 0 ? n : null;

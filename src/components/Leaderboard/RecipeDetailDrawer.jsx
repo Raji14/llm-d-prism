@@ -42,6 +42,7 @@ import {
     describeSlo,
     engineLabel,
     formatHardwareShort,
+    formatQps,
     provenanceStatus,
 } from '../../utils/leaderboardFacets.js';
 import { Button } from '../ui/Button.jsx';
@@ -670,7 +671,7 @@ print(response.choices[0].message.content)
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="py-1.5 px-2 text-right tabular-nums">{isNum(pt.qps) ? pt.qps : '—'}</td>
+                                                <td className="py-1.5 px-2 text-right tabular-nums">{formatQps(pt.qps) ?? '—'}</td>
                                                 <td className="py-1.5 px-2 text-right tabular-nums">
                                                     {pt.total_estimated && <span className="text-zinc-400">≈</span>}
                                                     {fmtInt(pt.tokens_per_sec_per_chip)}
@@ -730,7 +731,7 @@ print(response.choices[0].message.content)
                             <div>Dataset: {stackField(recipe.workload?.dataset_name || NOT_REPORTED)}</div>
                             <div>Workload class: <span className="text-zinc-900 font-semibold uppercase">{recipe.workload_class || 'chat'}</span></div>
                             <div>Input / Output: {stackField(isl != null || osl != null ? `${isl ?? '—'} ISL / ${osl ?? '—'} OSL` : NOT_REPORTED)}</div>
-                            <div>Operating point: {stackField(recipe.operatingConcurrency != null ? `${recipe.operatingConcurrency} concurrent${isNum(recipe.operatingPoint?.qps) ? ` (${recipe.operatingPoint.qps} QPS)` : ''}` : NOT_REPORTED)}</div>
+                            <div>Operating point: {stackField(recipe.operatingConcurrency != null ? `${recipe.operatingConcurrency} concurrent${isNum(recipe.operatingPoint?.qps) ? ` (${formatQps(recipe.operatingPoint.qps)} QPS)` : ''}` : NOT_REPORTED)}</div>
                             {recipe.fairness_audit?.harness && (
                                 <div className="col-span-2">Harness: {stackField(recipe.fairness_audit.harness)}</div>
                             )}
@@ -793,8 +794,10 @@ print(response.choices[0].message.content)
                     </div>
                 </div>
 
-                {/* Reproduction & Deploy Code Tabs */}
-                <div className="flex-1 flex flex-col min-h-0 mb-4">
+                {/* Reproduction & Deploy Code Tabs. The drawer scrolls as a flex
+                    column: a floor keeps this from shrinking under the footer on
+                    short screens, and flex-1 still fills tall ones. */}
+                <div className="flex-1 flex flex-col min-h-[20rem] mb-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5">
                         <div className="flex flex-wrap items-center gap-1 p-1 bg-zinc-100 rounded-xl border border-zinc-200">
                             {[

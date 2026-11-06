@@ -47,6 +47,11 @@ assert.strictEqual(asker.name, 'Google Cloud');
 for (const words of [approver, asker]) {
     const text = JSON.stringify(words).toLowerCase();
     assert.ok(!text.includes('public') && !text.includes('community'), 'no public or community words on Internal Prism');
+    // ...and nothing "publishes" there: results become Official. (Keys like
+    // publishVerb are shared names, so only the words people read count.)
+    const shown = JSON.stringify(Object.values(words)).toLowerCase();
+    assert.ok(!shown.includes('publish'), `no publish words on Internal Prism: ${shown.match(/[^"]*publish[^"]*/)?.[0]}`);
 }
+assert.strictEqual(copyFor('public').tagline, 'Find, curate and publish benchmark results.');
 
 console.log('instance: all tests passed');

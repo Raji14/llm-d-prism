@@ -14,6 +14,7 @@
 
 // Run: npx tsx src/utils/leaderboardData.test.js
 import assert from 'node:assert';
+import process from 'node:process';
 import {
     SEED_LEADERBOARD_RECIPES,
     buildLeaderboardDataset,
@@ -23,8 +24,8 @@ import {
     modelFamilyFor,
     pointCost,
 } from './leaderboardData.js';
-import { readSloParams, writeSloParams, DEFAULT_SLO, provenanceStatus, describeSlo, isDefaultSlo } from './leaderboardFacets.js';
-import { computeParity } from './runParity.js';
+import { readSloParams, writeSloParams, DEFAULT_SLO, provenanceStatus, describeSlo, isDefaultSlo, formatQps } from './leaderboardFacets.js';
+import { computeParity, formatRunDate } from './runParity.js';
 
 console.log('Running leaderboardData unit tests...');
 
@@ -190,6 +191,29 @@ const sweep = [pt(1, 800, 120, 12), pt(8, 4000, 400, 18), pt(32, 9000, 1500, 30)
     const [ea, eb] = evaluateDatasetAtSlo([a, b], { maxTtftSla: 40, slaPercentile: 'p50' });
     assert.notStrictEqual(ea.operatingConcurrency, eb.operatingConcurrency);
     assert.strictEqual(computeParity([ea, eb]).likeForLike, true);
+}
+
+// 16. Request rates read like the other columns, not like a float dump.
+{
+    assert.strictEqual(formatQps(0.3655179367259668), '0.366');
+    assert.strictEqual(formatQps(0.05524116453102534), '0.0552');
+    assert.strictEqual(formatQps(13.46), '13.5');
+    assert.strictEqual(formatQps(2.5), '2.5');
+    assert.strictEqual(formatQps(1234.6), '1,235');
+    assert.strictEqual(formatQps(null), null);
+    assert.strictEqual(formatQps(Number.NaN), null);
+}
+
+// 17. A bare run date is the same day everywhere; an approval is the viewer's
+// day (late evening in California is already tomorrow in UTC).
+{
+    const tz = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    assert.strictEqual(formatRunDate('2026-08-18'), 'Aug 18, 2026');
+    assert.strictEqual(formatRunDate('2026-11-06T06:40:00.000Z'), 'Nov 5, 2026');
+    assert.strictEqual(formatRunDate('not a date'), null);
+    if (tz === undefined) delete process.env.TZ;
+    else process.env.TZ = tz;
 }
 
 console.log('leaderboardData: all tests passed');

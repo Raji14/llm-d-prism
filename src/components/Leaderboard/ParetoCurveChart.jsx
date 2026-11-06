@@ -52,6 +52,7 @@ import {
     engineLabel,
     formatHardwareShort,
     formatLimitMs,
+    formatQps,
     latencyFor,
     provenanceStatus,
 } from '../../utils/leaderboardFacets.js';
@@ -399,7 +400,7 @@ const ParetoChartTooltip = ({
                 <ChartTooltipRow
                     color={color}
                     label={sweepPt ? 'Load point' : 'Operating point'}
-                    value={concurrency != null ? `${concurrency} concurrent${qps ? ` · ${qps} QPS` : ''}` : 'Not recorded'}
+                    value={concurrency != null ? `${concurrency} concurrent${qps ? ` · ${formatQps(qps) ?? qps} QPS` : ''}` : 'Not recorded'}
                 />
                 <ChartTooltipRow
                     color={color}

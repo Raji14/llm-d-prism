@@ -79,6 +79,9 @@ export function PublishDialog({
     const serverRuns = reviewRuns ?? (subject.submissionRunIds?.length || 0);
     const internal = instance === 'internal';
     const asking = internal && request;
+    // What the main button does, in this instance's words (the checks below
+    // say it too): Internal Prism never "publishes".
+    const action = asking ? { ing: 'requesting', it: 'request it' } : internal ? { ing: 'marking it official', it: 'mark it official' } : { ing: 'publishing', it: 'submit it' };
     // The sign-off as given, kept with the submission so reviewers can see it.
     const dcoRecord = () => ({ version: '1.1', by: attribution.trim() || actor, at: Date.now() });
 
@@ -196,7 +199,7 @@ export function PublishDialog({
                 {blocking.length > 0 && (
                     <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
                         <div className="mb-1 flex items-center gap-1.5 font-semibold">
-                            <CircleAlert className="h-3.5 w-3.5" aria-hidden="true" /> Fix before publishing
+                            <CircleAlert className="h-3.5 w-3.5" aria-hidden="true" /> Fix before {action.ing}
                         </div>
                         <ul className="list-disc space-y-0.5 pl-5">
                             {blocking.map((c) => (
@@ -217,7 +220,7 @@ export function PublishDialog({
                             ))}
                             {warnings.length > 3 && <li>…and {warnings.length - 3} more.</li>}
                         </ul>
-                        {onEditFirst && <p className="mt-2">You can publish anyway, or choose Edit first to exclude points.</p>}
+                        {onEditFirst && <p className="mt-2">You can {action.it} anyway, or choose Edit first to exclude points.</p>}
                     </div>
                 )}
                 {!internal && copy && <p className="text-micro text-zinc-500">{copy.rule}</p>}

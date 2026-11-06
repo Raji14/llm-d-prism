@@ -287,8 +287,7 @@ function ReviewDetail({ item, actor, words: W, baselines, runsFromKeys, onBack, 
                         )}
                         {isPreviewSelf && (
                             <Notice tone="warning">
-                                Preview mode note: both {W.person} and {W.reviewer} are <span className="font-mono">@you</span> in this browser preview. In production, a {W.item} needs a second{' '}
-                                {W.reviewer} to approve it.
+                                Preview only: you’re both the {W.person} and the {W.reviewer} in this browser. In production, someone else has to approve it.
                             </Notice>
                         )}
                         {item.editedFields?.length > 0 && (

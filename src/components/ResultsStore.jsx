@@ -1542,7 +1542,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             <PageHeader
                 kicker="Prism toolkit"
                 title="Results store"
-                subtitle="Find, curate and publish benchmark results."
+                subtitle={copy.tagline}
                 onNavigateBack={onNavigateBack}
                 badge={
                     <Badge size="xs" title={copy.rule}>

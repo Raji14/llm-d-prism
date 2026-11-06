@@ -20,17 +20,20 @@ const LEGACY_ENGINE_PREFIXES = ['v0.2.', 'v0.3.', 'v0.4.0', 'v0.5.'];
 
 /**
  * Formats an ISO timestamp as a human-readable date ("Aug 18, 2026"),
- * or returns null when missing/invalid.
+ * or returns null when missing/invalid. A bare date ("2026-08-18") is that
+ * calendar day wherever you are, so it's read in UTC; a moment (an upload, an
+ * approval) shows the viewer's own day, the same day Home shows for it.
  */
 export function formatRunDate(isoString) {
     if (!isoString) return null;
     const d = new Date(isoString);
     if (Number.isNaN(d.getTime())) return null;
+    const dateOnly = typeof isoString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(isoString.trim());
     return d.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
-        timeZone: 'UTC',
+        ...(dateOnly ? { timeZone: 'UTC' } : {}),
     });
 }
 

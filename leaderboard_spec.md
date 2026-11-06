@@ -1,5 +1,7 @@
 # Specification: Democratized & Gamified Model Benchmarking Leaderboard
 
+> **Historical (November 2026).** This is the original design, and much of it was never shipped or has since been removed: tiers, badges, karma, certificates, upvotes and milestone prizes. For the Leaderboard as it's built today, read the [Leaderboard UX brief](docs/leaderboard_ux_brief.md) (v2.0).
+
 ## 1. Executive Summary & Vision
 
 The **Prism Model Benchmarking Leaderboard** is a gamified, community-driven evaluation and ranking platform for LLM inference serving configurations ("recipes"). It enables Field Engineers, Solutions Architects, and ML Engineers to:

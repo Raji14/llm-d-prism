@@ -427,7 +427,6 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         injectDynamicEntries,
         loading,
     } = dashboardData;
-    const { setSelectedBenchmarks } = dashboardState;
 
     const signedInAdmin = user?.permission === 'admin';
     // On the dev server the preview bar can override the real role either way.
@@ -452,6 +451,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const [tab, setTab] = useState(initialTab);
     const [stack, setStack] = useState(initialStack);
     const [browse, setBrowse] = useState(initialBrowse);
+    // Home's "Validate an optimization" lands here with intent=compare: Browse
+    // explains how to pick a run and its baseline until a comparison opens.
+    const [compareHint, setCompareHint] = useState(() => readParam('intent') === 'compare');
     const [dashActive, setDashActive] = useState(null);
     const [share, setShare] = useState(null);
     const [watchDialog, setWatchDialog] = useState(null);
@@ -929,6 +931,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             // by later filters never slip into the next one.
             openCompare: (items) => {
                 setBrowse((b) => (b.selected?.size ? { ...b, selected: new Set() } : b));
+                setCompareHint(false);
                 push({ type: 'compare', items });
             },
             openCurve: (id) => push({ type: 'curve', id }),
@@ -1124,13 +1127,6 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         return true;
     };
 
-    const openInBrowser = (selectedRuns) => {
-        const keys = new Set(selectedRuns.map((r) => r.benchmarkKey));
-        if (!keys.size) return;
-        setSelectedBenchmarks?.(keys);
-        onNavigate('benchmark-browser');
-    };
-
     // Says exactly what synced and what didn't; loadAllData reports each source.
     const syncAll = async () => {
         setSyncing(true);
@@ -1236,7 +1232,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const tabVisible = tab === 'review' ? isReviewer : tab === 'sources' ? isAdmin : TABS.includes(tab);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
-        ['tab', 'run', 'curve', 'compare', 'kpiFilter', 'own', 'includeUnlisted'].forEach((k) => p.delete(k));
+        ['tab', 'run', 'curve', 'compare', 'kpiFilter', 'own', 'includeUnlisted', 'intent'].forEach((k) => p.delete(k));
         if (tab !== 'browse' && tabVisible) p.set('tab', tab);
         if (screen?.type === 'run') p.set('run', screen.key);
         if (screen?.type === 'curve') p.set('curve', screen.id);
@@ -1401,7 +1397,6 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 onShare={setShare}
                 onLiveChange={onLiveCompare}
                 onAddToDashboard={openReportDialog}
-                onOpenInBrowser={openInBrowser}
             />
         );
     } else if (screen?.type === 'curve') {
@@ -1501,6 +1496,18 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     } else {
         content = (
             <>
+                {compareHint && !addToCurve && (
+                    <div className="mb-6 flex items-start justify-between gap-3 rounded-2xl border border-accent-200 bg-accent-50 px-4 py-3 text-xs leading-relaxed text-accent-800" role="note">
+                        <span className="min-w-0 flex-1">
+                            <span className="font-semibold">Validate an optimization:</span> tick your run and a baseline from the same setup, then choose{' '}
+                            <span className="font-semibold">Compare</span>. Prism checks the setups match and shows the difference at the same latency
+                            target. Each sweep also has <span className="font-semibold">Compare with…</span>
+                        </span>
+                        <Button size="xs" variant="ghost" className="shrink-0" onClick={() => setCompareHint(false)}>
+                            Got it
+                        </Button>
+                    </div>
+                )}
                 {addToCurve && (
                     <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent-200 bg-accent-50 px-4 py-3 text-xs text-accent-800">
                         <span>

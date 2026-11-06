@@ -13,16 +13,22 @@
 // limitations under the License.
 
 // Shared Prism 2.0 navigation model: the site header, mobile menu and footer
-// all render from this list so every view stays reachable from every page.
-import {
-    Trophy, Route, Database, Compass, Split, BarChart2, Server, Activity, Blocks, FileCode, UploadCloud,
-} from 'lucide-react';
+// all render from this list, so every linked view is reachable from every page.
+//
+// Next-gen framing (decided 2026-11-03): the Leaderboard is for consumers and
+// the Results Store is for everybody else, so both sit at the top level. The
+// benchmark browser, workload catalog and schema explorer aren't linked from
+// anywhere any more. Their routes still resolve, so old links and share links
+// keep working, until we decide whether to delete them (specs/changes/next-gen-framing).
+import { Trophy, Route, Database, Compass, Split, Server, Activity, UploadCloud } from 'lucide-react';
 
 export const REPO_URL = 'https://github.com/llm-d/llm-d-prism';
 export const DOCS_URL = 'https://llm-d.ai';
 
 export const NAV = [
     { id: 'leaderboard', label: 'Leaderboard', view: 'model-leaderboard', icon: Trophy, also: ['recipe-comparison'] },
+    // Uploading runs is the first step of the Results Store journey.
+    { id: 'results-store', label: 'Results store', view: 'results-store', icon: Server, also: ['submit-benchmarks'] },
     {
         id: 'paths',
         label: 'Well-lit paths',
@@ -33,17 +39,7 @@ export const NAV = [
             { label: 'Prefill/decode disaggregation', view: 'pd-disaggregation', icon: Split, desc: 'Split prefill and decode', badge: 'Preview' },
         ],
     },
-    {
-        id: 'tools',
-        label: 'Tools',
-        items: [
-            { label: 'Benchmark browser', view: 'benchmark-browser', icon: BarChart2, desc: 'Plot any metric against any other' },
-            { label: 'Results store', view: 'results-store', icon: Server, desc: 'Stage, validate and manage runs' },
-            { label: 'Regressions', view: 'regressions-analysis', icon: Activity, desc: 'Nightly trends against history' },
-            { label: 'Workload catalog', view: 'workload-catalog', icon: Blocks, desc: 'Production-shaped workloads' },
-            { label: 'Schema explorer', view: 'schema-explorer', icon: FileCode, desc: 'Benchmark Report v0.2 structure' },
-        ],
-    },
+    { id: 'regressions', label: 'Regressions', view: 'regressions-analysis', icon: Activity },
 ];
 
 export const SUBMIT = { label: 'Submit a run', view: 'submit-benchmarks', icon: UploadCloud };

@@ -233,9 +233,6 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
                             <Button href={REPORT_FORMAT_URL} target="_blank" rel="noopener noreferrer" variant="secondary" size="sm">
                                 Report format <ArrowUpRight className="h-3.5 w-3.5" />
                             </Button>
-                            <Button href="?view=schema-explorer" onClick={go('schema-explorer')} variant="secondary" size="sm">
-                                Explore the schema <ArrowRight className="h-3.5 w-3.5" />
-                            </Button>
                         </div>
                     </Section>
 

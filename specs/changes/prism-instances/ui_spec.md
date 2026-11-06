@@ -16,7 +16,7 @@
 | Freshness pill, empty | "The community leaderboard is open · Submit the first verified run" → Submit | "No official results yet · Upload runs and mark one official" → Results store |
 | Header and footer CTA | "Submit a run" | "Upload runs" |
 | Toolkit submit card | Submit · "Submit a run" · upload, pass the schema checks, ranked after review | Upload · "Upload runs" · an approver marks a result Official, then it ranks here |
-| How it works | Run → Validate → Compare | Run → Mark official → Compare |
+| How it works | Run → Review → Compare (was Validate, renamed in the [next-gen framing](../next-gen-framing/ui_spec.md)) | Run → Mark official → Compare |
 | Well-lit paths intro | "llm-d is an open-source, Kubernetes-native stack…" | "These come from llm-d's well-lit paths…" |
 | Roadmap line | "Next on the roadmap: …" | "Next on llm-d's roadmap: …" |
 | Footer tagline | "…for the llm-d community. Apache-2.0." | "Inference benchmarks for your team, on open-source Prism." |

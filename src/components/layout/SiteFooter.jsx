@@ -49,12 +49,13 @@ export default function SiteFooter({ onNavigate }) {
         </li>
     );
     const paths = NAV.find((n) => n.id === 'paths').items;
-    const tools = NAV.find((n) => n.id === 'tools').items;
+    // Every top-level view in the nav (Leaderboard, Results store, Regressions).
+    const views = NAV.filter((n) => n.view);
     const heading = 'text-xs font-semibold uppercase tracking-kicker text-zinc-600';
 
     return (
         <footer className="surface-light relative overflow-hidden border-t border-zinc-200/90 bg-white text-zinc-900 font-sans">
-            <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] text-sm">
+            <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_1fr_1fr_1fr] text-sm">
                 <div className="col-span-2 md:col-span-1">
                     <span className="text-base font-semibold">Prism</span>
                     <p className="mt-2 text-zinc-600 max-w-xs">{taglineFor(site)}</p>
@@ -63,7 +64,7 @@ export default function SiteFooter({ onNavigate }) {
                     <p className={heading}>Explore</p>
                     <ul className="mt-3 space-y-2 text-zinc-600">
                         {link('home', 'Home')}
-                        {link('model-leaderboard', 'Leaderboard')}
+                        {views.map((v) => link(v.view, v.label))}
                         {link(METHODOLOGY.view, METHODOLOGY.label)}
                         {link(submit.view, submit.label)}
                     </ul>
@@ -71,10 +72,6 @@ export default function SiteFooter({ onNavigate }) {
                 <div>
                     <p className={heading}>Well-lit paths</p>
                     <ul className="mt-3 space-y-2 text-zinc-600">{paths.map((p) => link(p.view, p.label))}</ul>
-                </div>
-                <div>
-                    <p className={heading}>Tools</p>
-                    <ul className="mt-3 space-y-2 text-zinc-600">{tools.map((t) => link(t.view, t.label))}</ul>
                 </div>
                 <div>
                     <p className={heading}>Project</p>

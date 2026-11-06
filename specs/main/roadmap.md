@@ -83,12 +83,19 @@ Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine
     *   **Next Steps**: Review both Homes and the Results Store journey with Sean and Jason. Deploy Internal Prism as its own Cloud Run service behind IAP. Store results, requests and approvals on the server so approval works across people.
     *   **Spec/Ref**: [product spec](../changes/prism-instances/product_spec.md) · [UI spec](../changes/prism-instances/ui_spec.md) · [design](../changes/prism-instances/design.md)
 
+8.  **Next-gen framing: a simpler Prism**
+    *   **Description**: The Leaderboard is for consumers, the Results Store for everybody else (decided 2026-11-03). Both lead the navigation, next to Well-lit paths and Regressions. The benchmark browser, workload catalog and schema explorer are no longer linked anywhere, though their routes still open for old links. Home's toolkit is down to four jobs, and *Validate an optimization* now opens Results Store Compare.
+    *   **Status**: UI/UX prototype on `feat/next-gen-framing`
+    *   **Next Steps**: Review the framing with Sean and Jason. Decide with Jason whether to delete the benchmark browser or fold its time series, tag filters and share links into Results Store discovery. Deploy to a preview service.
+    *   **Spec/Ref**: [product spec](../changes/next-gen-framing/product_spec.md) · [UI spec](../changes/next-gen-framing/ui_spec.md) · [design](../changes/next-gen-framing/design.md)
+
 ---
 
 ### 🟣 2027-H1 (Future Ideas & Explorations)
 
 1.  **Benchmark Browser Redesign**
     *   **Description**: Redesign or replace the current Benchmark Browser as the new Results Store UI goes live, implementing the 3-tab structure (Performance Explorer, Value Analysis, Leaderboard).
+    *   **Decision (2026-11-03)**: The benchmark browser is being retired: "the leaderboard is for consumers, the results store is for everybody else." Prism no longer links to it ([next-gen framing](../changes/next-gen-framing/product_spec.md)). Whether to delete it or fold its features into Results Store discovery is open with Jason.
     *   **Status**: UI/UX / Planning -> Implementation
     *   **Next Steps**: Design and implement the new tabbed layout and views.
     *   **Spec/Ref**: [well-lit-path-app-structure-proposal.md](../changes/well-lit-path-app-structure-proposal.md)

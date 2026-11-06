@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useEffect, useId, useMemo, useState } from 'react';
-import { ExternalLink, LayoutDashboard, Share2, Sparkles, X } from 'lucide-react';
+import { LayoutDashboard, Share2, Sparkles, X } from 'lucide-react';
 import { Badge, Button, ChartContainer, EmptyState, Input, Panel, Select, ToggleGroup, getSeriesShape, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
@@ -250,7 +250,6 @@ export function CompareView({
     onShare,
     onLiveChange,
     onAddToDashboard,
-    onOpenInBrowser,
 }) {
     const [extra, setExtra] = useState([]);
     const [removed, setRemoved] = useState(() => new Set());
@@ -1062,17 +1061,6 @@ export function CompareView({
                 </Panel>
             )}
 
-            <p className="text-micro text-zinc-500">
-                Need every metric and percentile?{' '}
-                <button
-                    type="button"
-                    onClick={() => onOpenInBrowser(resolved.flatMap((x) => x.s.runs || []))}
-                    className="inline-flex items-center gap-1 font-medium text-accent-600 hover:underline"
-                >
-                    Open these runs in the Benchmark browser
-                    <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                </button>
-            </p>
         </div>
     );
 }

@@ -223,13 +223,15 @@ function App() {
       params.delete('intent');
       params.delete('recipes');
       params.delete('baseline');
-    } else if (view === 'results-store' && extraParams && typeof extraParams === 'object' && (extraParams.curve || extraParams.tab)) {
-      // A link into one result (the Leaderboard drawer) or one tab (the
-      // header's queue pill) opens there, not wherever the store was left.
+    } else if (view === 'results-store' && extraParams && typeof extraParams === 'object' && (extraParams.curve || extraParams.tab || extraParams.intent === 'compare')) {
+      // A link into one result (the Leaderboard drawer), one tab (the header's
+      // queue pill) or Compare (Home's "Validate an optimization") opens there,
+      // not wherever the store was left.
       ['run', 'curve', 'compare', 'tab', 'intent', 'recipes', 'baseline', 'recipe', 'model'].forEach((k) => params.delete(k));
       if (extraParams.curve) params.set('curve', extraParams.curve);
       if (extraParams.tab) params.set('tab', extraParams.tab);
-      resolvedParams.intent = null;
+      if (extraParams.intent === 'compare') params.set('intent', 'compare');
+      resolvedParams.intent = extraParams.intent === 'compare' ? 'compare' : null;
     } else {
       params.delete('intent');
       params.delete('recipes');
@@ -329,10 +331,9 @@ function App() {
             {currentView === 'benchmark-browser' && <Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}
             {currentView === 'results-store' && (
               <ResultsStore 
-                onNavigateBack={() => {
-                  const prevView = localStorage.getItem('prism_previous_view') || 'benchmark-browser';
-                  handleNavigate(prevView);
-                }} 
+                // The store's back button says Home, so it goes Home (it used to
+                // fall back to the benchmark browser, which is no longer linked).
+                onNavigateBack={() => handleNavigate('home')}
                 onNavigate={handleNavigate} 
                 dashboardState={dashboardState} 
                 dashboardData={dashboardData} 

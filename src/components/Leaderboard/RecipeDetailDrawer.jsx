@@ -32,7 +32,6 @@ import {
     Calendar,
     Route,
     Activity,
-    Compass,
     Database,
     Info
 } from 'lucide-react';
@@ -753,15 +752,6 @@ print(response.choices[0].message.content)
                                     <Download className="w-3 h-3 text-zinc-500" />
                                     <span>Report v0.2 JSON</span>
                                 </button>
-                                <a
-                                    href="?view=benchmark-browser"
-                                    onClick={navigateTo('benchmark-browser')}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-accent-200 bg-accent-50 text-tiny font-sans font-semibold text-accent-700 hover:bg-accent-100 cursor-pointer"
-                                    title="Inspect raw benchmark telemetry in Explorer"
-                                >
-                                    <Compass className="w-3 h-3 text-accent-600" />
-                                    <span>View in Explorer →</span>
-                                </a>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-y-1.5 gap-x-4 text-xs font-mono text-zinc-600">

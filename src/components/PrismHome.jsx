@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Activity, BarChart2, Blocks, Bot, FileCode, Trophy, UploadCloud } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Activity, Bot, GitCompare, Trophy, UploadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { normalizeLeaderboardEntry } from '../utils/leaderboardData.js';
 import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF } from '../utils/wellLitProofs.js';
@@ -14,6 +14,8 @@ const REPORT_FORMAT_URL = 'https://github.com/llm-d/llm-d-benchmark/blob/main/be
 const PROOFS_ANCHOR = 'paths';
 
 const hrefFor = (view, params = {}) => `?${new URLSearchParams({ view, ...params }).toString()}`;
+// Results Store Compare: Browse, with a note on picking a run and its baseline.
+const COMPARE = { view: 'results-store', params: { intent: 'compare' } };
 
 // Path titles, descriptions and badges come from the shared nav model, so a
 // renamed or re-badged path updates here without editing this file.
@@ -68,6 +70,9 @@ const NEXT_UP = 'Wide expert parallelism';
 
 // "What brings you here?": one card per job, so every persona in
 // users/README.md finds its entry point without reading the rest of the page.
+// Next-gen framing (2026-11-03): the Leaderboard is for consumers and the
+// Results Store for everybody else, so the cards for the benchmark browser,
+// workload catalog and schema explorer are gone.
 const TOOLKIT = [
     {
         view: LEADERBOARD,
@@ -84,11 +89,11 @@ const TOOLKIT = [
         icon: Activity,
     },
     {
-        view: 'benchmark-browser',
-        kicker: 'Benchmark browser',
+        ...COMPARE,
+        kicker: 'Results store',
         title: 'Validate an optimization',
-        body: 'Plot your runs against established baselines across hardware and configs, on any axis.',
-        icon: BarChart2,
+        body: 'Put your runs next to a baseline from the same setup, and see what changed at the same latency target.',
+        icon: GitCompare,
     },
     {
         view: SUBMIT.view,
@@ -97,31 +102,11 @@ const TOOLKIT = [
         body: 'Upload a Benchmark Report v0.2, pass the schema checks, and get ranked after review.',
         icon: UploadCloud,
     },
-    {
-        view: 'workload-catalog',
-        kicker: 'Workload catalog',
-        title: 'Find a realistic workload',
-        body: 'Start from production-shaped traffic profiles instead of synthetic prompts.',
-        icon: Blocks,
-    },
-    {
-        view: 'schema-explorer',
-        kicker: 'Schema explorer',
-        title: 'Check the report format',
-        body: 'Browse every field of Benchmark Report v0.2 before you instrument a run.',
-        icon: FileCode,
-    },
 ];
 
 // The non-leaderboard jobs, repeated under the hero CTAs for the personas
 // who aren't choosing a stack.
-const heroJobsFrom = (toolkit) => toolkit.filter((c) => ['regressions-analysis', 'benchmark-browser', SUBMIT.view].includes(c.view));
-
-// Tools without a card, read from the shared nav model so a new tool shows up
-// on Home without editing this file.
-const MORE_TOOLS = (NAV.find((n) => n.id === 'tools')?.items || []).filter(
-    (t) => !TOOLKIT.some((c) => c.view === t.view)
-);
+const heroJobsFrom = (toolkit) => toolkit.filter((c) => c.view !== LEADERBOARD);
 
 // What changes between instances (src/config/site.js). The journeys are the
 // same on every Prism (decided 2026-11-03); only the front door and the publish
@@ -135,9 +120,9 @@ const HOME_COPY = {
         emptyPill: { view: SUBMIT.view, text: 'The community leaderboard is open', detail: 'Submit the first verified run' },
         submitCard: { kicker: 'Submit', body: 'Upload a Benchmark Report v0.2, pass the schema checks, and get ranked after review.' },
         steps: [
-            { n: '01', title: 'Run', body: 'Benchmark with inference-perf and real-world workloads from the catalog.' },
-            { n: '02', title: 'Validate', body: 'Reports are schema-checked against Benchmark Report v0.2, then peer-reviewed.' },
-            { n: '03', title: 'Compare', body: 'Verified runs rank on the leaderboard, and anyone can reproduce them from the recipe.' },
+            { n: '01', title: 'Run', body: 'Benchmark your stack with inference-perf, using traffic shaped like the workload you serve.' },
+            { n: '02', title: 'Review', body: 'Prism checks each report against Benchmark Report v0.2, then a maintainer approves it.' },
+            { n: '03', title: 'Compare', body: 'Approved runs rank on the leaderboard, and anyone can reproduce them from the recipe.' },
         ],
     },
     internal: {
@@ -515,8 +500,8 @@ const PrismHome = ({ onNavigate }) => {
                                 <React.Fragment key={job.view}>
                                     {i > 0 && <span aria-hidden="true" className="hidden text-zinc-300 sm:inline">·</span>}
                                     <a
-                                        href={hrefFor(job.view)}
-                                        onClick={(e) => go(e, job.view)}
+                                        href={hrefFor(job.view, job.params)}
+                                        onClick={(e) => go(e, job.view, job.params)}
                                         className="font-medium text-zinc-700 underline decoration-zinc-300 underline-offset-4 transition-colors hover:text-accent-700 hover:decoration-accent-400"
                                     >
                                         {job.title}
@@ -538,14 +523,14 @@ const PrismHome = ({ onNavigate }) => {
                         title="What brings you to Prism?"
                         body="Pick the job you're doing. Each card opens the right view."
                     />
-                    <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                    <ul className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
                         {toolkit.map((card) => {
                             const Icon = card.icon;
                             return (
                                 <li key={card.view}>
                                     <a
-                                        href={hrefFor(card.view)}
-                                        onClick={(e) => go(e, card.view)}
+                                        href={hrefFor(card.view, card.params)}
+                                        onClick={(e) => go(e, card.view, card.params)}
                                         className="group flex h-full flex-col rounded-2xl border border-zinc-200/90 bg-white p-5 shadow-xs transition-colors hover:border-zinc-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 sm:p-6"
                                     >
                                         <span className="flex items-center justify-between">
@@ -562,25 +547,6 @@ const PrismHome = ({ onNavigate }) => {
                             );
                         })}
                     </ul>
-                    {MORE_TOOLS.length > 0 && (
-                        <p id="tools" className="mt-6 scroll-mt-20 text-sm text-zinc-600">
-                            Also in the toolkit:{' '}
-                            {MORE_TOOLS.map((t, i) => (
-                                <React.Fragment key={t.view}>
-                                    {i > 0 && ', '}
-                                    <a
-                                        href={hrefFor(t.view)}
-                                        onClick={(e) => go(e, t.view)}
-                                        className="font-medium text-zinc-800 underline decoration-zinc-300 underline-offset-2 transition-colors hover:text-accent-700 hover:decoration-accent-400"
-                                    >
-                                        {t.label}
-                                    </a>
-                                    {t.desc && <span className="text-zinc-600"> ({t.desc.toLowerCase()})</span>}
-                                </React.Fragment>
-                            ))}
-                            .
-                        </p>
-                    )}
                 </div>
             </section>
 

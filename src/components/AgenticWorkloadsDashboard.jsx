@@ -494,7 +494,7 @@ function AgenticTelemetryChart({
     );
 }
 
-export default function AgenticWorkloadsDashboard({ onNavigateBack, onNavigate, onToggleMobileNav, dashboardData }) {
+export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobileNav, dashboardData }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeRecipeTab, setActiveRecipeTab] = useState(0);
     const [copiedStates, setCopiedStates] = useState({});
@@ -859,14 +859,15 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onNavigate, 
                             </div>
                             <div>
                                 <span className="block text-micro font-medium text-zinc-600 mb-0.5">Test harness</span>
-                                <button
-                                    type="button"
-                                    onClick={() => onNavigate?.('workload-catalog')}
+                                <a
+                                    href="https://github.com/kubernetes-sigs/inference-perf"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="font-sans font-semibold text-zinc-900 hover:text-accent-600 text-xs inline-flex items-center gap-1 transition-colors cursor-pointer"
                                 >
                                     <span>inference-perf</span>
                                     <ExternalLink className="w-3 h-3 text-zinc-600" />
-                                </button>
+                                </a>
                             </div>
                         </div>
 

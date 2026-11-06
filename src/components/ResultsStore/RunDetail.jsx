@@ -106,11 +106,11 @@ export function RunDetail({ run, parentRow, curvesUsingRun, copy, canCurate = ()
     // A run that's part of a sweep publishes the whole sweep, and says so.
     const subjectRuns = parentRow ? parentRow.runs : [run];
     const curate = canCurate(subjectRuns);
-    // On the internal instance only approvers publish (mark official).
+    // On the internal instance approvers mark it official; anyone else signed
+    // in requests it (the copy carries their verb).
     const publish = canPublish(subjectRuns);
     const published = resultOf(subjectRuns);
-    const internal = copy.publishedStatus === 'official';
-    const publishLabel = parentRow ? (internal ? 'Mark sweep official' : 'Submit sweep for review') : copy.publishVerb;
+    const publishLabel = parentRow ? copy.publishSweepVerb : copy.publishVerb;
     // Configs & logs: the command the harness recorded when there is one
     // (otherwise an approximate rebuild), and the files uploaded with the run.
     const recorded = recordedCommand(run);

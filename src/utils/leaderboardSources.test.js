@@ -14,7 +14,8 @@
 
 // Run: npx tsx src/utils/leaderboardSources.test.js
 import assert from 'node:assert';
-import { RESULTS_WORKSPACE_KEY, curveToEntry, isRankableCurve, loadPublishedResults, parseWorkloadLabel } from './leaderboardSources.js';
+import { RESULTS_WORKSPACE_KEY, curveToEntry, isRankableCurve, leaderboardLinkFor, lineageOf, loadPublishedResults, parseWorkloadLabel } from './leaderboardSources.js';
+import { countWaitingResults } from './resultsWorkspace.js';
 import { buildLeaderboardDataset, evaluateDatasetAtSlo } from './leaderboardData.js';
 
 console.log('Running leaderboardSources unit tests...');
@@ -154,6 +155,40 @@ const curve = (id, status, extra = {}) => ({
     assert.strictEqual(peak.operatingConcurrency, 32, 'even "Any" skips the overloaded point');
     const [p90] = evaluateDatasetAtSlo(dataset, { maxTtftSla: 2000, slaPercentile: 'p90' });
     assert.strictEqual(p90.sloReason, 'not-recorded');
+}
+
+// 8. Lineage travels with the entry, so the drawer can say who stands behind it.
+{
+    const requested = curve('r', 'official', { requestedBy: '@ana', markedBy: '@raj' });
+    assert.deepStrictEqual(curveToEntry(requested, { instance: 'internal' }).entry.results_store.lineage, {
+        approvedBy: '@raj',
+        approvedAt: new Date(Date.UTC(2026, 9, 1)).toISOString(),
+        askedBy: '@ana',
+    });
+    const direct = curve('d', 'official', { markedBy: '@raj' });
+    assert.strictEqual(lineageOf(direct).askedBy, null, 'marked official directly: nobody else asked');
+    const approved = curve('p', 'published', { attribution: '@contrib', reviewedBy: '@maint' });
+    assert.deepStrictEqual(lineageOf(approved), { approvedBy: '@maint', approvedAt: new Date(Date.UTC(2026, 9, 1)).toISOString(), askedBy: '@contrib' });
+    assert.strictEqual(lineageOf(curve('s', 'published', { reviewedBy: '@rajithal' })).askedBy, null, 'the owner approving is said once');
+}
+
+// 9. "See it on the Leaderboard" only for results that rank there.
+{
+    assert.deepStrictEqual(leaderboardLinkFor(curve('a', 'published')), { recipe: 'rs-a' });
+    assert.deepStrictEqual(leaderboardLinkFor(curve('e', 'official'), 'internal'), { recipe: 'rs-e' });
+    assert.strictEqual(leaderboardLinkFor(curve('e', 'official'), 'public'), null, 'an internal status never ranks on the public store');
+    assert.strictEqual(leaderboardLinkFor(curve('b', 'in_review')), null);
+    assert.strictEqual(leaderboardLinkFor({ ...curve('l', 'published'), visibility: 'link' }), null, 'link-only results are not listed');
+    assert.strictEqual(leaderboardLinkFor({ ...curve('x', 'published'), meta: { ...curve('x', 'published').meta, workload: '' } }), null, 'nothing to rank by');
+    assert.strictEqual(leaderboardLinkFor(null), null);
+}
+
+// 10. The header's count of what waits for an approver.
+{
+    const saved = JSON.stringify({ internal: { curves: [curve('q', 'in_review'), curve('w', 'in_review'), curve('o', 'official')] }, public: { curves: [] } });
+    assert.strictEqual(countWaitingResults('internal', memoryStorage(saved)), 2);
+    assert.strictEqual(countWaitingResults('public', memoryStorage(saved)), 0);
+    assert.strictEqual(countWaitingResults('internal', memoryStorage('{oops')), 0);
 }
 
 console.log('leaderboardSources: all tests passed');

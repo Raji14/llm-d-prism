@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Activity, GitCompareArrows, Github, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, X } from 'lucide-react';
+import { Activity, GitCompareArrows, Github, LayoutDashboard, Pencil, Plus, Share2, Star, TriangleAlert, Trophy, X } from 'lucide-react';
 import { Badge, Button, ChartContainer, Checkbox, EmptyState, Input, Label, Modal, Panel, Select, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
@@ -88,17 +88,16 @@ function FieldNote({ was, now }) {
     return <span className="text-micro font-medium text-accent-700">edited · was {was ? `“${was}”` : 'missing'}</span>;
 }
 
-// In place of Mark official on the internal instance, for people who can't
-// approve: says who can, and offers sign-in when that's what's missing.
-function OfficialGate({ reason, onSignIn, signInReady }) {
+// In place of Mark official / Request official on the internal instance, for
+// people who aren't signed in yet: Prism records who asked and who approved,
+// so both steps need a name.
+function OfficialGate({ onSignIn, signInReady }) {
     return (
         <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-600">Only approvers can mark results official.</span>
-            {reason === 'signin' && (
-                <Button size="sm" variant="secondary" onClick={() => onSignIn?.()} disabled={!signInReady} title={signInReady ? undefined : 'GitHub sign-in isn’t configured on this server.'}>
-                    <Github className="h-3.5 w-3.5" aria-hidden="true" /> Sign in
-                </Button>
-            )}
+            <span className="text-xs text-zinc-600">Sign in to mark it official, or to ask an approver to.</span>
+            <Button size="sm" variant="secondary" onClick={() => onSignIn?.()} disabled={!signInReady} title={signInReady ? undefined : 'GitHub sign-in isn’t configured on this server.'}>
+                <Github className="h-3.5 w-3.5" aria-hidden="true" /> Sign in
+            </Button>
         </span>
     );
 }
@@ -121,8 +120,33 @@ function PublicOwnershipGate({ copy, onUpload }) {
 // The one place to edit a curve: prune points, fix labels (measured values
 // stay locked), check against baselines, then publish. Official/Published
 // curves are read-only; editing opens a new draft version. On the internal
-// instance only approvers publish (officialBlock says why someone can't).
-export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isReviewer, officialBlock, publicBlock, localRuns = 0, reviewRuns, onUpload, onSignIn, signInReady, nav, onShare, onAddToDashboard, onWatch, onSubmitForReview, onContinueUpload, notify }) {
+// instance approvers mark it official and anyone else signed in requests it
+// (officialBlock: 'approver' asks, 'signin' must sign in first). Once it
+// ranks, `leaderboardTarget` is where it sits on the Leaderboard.
+export function CurveEditor({
+    curve,
+    copy,
+    baselineOptions,
+    resolveBaseline,
+    isReviewer,
+    officialBlock,
+    publicBlock,
+    localRuns = 0,
+    reviewRuns,
+    onUpload,
+    onSignIn,
+    signInReady,
+    nav,
+    onShare,
+    onAddToDashboard,
+    onWatch,
+    onSubmitForReview,
+    onContinueUpload,
+    notify,
+    announce = (text) => notify(text),
+    leaderboardTarget = null,
+    onOpenLeaderboard,
+}) {
     const ws = useWorkspace();
     const [dialog, setDialog] = useState(null);
     const accelRef = useRef(null);
@@ -210,7 +234,7 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                     <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     <div>
-                        <div className="font-semibold">{curve.status === 'draft' ? 'The reviewer’s note from when it was declined' : 'A reviewer asked for changes'}</div>
+                        <div className="font-semibold">{curve.status === 'draft' ? `The ${copy.reviewer}’s note from when it was declined` : `${copy.reviewer === 'approver' ? 'An approver' : 'A reviewer'} asked for changes`}</div>
                         <p className="mt-0.5 text-xs">{curve.feedback}</p>
                     </div>
                 </div>
@@ -220,12 +244,21 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                     <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                     <div>
                         <div className="font-semibold">Declined{curve.reviewedBy ? ` by ${curve.reviewedBy}` : ''}</div>
-                        <p className="mt-0.5 text-xs">{curve.feedback || 'The reviewer didn’t leave a reason.'}</p>
-                        <p className="mt-1 text-xs">Reopen it as a draft to fix it and submit again, or discard it.</p>
+                        <p className="mt-0.5 text-xs">{curve.feedback || `The ${copy.reviewer} didn’t leave a reason.`}</p>
+                        <p className="mt-1 text-xs">Reopen it as a draft to fix it and {copy.resubmitVerb.toLowerCase()}, or discard it.</p>
                     </div>
                 </div>
             )}
-            {curve.status === 'in_review' && (
+            {curve.status === 'in_review' && instance === 'internal' && (
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-700">
+                    Requested {curve.submittedAt ? fmtDay(curve.submittedAt) : ''}
+                    {curve.requestedBy ? ` by ${curve.requestedBy}` : ''} ·{' '}
+                    {attention ? `${attention} check${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} attention` : 'Checks passed'} ·{' '}
+                    <span className="font-semibold">Waiting for an approver</span> in the {copy.reviewTab}. The request is saved in this browser for now, so approvers elsewhere
+                    can’t see it until results are stored on the server.
+                </div>
+            )}
+            {curve.status === 'in_review' && instance !== 'internal' && (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-xs text-zinc-700">
                     Submitted {curve.submittedAt ? fmtDay(curve.submittedAt) : ''} ·{' '}
                     {attention ? `${attention} check${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} attention` : 'Checks passed'} ·{' '}
@@ -286,15 +319,21 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 )}
                 <p className="text-xs text-zinc-600">
                     {curve.autoName && !readOnly ? 'Suggested name from the labels below. ' : ''}
-                    {/* The status chip above already names the status. */}
+                    {/* The status chip above already names the status: this says who stands behind it. */}
+                    {published && curve.requestedBy && curve.requestedBy !== curve.markedBy && (
+                        <>
+                            Requested by <span className="font-medium text-zinc-900">{curve.requestedBy}</span> ·{' '}
+                        </>
+                    )}
                     {published && curve.markedBy && (
                         <>
-                            Marked by <span className="font-medium text-zinc-900">{curve.markedBy}</span> on {fmtDay(curve.markedAt)} ·{' '}
+                            Marked official by <span className="font-medium text-zinc-900">{curve.markedBy}</span> on {fmtDay(curve.markedAt)} ·{' '}
                         </>
                     )}
                     {curve.status === 'published' && curve.reviewedBy && (
                         <>
-                            Approved by <span className="font-medium text-zinc-900">{curve.reviewedBy}</span> ·{' '}
+                            Approved by <span className="font-medium text-zinc-900">{curve.reviewedBy}</span>
+                            {curve.markedAt ? ` on ${fmtDay(curve.markedAt)}` : ''} ·{' '}
                         </>
                     )}
                     Built from {curve.builtFrom.runs} run{curve.builtFrom.runs === 1 ? '' : 's'} · {curve.builtFrom.label}
@@ -540,10 +579,16 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                             size="sm"
                             onClick={() => {
                                 ws.reopenCurve(curve.id);
-                                notify('Reopened as a draft. Fix it, then submit it again.');
+                                notify(`Reopened as a draft. Fix it, then ${copy.resubmitVerb.toLowerCase()}.`);
                             }}
                         >
                             <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Reopen as draft
+                        </Button>
+                    )}
+                    {/* Where it went: its row on the Leaderboard, drawer open. */}
+                    {published && leaderboardTarget && onOpenLeaderboard && (
+                        <Button size="sm" variant="secondary" onClick={() => onOpenLeaderboard(leaderboardTarget)}>
+                            <Trophy className="h-3.5 w-3.5" aria-hidden="true" /> See it on the Leaderboard
                         </Button>
                     )}
                     {published && canNewVersion && (
@@ -579,13 +624,13 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                         </Button>
                     )}
                     {editable &&
-                        (officialBlock ? (
-                            <OfficialGate reason={officialBlock} onSignIn={onSignIn} signInReady={signInReady} />
+                        (officialBlock === 'signin' ? (
+                            <OfficialGate onSignIn={onSignIn} signInReady={signInReady} />
                         ) : publicBlock ? (
                             <PublicOwnershipGate copy={copy} onUpload={onUpload} />
                         ) : (
                             <Button size="sm" onClick={() => setDialog('publish')}>
-                                {curve.status === 'needs_changes' ? 'Submit again' : copy.publishVerb}
+                                {curve.status === 'needs_changes' ? copy.resubmitVerb : copy.publishVerb}
                             </Button>
                         ))}
                 </div>
@@ -601,12 +646,18 @@ export function CurveEditor({ curve, copy, baselineOptions, resolveBaseline, isR
                 actor={ws.actor}
                 localRuns={localRuns}
                 reviewRuns={reviewRuns}
+                request={officialBlock === 'approver'}
                 onClose={() => setDialog(null)}
                 onMarkOfficial={() => {
-                    if (officialBlock) return;
-                    ws.markOfficial(curve.id);
+                    if (officialBlock === 'signin') return;
                     setDialog(null);
-                    notify('Marked official. It’s saved in this browser for now.');
+                    if (officialBlock === 'approver') {
+                        ws.requestOfficial(curve.id);
+                        notify(`Requested official. It waits in the ${copy.reviewTab} for an approver, saved in this browser for now.`);
+                        return;
+                    }
+                    ws.markOfficial(curve.id);
+                    announce('Marked official. It’s saved in this browser for now.', { ...curve, status: 'official', visibility: 'instance', supersededBy: null, markedBy: ws.actor, markedAt: Date.now() });
                 }}
                 onSubmit={({ attribution, visibility, dco }) => {
                     setDialog(null);

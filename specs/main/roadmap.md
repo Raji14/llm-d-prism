@@ -78,9 +78,9 @@ Starting October 1, this quarter focuses on the llm-d 1.0 marketing launch, fine
     *   **Status**: Product Spec
 
 7.  **Prism instances: llm-d Prism and Internal Prism**
-    *   **Description**: One codebase deployed as separate, independent instances: llm-d Prism in public, Internal Prism at Google, and IBM's own. Instance, logo, site name and pinned reports are deploy parameters. There's no runtime toggle (decided 2026-11-03).
+    *   **Description**: One codebase deployed as separate, independent instances: llm-d Prism in public, Internal Prism at Google, and IBM's own. Instance, logo, site name and pinned reports are deploy parameters. There's no runtime toggle (decided 2026-11-03). The Results Store follows the same journey on each (upload → curate → approve → see it on the Leaderboard) with each instance's words: Request official and an Approval queue on Internal Prism, and approvers per instance.
     *   **Status**: UI/UX prototype on `feat/prism-instances`
-    *   **Next Steps**: Review both Homes with Sean and Jason. Deploy Internal Prism as its own Cloud Run service.
+    *   **Next Steps**: Review both Homes and the Results Store journey with Sean and Jason. Deploy Internal Prism as its own Cloud Run service behind IAP. Store results, requests and approvals on the server so approval works across people.
     *   **Spec/Ref**: [product spec](../changes/prism-instances/product_spec.md) · [UI spec](../changes/prism-instances/ui_spec.md) · [design](../changes/prism-instances/design.md)
 
 ---

@@ -138,27 +138,42 @@ export function WorkspaceProvider({ instance, actor, children }) {
 
             // Publishing straight from a sweep or run: the result is created
             // behind the scenes, then marked Official (internal) or sent for
-            // review (public) in the same step. `visibility` is who sees it once
-            // approved ('public' or 'link'), `dco` the sign-off as given, and
-            // `reach` how many of its uploaded runs reviewers can actually see.
-            publishRuns(runs, { attribution, visibility, dco, reach = 0 } = {}) {
+            // review (public) in the same step. On the internal instance,
+            // people who can't approve ask for it instead (`request`): it waits
+            // in the Approval queue. `visibility` is who sees it once approved
+            // ('public' or 'link'), `dco` the sign-off as given, and `reach`
+            // how many of its uploaded runs reviewers can actually see.
+            // Returns the result, so the caller can say where it went.
+            publishRuns(runs, { attribution, visibility, dco, reach = 0, request = false } = {}) {
                 const curve = draftCurve(runs);
                 const now = curve.createdAt;
-                const published =
-                    instance === 'internal'
-                        ? { status: 'official', visibility: 'instance', markedBy: actor, markedAt: now, history: [...curve.history, { at: now, by: actor, what: 'Marked official' }] }
-                        : {
-                              status: 'in_review',
-                              visibility: 'reviewers',
-                              publishVisibility: visibility === 'link' ? 'link' : 'public',
-                              submittedAt: now,
-                              attribution: attribution || actor,
-                              dco: dco || null,
-                              reviewReach: reach,
-                              history: [...curve.history, { at: now, by: actor, what: dco ? `Submitted for review · DCO ${dco.version} signed` : 'Submitted for review' }],
-                          };
-                update((w) => ({ ...w, curves: [{ ...curve, ...published }, ...w.curves] }));
-                return curve.id;
+                let published;
+                if (instance === 'internal' && request) {
+                    published = {
+                        status: 'in_review',
+                        visibility: 'reviewers',
+                        submittedAt: now,
+                        requestedBy: actor,
+                        attribution: actor,
+                        history: [...curve.history, { at: now, by: actor, what: 'Requested official' }],
+                    };
+                } else if (instance === 'internal') {
+                    published = { status: 'official', visibility: 'instance', markedBy: actor, markedAt: now, history: [...curve.history, { at: now, by: actor, what: 'Marked official' }] };
+                } else {
+                    published = {
+                        status: 'in_review',
+                        visibility: 'reviewers',
+                        publishVisibility: visibility === 'link' ? 'link' : 'public',
+                        submittedAt: now,
+                        attribution: attribution || actor,
+                        dco: dco || null,
+                        reviewReach: reach,
+                        history: [...curve.history, { at: now, by: actor, what: dco ? `Submitted for review · DCO ${dco.version} signed` : 'Submitted for review' }],
+                    };
+                }
+                const made = { ...curve, ...published };
+                update((w) => ({ ...w, curves: [made, ...w.curves] }));
+                return made;
             },
 
             renameCurve(id, name) {
@@ -260,22 +275,52 @@ export function WorkspaceProvider({ instance, actor, children }) {
                 }));
             },
 
+            // Internal instance, for people who can't approve: the same step as
+            // Submit for review, under its own name. The result waits in the
+            // Approval queue until any one approver marks it official.
+            requestOfficial(id) {
+                patchCurve(id, (c) => ({
+                    ...c,
+                    status: 'in_review',
+                    visibility: 'reviewers',
+                    submittedAt: Date.now(),
+                    requestedBy: actor,
+                    attribution: c.attribution || actor,
+                    feedback: '',
+                    history: log(c, actor, c.status === 'needs_changes' ? 'Requested official again' : 'Requested official'),
+                }));
+            },
+
             review(id, decision, { feedback = '' } = {}) {
                 update((w) => {
                     const target = w.curves.find((c) => c.id === id);
                     if (!target) return w;
                     const now = Date.now();
                     if (decision === 'approve') {
-                        const published = {
-                            ...target,
-                            status: 'published',
-                            // As the author chose when submitting: listed, or link only.
-                            visibility: target.publishVisibility === 'link' ? 'link' : 'public',
-                            reviewedBy: actor,
-                            markedAt: now,
-                            updatedAt: now,
-                            history: log(target, actor, 'Approved and published'),
-                        };
+                        // Internal: the approver marks it official, and lineage
+                        // keeps who asked. Public: published as the author chose
+                        // when submitting, listed or link only.
+                        const published =
+                            instance === 'internal'
+                                ? {
+                                      ...target,
+                                      status: 'official',
+                                      visibility: 'instance',
+                                      markedBy: actor,
+                                      reviewedBy: actor,
+                                      markedAt: now,
+                                      updatedAt: now,
+                                      history: log(target, actor, 'Approved and marked official'),
+                                  }
+                                : {
+                                      ...target,
+                                      status: 'published',
+                                      visibility: target.publishVisibility === 'link' ? 'link' : 'public',
+                                      reviewedBy: actor,
+                                      markedAt: now,
+                                      updatedAt: now,
+                                      history: log(target, actor, 'Approved and published'),
+                                  };
                         return { ...w, curves: retireSuperseded(w.curves, published).map((c) => (c.id === id ? published : c)) };
                     }
                     const status = decision === 'decline' ? 'declined' : 'needs_changes';
@@ -298,7 +343,7 @@ export function WorkspaceProvider({ instance, actor, children }) {
                 });
             },
 
-            // Undo an accidental approval right from the review queue: returns the
+            // Undo an accidental approval right from the queue: returns the
             // result to `in_review` and restores any prior version it superseded.
             unapprove(id) {
                 update((w) => {
@@ -314,6 +359,7 @@ export function WorkspaceProvider({ instance, actor, children }) {
                                     status: 'in_review',
                                     visibility: 'reviewers',
                                     reviewedBy: null,
+                                    markedBy: null,
                                     markedAt: null,
                                     updatedAt: now,
                                     history: log(c, actor, 'Approval undone · returned to review'),
@@ -322,7 +368,7 @@ export function WorkspaceProvider({ instance, actor, children }) {
                             if (target.supersedes && c.id === target.supersedes && c.supersededBy === id) {
                                 return {
                                     ...c,
-                                    status: 'published',
+                                    status: instance === 'internal' ? 'official' : 'published',
                                     supersededBy: null,
                                     updatedAt: now,
                                     history: log(c, actor, 'Restored after approval was undone'),
@@ -374,6 +420,7 @@ export function WorkspaceProvider({ instance, actor, children }) {
                     markedAt: null,
                     submittedAt: null,
                     reviewedBy: null,
+                    requestedBy: null,
                     featured: false,
                     feedback: '',
                     history: [{ at: now, by: actor, what: `Draft v${source.version + 1} started from v${source.version}` }],

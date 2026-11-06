@@ -28,6 +28,7 @@
 
 import { getBenchmarkKey } from '../../utils/dashboardHelpers';
 import { DEFAULT_PRICING_CATALOG, normalizeAcceleratorId } from '../../utils/pricingEngine';
+import { readInstanceMode } from '../../config/site.js';
 
 // Captured once per page load; relative dates ("Today") use it as "now".
 export const LOADED_AT = Date.now();
@@ -531,7 +532,9 @@ export function handleOf(value) {
 export function sourceOf(d, aliases = {}) {
     const s = String(d.source || 'local');
     if (s.startsWith('brv02:')) return { id: 'uploads', label: 'Uploads (this browser)' };
-    if (d.source_info?.type === 'benchmark_report_v02') return { id: 'submissions', label: 'Community submissions' };
+    // Runs uploaded to this Prism's server. Only the public store calls them
+    // community submissions; Internal Prism never says community.
+    if (d.source_info?.type === 'benchmark_report_v02') return { id: 'submissions', label: readInstanceMode() === 'internal' ? 'Uploaded to this Prism' : 'Community submissions' };
     if (s === 'llm-d-results:google_drive' || s === 'llmd_drive') {
         return d._source_file === 'llm-d-benchmarks.json'
             ? { id: 'llm-d-benchmarks', label: 'llm-d benchmarks archive' }

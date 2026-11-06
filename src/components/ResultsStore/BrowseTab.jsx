@@ -318,7 +318,7 @@ function SuggestedCard({ row, nav, copy, curate, publish }) {
     );
 }
 
-export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canMakeResultItems = () => false, canPublish = canCurate, officialBlock, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload, onOpenClassic }) {
+export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canMakeResultItems = () => false, canPublish = canCurate, officialBlock, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload }) {
     const { query, filters, sort, kind, selected } = state;
     const [expanded, setExpanded] = useState(() => new Set());
     const [limit, setLimit] = useState(PAGE);
@@ -499,7 +499,7 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                             </h2>
                             <p className="mt-1 text-xs text-zinc-600">
                                 Runs of one setup across concurrency levels, grouped for you. The newest ones that aren’t results yet.
-                                {instance === 'internal' && !officialBlock ? ' Mark one official in one step, or edit it first.' : ''}
+                                {instance === 'internal' && officialBlock !== 'signin' ? ` ${copy.publishVerb} in one step, or edit it first.` : ''}
                             </p>
                         </div>
                         {allSweeps.length > shelf.length && kind !== 'suggested' && (
@@ -647,12 +647,6 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                         </Button>
                     </div>
                 )}
-                <p className="mt-6 text-center text-micro text-zinc-500">
-                    Looking for the previous table?{' '}
-                    <button type="button" onClick={onOpenClassic} className="font-medium text-accent-600 hover:underline">
-                        Open the classic view
-                    </button>
-                </p>
             </section>
 
             {selected.size > 0 && (

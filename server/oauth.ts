@@ -37,6 +37,21 @@ const isOAuthConfigured = (): boolean => {
     return !!(GITHUB_CLIENT_ID && GITHUB_CLIENT_SECRET);
 };
 
+/**
+ * The GitHub organization whose admins approve results (and whose members may
+ * contribute) on this Prism, or null for none. llm-d Prism (PRISM_BRAND=llm-d)
+ * trusts the llm-d org, as it always has. Every other Prism relies on its own
+ * allowlists in the IAM bucket (see iam.ts), so an llm-d org admin isn't an
+ * approver on, say, an internal Google Cloud Prism, unless that deployment
+ * names an org with PRISM_GITHUB_ADMIN_ORG. Read on each call, so it follows
+ * the environment it's given.
+ */
+export function githubAdminOrg(env: Record<string, string | undefined> = process.env): string | null {
+    const named = (env.PRISM_GITHUB_ADMIN_ORG || '').trim();
+    if (named) return named;
+    return env.PRISM_BRAND === 'llm-d' ? 'llm-d' : null;
+}
+
 // Middleware to enforce configuration check
 oauthRouter.use((req: Request, res: Response, next) => {
     if (req.path.startsWith('/api/auth/github')) {
@@ -95,27 +110,31 @@ export async function validateGitHubToken(token: string): Promise<{ username: st
     const userData = await userResponse.json() as { login: string, avatar_url?: string };
     const username = userData.login;
 
-    // Resolve organization membership role
+    // Resolve organization membership role, only where this Prism trusts an
+    // org (llm-d Prism trusts llm-d; see githubAdminOrg).
     let orgRole: PermissionLevel = 'none';
-    try {
-        const orgResponse = await fetch(`https://api.github.com/orgs/llm-d/memberships/${username}`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'User-Agent': 'llm-d-prism'
-            }
-        });
-        if (orgResponse.ok) {
-            const orgData = await orgResponse.json() as { role?: string; state?: string };
-            if (orgData.state === 'active') {
-                if (orgData.role === 'admin') {
-                    orgRole = 'admin';
-                } else if (orgData.role === 'member') {
-                    orgRole = 'user';
+    const adminOrg = githubAdminOrg();
+    if (adminOrg) {
+        try {
+            const orgResponse = await fetch(`https://api.github.com/orgs/${encodeURIComponent(adminOrg)}/memberships/${encodeURIComponent(username)}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'User-Agent': 'llm-d-prism'
+                }
+            });
+            if (orgResponse.ok) {
+                const orgData = await orgResponse.json() as { role?: string; state?: string };
+                if (orgData.state === 'active') {
+                    if (orgData.role === 'admin') {
+                        orgRole = 'admin';
+                    } else if (orgData.role === 'member') {
+                        orgRole = 'user';
+                    }
                 }
             }
+        } catch (e) {
+            console.warn(`Error checking ${adminOrg} organization membership for user ${username}:`, e);
         }
-    } catch (e) {
-        console.warn(`Error checking llm-d organization membership for user ${username}:`, e);
     }
 
     // Resolve allowlist role

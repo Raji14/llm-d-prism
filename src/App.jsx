@@ -223,6 +223,13 @@ function App() {
       params.delete('intent');
       params.delete('recipes');
       params.delete('baseline');
+    } else if (view === 'results-store' && extraParams && typeof extraParams === 'object' && (extraParams.curve || extraParams.tab)) {
+      // A link into one result (the Leaderboard drawer) or one tab (the
+      // header's queue pill) opens there, not wherever the store was left.
+      ['run', 'curve', 'compare', 'tab', 'intent', 'recipes', 'baseline', 'recipe', 'model'].forEach((k) => params.delete(k));
+      if (extraParams.curve) params.set('curve', extraParams.curve);
+      if (extraParams.tab) params.set('tab', extraParams.tab);
+      resolvedParams.intent = null;
     } else {
       params.delete('intent');
       params.delete('recipes');

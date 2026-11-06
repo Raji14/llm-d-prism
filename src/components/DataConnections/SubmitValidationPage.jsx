@@ -10,6 +10,7 @@ import IntelligentRoutingChart from '../IntelligentRoutingChart';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth';
 import { Badge, Button, Checkbox, Input, Label, PageHeader, Panel, Select, Spinner } from '../ui';
 import { cn } from '../../utils/cn';
+import { readInstanceMode } from '../../config/site.js';
 
 const checkStageMetrics = (entry, format) => {
     let parsedStage = null;
@@ -109,11 +110,17 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     const [evidenceUrlInputs, setEvidenceUrlInputs] = useState({});
     const hasInitialized = React.useRef(false);
     const [isDragging, setIsDragging] = useState(false);
-    const [uploadIntent, setUploadIntent] = useState(() => {
+    // Internal Prism never takes runs for community review: uploads are staged
+    // here, curated into a result, then marked official (or requested) in the
+    // Results store. So there's no Attribution & DCO step, whatever the link
+    // or a saved intent says. (The server's submit route doesn't need a DCO.)
+    const internal = readInstanceMode() === 'internal';
+    const [requestedIntent, setUploadIntent] = useState(() => {
         if (initialIntent) return initialIntent;
         const params = new URLSearchParams(window.location.search);
         return params.get('intent') || 'submit-review';
     }); // 'stage-locally' or 'submit-review'
+    const uploadIntent = internal ? 'stage-locally' : requestedIntent;
     const [ingestionSource, setIngestionSource] = useState('local'); // 'local' or 'cloud'
     const [cloudPath, setCloudPath] = useState('');
     const [cloudProvider, setCloudProvider] = useState('gcs'); // 'gcs' or 's3'
@@ -122,7 +129,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
     // Wizard navigation & Attribution states
     const { isAuthenticated, isConfigured, user, login, logout, accessToken } = useGitHubAuth();
-    const [wizardStep, setWizardStep] = useState(1);
+    const [requestedStep, setWizardStep] = useState(1);
+    // Internal Prism's wizard has two steps; a sign-in resume can't land it on the DCO step.
+    const wizardStep = internal ? Math.min(requestedStep, 2) : requestedStep;
     const [dcoSigned, setDcoSigned] = useState(false);
     const [selectedReviewers, setSelectedReviewers] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1315,7 +1324,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         });
 
         if (addToast) {
-            addToast(`Successfully staged ${validBundles.length} runs locally.`, "success");
+            addToast(
+                internal
+                    ? `Saved ${validBundles.length} run${validBundles.length === 1 ? '' : 's'} in this browser. They’re in My work, ready to curate.`
+                    : `Successfully staged ${validBundles.length} runs locally.`,
+                "success"
+            );
         }
         
         resetWizard();
@@ -1903,11 +1917,13 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             </div>
             <PageHeader
                 kicker="Prism toolkit"
-                title={uploadIntent === 'stage-locally' ? 'Stage & preview benchmarks' : 'Submit benchmarks'}
+                title={internal ? 'Upload runs' : uploadIntent === 'stage-locally' ? 'Stage & preview benchmarks' : 'Submit benchmarks'}
                 subtitle={
-                    uploadIntent === 'stage-locally'
-                        ? 'Validate benchmark report structure and preview performance curves locally in your browser session.'
-                        : 'Validate Benchmark Report v0.2 bundles, attach hardware and stack metadata, and submit runs for community review.'
+                    internal
+                        ? 'Check Benchmark Report v0.2 files and preview their curves. Runs stay in this browser for now; curate them into a result in the Results store, then mark it official or ask an approver to.'
+                        : uploadIntent === 'stage-locally'
+                          ? 'Validate benchmark report structure and preview performance curves locally in your browser session.'
+                          : 'Validate Benchmark Report v0.2 bundles, attach hardware and stack metadata, and submit runs for community review.'
                 }
                 onNavigateBack={onNavigateBack}
             />
@@ -1990,10 +2006,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 {uploadIntent === 'stage-locally' ? (
                                     <>
                                         <p className="text-xs font-bold text-slate-200">
-                                            Stage & Preview Benchmark Runs
+                                            {internal ? 'Upload runs' : 'Stage & Preview Benchmark Runs'}
                                         </p>
                                         <p className="text-xs text-slate-500 leading-normal">
-                                            Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public Results store.
+                                            {internal
+                                                ? 'Upload your benchmark run files to check their structure and preview the performance curves. They stay in this browser for now and show up in My work, ready to curate into a result.'
+                                                : 'Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public Results store.'}
                                         </p>
                                     </>
                                 ) : (
@@ -2279,9 +2297,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 return (
                                                                     <span className="inline-flex items-center gap-1.5 text-tiny font-extrabold bg-accent-950 dark:bg-accent-50/30 text-accent-300 dark:text-accent-700 px-2.5 py-0.5 rounded border border-accent-900 dark:border-accent-100/50 hover:bg-accent-950 dark:hover:bg-accent-100/70 cursor-pointer select-none transition-colors shadow-sm animate-in fade-in zoom-in-95 duration-150"
                                                                           onClick={(e) => { e.stopPropagation(); if (!bundle.isExpanded) toggleExpand(bundle.id); }}
-                                                                          title="Click to view similar public benchmarks and sync configurations"
+                                                                          title={internal ? 'Click to view similar runs in this Prism and sync configurations' : 'Click to view similar public benchmarks and sync configurations'}
                                                                     >
-                                                                        🔍 {similarRuns.length} similar public runs
+                                                                        🔍 {similarRuns.length} similar {internal ? '' : 'public '}runs
                                                                     </span>
                                                                 );
                                                             })()}
@@ -2899,7 +2917,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                     <span>🔍 Benchmark Assistant</span>
                                                                 </h4>
                                                                 <p className="text-tiny text-slate-500 mb-4 leading-relaxed">
-                                                                    Compare staging metrics and sync metadata tags with matching public runs.
+                                                                    Compare staging metrics and sync metadata tags with matching {internal ? 'runs in this Prism' : 'public runs'}.
                                                                 </p>
 
                                                                 {(() => {
@@ -2907,7 +2925,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                     if (similar.length === 0) {
                                                                         return (
                                                                             <div className="text-center py-6 text-slate-400 font-medium italic">
-                                                                                No similar public runs found.
+                                                                                No similar {internal ? '' : 'public '}runs found.
                                                                             </div>
                                                                         );
                                                                     }
@@ -3049,7 +3067,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                             : 'bg-slate-900/40 text-slate-500 border-slate-900/50 cursor-not-allowed'
                                         )}
                                     >
-                                        Proceed to Staging
+                                        {internal ? 'Save to My work' : 'Proceed to Staging'}
                                         <ArrowRight size={14} />
                                     </button>
                                 ) : (

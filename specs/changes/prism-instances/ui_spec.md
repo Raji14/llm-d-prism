@@ -25,6 +25,32 @@ Everything else is the same on both: navigation, the Leaderboard, the journeys, 
 
 Brand-driven rows (header mark, favicon, tab, paths intro, roadmap line) follow `PRISM_BRAND`. Publish-rule rows (hero line, pill, CTA, submit card, steps) follow `PRISM_INSTANCE`. A public Prism that isn't llm-d's, for example, gets the Prism mark with the public copy.
 
+## Results Store, side by side
+
+The same screens and steps on both; only the words, and who approves, change (`copyFor()` in `src/components/ResultsStore/instance.js`).
+
+| Element | llm-d Prism (public) | Internal Prism |
+| :--- | :--- | :--- |
+| Store badge | "Public store" | The instance's name ("Google Cloud"), else "Internal" |
+| Upload button (store header, site header, My work) | "Submit a run" | "Upload runs" |
+| Publish verb, contributor | "Submit for review" | "Request official" ("Request official for this sweep" on a run page) |
+| Publish verb, approver | "Submit for review" (own runs) | "Mark official" ("Mark sweep official") |
+| After changes are asked for | "Submit again" | "Request again" |
+| Steps strip (publish dialog, My work) | 1. Submit a run → 2. Curate the result → 3. Submit for review | 1. Upload runs → 2. Curate the result → 3. Mark official / Request official |
+| Signed out | Sign in to submit (or save for review in this browser) | "Sign in to mark it official, or to ask an approver to" |
+| Approvers' tab | Review queue | Approval queue |
+| Queue item | Submission: DCO line, "Listed in the store once approved" | Request: "Becomes Official once you approve it, for everyone on this Prism" |
+| Approve panel | Attribution · DCO sign-off · Visibility → "Confirm & publish" | Requested by · Approver · Who sees it → "Confirm & mark official" |
+| After approving | "Approved … and published it." · See it on the Leaderboard · Undo approval | "Approved … and marked it official." · See it on the Leaderboard · Undo approval |
+| Result page lineage | "Approved by @x on …" | "Requested by @a · Marked official by @b on …" |
+| Leaderboard drawer | "Approved by @x on … · submitted by @a" · Open in Results Store → (that result) | "Marked official by @b on … · requested by @a" · Open in Results Store → (that result) |
+| Upload page | "Submit benchmarks": upload → validation → Attribution & DCO → submit | "Upload runs": upload → check & preview → Save to My work. No DCO, no "community", no "public" |
+| Header pill (approvers, outside the store) | "Review queue · N": results waiting here plus the server's run queue | "Approval queue · N": requests waiting here |
+
+Dev preview bar: Role only (Contributor / Admin). There's no instance switch; each Prism is its own entry point, as in production. Nothing links to the classic Results Store.
+
+The Leaderboard link appears only when the result ranks there (Official on internal, listed Published on public, with something measurable to rank). The link opens the Leaderboard on that result's model and workload with its drawer open.
+
 ## Elements
 
 ### Brand lockup (`BrandLockup` in `src/components/ui/BrandMarks.jsx`)

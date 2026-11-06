@@ -443,11 +443,24 @@ print(response.choices[0].message.content)
                                 {` · ${resultsStore.pointCount} measured ${resultsStore.pointCount === 1 ? 'point' : 'points'}`}
                                 {resultsStore.overloadedCount > 0 ? `, ${resultsStore.overloadedCount} overloaded (kept out of ranking)` : ''}
                                 {' · saved in this browser only'}
+                                {resultsStore.lineage?.approvedBy && (
+                                    <span className="block mt-0.5 text-emerald-900">
+                                        {status === 'official' ? 'Marked official by ' : 'Approved by '}
+                                        <span className="font-semibold">{resultsStore.lineage.approvedBy}</span>
+                                        {formatRunDate(resultsStore.lineage.approvedAt) ? ` on ${formatRunDate(resultsStore.lineage.approvedAt)}` : ''}
+                                        {resultsStore.lineage.askedBy ? `${status === 'official' ? ' · requested by ' : ' · submitted by '}${resultsStore.lineage.askedBy}` : ''}
+                                    </span>
+                                )}
                             </span>
                         </span>
                         <a
-                            href="?view=results-store"
-                            onClick={navigateTo('results-store')}
+                            href={`?view=results-store&curve=${encodeURIComponent(resultsStore.curveId)}`}
+                            onClick={(e) => {
+                                if (!onNavigate || e.metaKey || e.ctrlKey) return;
+                                e.preventDefault();
+                                onClose();
+                                onNavigate('results-store', { curve: resultsStore.curveId });
+                            }}
                             className="shrink-0 font-semibold text-emerald-800 hover:text-emerald-950 underline decoration-emerald-300 underline-offset-4"
                         >
                             Open in Results Store →

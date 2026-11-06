@@ -29,8 +29,9 @@ import { accelTypeOf, chipsOf, latencyValue, loadOrder, overloadedKeys } from '.
 import { normalizeAcceleratorId } from './pricingEngine.js';
 import { classifyWorkload, engineKey } from './leaderboardFacets.js';
 import { modelFamilyFor } from './leaderboardData.js';
+import { RESULTS_WORKSPACE_KEY } from './resultsWorkspace.js';
 
-export const RESULTS_WORKSPACE_KEY = 'prism_results_workspace_v1';
+export { RESULTS_WORKSPACE_KEY };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const positive = (v) => (isNum(v) && v > 0 ? v : null);
@@ -159,9 +160,44 @@ export function curveToEntry(curve, { instance = 'public' } = {}) {
                 excludedCount: (curve.points || []).length - included.length,
                 overloadedCount: overloaded.size,
                 totalEstimated: sweep.some((pt) => pt.total_estimated),
+                lineage: lineageOf(curve),
             },
         },
     };
+}
+
+const atHandle = (value) => {
+    const h = handleOf(value);
+    if (!h) return null;
+    return h === 'you' ? 'you' : `@${h}`;
+};
+
+/**
+ * Who stands behind a result, as the Results Store recorded it: the approver
+ * (who marked it Official, or approved it for publishing), when, and who
+ * asked (an Official request) or submitted it (a Published result), when
+ * that's someone else.
+ */
+export function lineageOf(curve) {
+    if (!curve) return null;
+    const approvedBy = atHandle(curve.status === 'official' ? curve.markedBy : curve.reviewedBy);
+    const askedBy = atHandle(curve.status === 'official' ? curve.requestedBy : curve.attribution || curve.owner);
+    return {
+        approvedBy,
+        approvedAt: isNum(curve.markedAt) ? new Date(curve.markedAt).toISOString() : null,
+        askedBy: askedBy && askedBy !== approvedBy ? askedBy : null,
+    };
+}
+
+/**
+ * Where a result ranks on the Leaderboard, as navigation params
+ * ({ recipe }), or null when it doesn't rank there: not Official / listed
+ * Published yet, replaced, or nothing in it the Leaderboard can rank.
+ */
+export function leaderboardLinkFor(curve, instance = 'public') {
+    if (!isRankableCurve(curve, instance)) return null;
+    const { entry } = curveToEntry(curve, { instance });
+    return entry ? { recipe: entry.id } : null;
 }
 
 /**

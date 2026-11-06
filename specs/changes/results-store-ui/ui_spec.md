@@ -25,15 +25,20 @@ The **Results Store** is Prism's workspace for browsing raw benchmark runs, asse
 
 ### 1.2 Instance Modes & Roles ([`instance.js`](../../../src/components/ResultsStore/instance.js))
 
-The UI adapts its publishing workflow and terminology to the deployment mode (`VITE_PRISM_INSTANCE` or dev preview switcher):
+The journey is the same on both instances: upload runs → curate a result → get it approved → see it on the Leaderboard. The deployment mode (`PRISM_INSTANCE`, see [prism-instances](../prism-instances/design.md)) only changes the words and who approves. Each instance is its own entry point, so there's no instance switcher; the dev preview bar previews the role only. The words come from `copyFor(instance, { canApprove, siteName })`.
 
 | Aspect | **Internal Instance** (`internal`) | **Public Instance** (`public`) |
 | :--- | :--- | :--- |
+| **Store badge** | The instance's name (`SITE_NAME`, e.g. `Google Cloud`), else `Internal` | `Public store` |
+| **Upload CTA** | `Upload runs` | `Submit a run` |
 | **Published badge** | `Official` | `Published` |
 | **Not yet published, in a report** | `Unofficial` | `Unpublished` |
-| **Primary publish CTA** | `Mark official` (1-step promotion; **approvers only**: signed in and an admin, i.e. an llm-d org admin or on the admin allowlist). Everyone else sees *Only approvers can mark results official*, with `Sign in` when signed out | `Submit for review` (opens DCO & attribution dialog → moderator queue) |
-| **Review Queue tab** | Hidden | Visible to reviewers and admins (`Review queue`) |
+| **Primary publish CTA** | Approvers (signed-in admins: the instance's admin allowlist, plus llm-d org admins on llm-d Prism only): `Mark official` (1-step promotion). Anyone else signed in: `Request official`, which sends it to the Approval queue. Signed out: *Sign in to mark it official, or to ask an approver to*, with `Sign in` | `Submit for review` (opens DCO & attribution dialog → Review queue) |
+| **Approvers' queue tab** | `Approval queue`: requests to mark results official | `Review queue`: results submitted for review, plus the server's run queue |
+| **After approval** | Official, with lineage *Requested by @a · Marked official by @b*, and **See it on the Leaderboard** | Published as the author chose, *Approved by @b*, and **See it on the Leaderboard** |
 | **Visibility options** | `All of Prism` (`public`) or `Link only` (`unlisted`) |Reviewed public catalog (`public`) or direct share link (`unlisted`) |
+
+Until results are stored on the server, requests and approvals live in the browser that made them, like everything else here; every screen that implies an audience says so.
 
 ---
 
@@ -73,7 +78,7 @@ flowchart TD
   1. `Browse` (`browse`) — Default landing tab; houses the Sweeps strip, facet filters, and unified catalog list.
   2. `My results` / `My work` (`mywork`) — Personal drafts, uploaded runs, and review pipeline tracker.
   3. `Watches & reports` (`dashboards`) — Master-detail workspace for regression Watches and cost/throughput Reports.
-  4. `Review queue` (`review`) — Moderator queue (shown only on the `public` instance for reviewers/admins).
+  4. `Review queue` / `Approval queue` (`review`) — The approvers' queue, shown to admins on both instances: `Review queue` on the public store, `Approval queue` on an internal one.
   5. `Sources` (`sources`) — Cloud bucket registry and sync health (shown only for admins).
 - **Stacked detail screens (`screen` + `screenStack`)**:
   - Opening a **Run** (`RunDetail`), **Compare** (`CompareView`), or **Result** (`CurveEditor`) replaces the active tab panel while keeping the origin tab highlighted in the tab bar.
@@ -254,10 +259,11 @@ Navigating to any detail screen (`RunDetail`, `CompareView`, `CurveEditor`) or s
   - When read-only (published/in-review Results): renders all labels, notes, and measured fields cleanly in a single `<dl>` (`MetaGrid`) instead of disabled form controls. A label changed from what the runs recorded, Workload included, reads `edited · was "…"`.
 - **Validation Checks & Lineage Grid**:
   - Left (`Checks` panel): Runs `runCurveChecks(curve)` checking for minimum points, load order (`Points ordered by concurrency` / `by request rate`), request failure rate (`> 5%` offers a 1-click **Exclude point c=N** fix), overloaded and out-of-line points (§3.8, each with **Exclude point**), saturation/knee coverage, mixed models/workloads, and baseline presence.
-  - Right (`Lineage` panel): `Version N`, then `Replaces vN` (a link that opens the version it replaces) and the `<ol>` audit history: created, `Renamed`, `Edited accelerator / model / category / workload / notes` (one entry per field while the same person keeps editing it within 10 minutes), `Excluded c=64 (overloaded)` / `Included c=64 again`, `Submitted for review · DCO 1.1 signed`, `Marked official`, `Approved and published`, `Declined`, `Reopened as a draft`. Individual source run links live in the `Points` list above.
-- **Footer Action Bar** (sticky at the bottom of the viewport while the editor scrolls): `Discard draft` (with confirmation modal), `Edit as new version` (for already-official Results), `Compare with…` (opens Compare with this Result, drafts included, ready for **Add baseline**), `Watch this setup` (any draft, in-review or published Result; a draft can be the watch's baseline), `Add to report` (any status, drafts included), `Feature on Browse` (admins), `Share`, and primary `Mark official` / `Submit for review`. A declined Result has `Reopen as draft` (primary) and `Discard` (*Discard this declined result?* · `Keep it` / `Discard result`). On the internal instance only approvers see `Mark official`; everyone else sees *Only approvers can mark results official*, plus `Sign in` when signed out. On the public store, anyone can open a catalog sweep as a local sandbox draft; if the draft's runs aren't owned by the user (only runs uploaded from this browser or submitted under their GitHub account count; community-catalog submissions don't, though they are uploads too), the footer shows *Catalog draft · only your own uploaded runs can be submitted for review* alongside `Submit results`.
-- **Publish dialog (`PublishDialog`)**:
+  - Right (`Lineage` panel): `Version N`, then `Replaces vN` (a link that opens the version it replaces) and the `<ol>` audit history: created, `Renamed`, `Edited accelerator / model / category / workload / notes` (one entry per field while the same person keeps editing it within 10 minutes), `Excluded c=64 (overloaded)` / `Included c=64 again`, `Submitted for review · DCO 1.1 signed`, `Requested official`, `Marked official`, `Approved and marked official`, `Approved and published`, `Declined`, `Reopened as a draft`. Individual source run links live in the `Points` list above.
+- **Footer Action Bar** (sticky at the bottom of the viewport while the editor scrolls): `Discard draft` (with confirmation modal), **See it on the Leaderboard** (Official, or listed Published, Results that rank there: opens the Leaderboard on the Result's model and workload with its drawer open), `Edit as new version` (for already-official Results), `Compare with…` (opens Compare with this Result, drafts included, ready for **Add baseline**), `Watch this setup` (any draft, in-review or published Result; a draft can be the watch's baseline), `Add to report` (any status, drafts included), `Feature on Browse` (admins), `Share`, and primary `Mark official` / `Request official` / `Submit for review` (`Request again` / `Submit again` after changes are asked for). A declined Result has `Reopen as draft` (primary) and `Discard` (*Discard this declined result?* · `Keep it` / `Discard result`). On the internal instance approvers see `Mark official` and anyone else signed in sees `Request official`, which puts it in the Approval queue; signed out, the footer says *Sign in to mark it official, or to ask an approver to*, with `Sign in`. On the public store, anyone can open a catalog sweep as a local sandbox draft; if the draft's runs aren't owned by the user (only runs uploaded from this browser or submitted under their GitHub account count; community-catalog submissions don't, though they are uploads too), the footer shows *Catalog draft · only your own uploaded runs can be submitted for review* alongside `Submit a run`.
+- **Publish dialog (`PublishDialog`)**: opens with the journey as three steps in the instance's words (`1. Upload runs → 2. Curate the result → 3. Mark official` / `3. Request official`; public `1. Submit a run → … → 3. Submit for review`).
   - *Internal (approvers)*: *It becomes Official, with @approver recorded as the approver today.* When some of its runs were uploaded only to this browser, an amber note says nobody else can check them, and that once Results are stored on the server those runs must be uploaded before a Result can be marked official.
+  - *Internal (everyone else signed in)*: **Request official?** *An approver looks at it in the Approval queue. Once one approves, it becomes Official, with @you recorded as the one who asked and them as the approver.* The note at the bottom says the request is saved in this browser only, so approvers elsewhere see it once results are stored on the server.
   - *Public*: `Attribution` (pre-filled with the signed-in handle), a `Once approved` toggle (`Listed in the store` · `Link only`, with a line saying what each means), and the *I certify these results under the Developer Certificate of Origin 1.1.* checkbox. Submitting records the sign-off with the Result (`{ version: '1.1', by, at }`), shown to reviewers (§3.5) and in Lineage; on approval the Result is published with the visibility chosen here. With runs only in this browser the primary action is `Continue to upload` instead: *Continue to upload opens the upload wizard, which sends the runs themselves for review. This result stays a draft in this browser.* (no visibility choice, since the Result itself isn't submitted).
   - The closing line says where the Result lives: *For now the result itself is saved in this browser. Reviewers see the runs you uploaded.* only when it has runs on the server, else *For now the result is saved in this browser only, so reviewers can't see it yet.*
   - The toast after submitting only claims what reached reviewers: *Submitted: reviewers can see its N uploaded runs. The curated result itself stays in this browser until results are stored on the server.*, or *Saved for review in this browser only. Reviewers can't see it until results are stored on the server.* If sending the runs fails, nothing changes and the toast says so.
@@ -343,21 +349,26 @@ sequenceDiagram
         Editor-->>Bench: Re-plot curve & mark check passed
     end
     Bench->>Editor: Verify/edit Model, Hardware (×N), Workload, Notes
-    Bench->>Editor: Click "Mark official" (Internal, approvers) or "Submit for review" (Public)
+    Bench->>Editor: Click "Mark official" (Internal approvers), "Request official" (Internal, everyone else) or "Submit for review" (Public)
     alt Public Instance
         Editor->>Pub: Open DCO & Attribution modal
         Bench->>Pub: Confirm DCO sign-off & visibility -> Submit
-        Pub->>Queue: Enqueue item in ReviewQueueTab
-    else Internal Instance
-        Editor-->>Bench: Promote to Official (v1) & toast confirmation
+        Pub->>Queue: Enqueue item in the Review queue
+        Queue-->>Bench: Any one reviewer approves -> Published, "See it on the Leaderboard"
+    else Internal Instance, approver
+        Editor-->>Bench: Promote to Official (v1), toast with "See it on the Leaderboard"
+    else Internal Instance, everyone else
+        Editor->>Pub: "Request official?" modal
+        Pub->>Queue: Enqueue request in the Approval queue
+        Queue-->>Bench: Any one approver marks it Official -> "See it on the Leaderboard"
     end
 ```
 
-1. **Start from a Sweep or Uploaded Runs**: In **Browse**, locate an auto-grouped card in the **Sweeps** strip and click **Edit** (or select multiple single-point runs in the list and click **Make result**). In **My work**, contributors can also click **Combine N runs into 1 Result** directly from the `Uploaded runs` header, and see an upfront 3-step progression (`1. Upload runs → 2. Curate result → 3. Submit for review`) and GitHub sign-in prompt before starting curation.
+1. **Start from a Sweep or Uploaded Runs**: In **Browse**, locate an auto-grouped card in the **Sweeps** strip and click **Edit** (or select multiple single-point runs in the list and click **Make result**). In **My work**, contributors can also click **Combine N runs into 1 Result** directly from the `Uploaded runs` header, and see an upfront 3-step progression in the instance's words (`1. Submit a run → 2. Curate the result → 3. Submit for review` on the public store; `1. Upload runs → 2. Curate the result → 3. Request official` on an internal one) and a GitHub sign-in prompt before starting curation.
 2. **Curate Points & Export Curves**: In **Result Editor (`CurveEditor`)**, inspect the **Points** list (in load order: `c=N` or `N req/s`) and the **Checks** panel. If a stage had `> 5%` failed requests, looks overloaded (latency up 5× or more for little extra throughput), or is out of line with the next heavier stage, click the 1-click **Exclude point** action in the check row. Use the chart's **SVG** or **PNG** download actions (`CurveChart`) to export a self-contained figure with title, target SLO subtitle, legend, and provenance footer.
 3. **Refine Metadata**: Standardize the `Model`, `Hardware` (including `×N` chip count), `Workload`, and `Category` labels, and use **Add baseline** to overlay an existing published Result as a dashed curve.
 4. **Publish**:
-   - On an **Internal** instance: an approver (signed in and an admin) clicks **Mark official** to publish immediately (`v1`). Anyone else keeps a draft, which they can still compare and add to reports (marked `Unofficial`).
+   - On an **Internal** instance: an approver (signed in and an admin) clicks **Mark official** to publish immediately (`v1`). Anyone else signed in clicks **Request official**: the Result waits in the **Approval queue** (In review in their My work, *Waiting for an approver*) until any one approver marks it Official, with both names in its lineage. Either way, **See it on the Leaderboard** then opens its row and drawer. A draft can still be compared and added to reports before then (marked `Unofficial`).
    - On a **Public** instance: click **Submit for review**, complete the **DCO 1.1** sign-off and the `Once approved` choice (`Listed in the store` vs `Anyone with the link`) in `PublishDialog`, and track progress in **My results**. Until Results are stored on the server, reviewers see only the uploaded runs that reached the server queue; the toast, the editor's In review banner and the My work timeline all say which (§3.7.3). A declined Result can be reopened as a draft, fixed and submitted again.
 
 ---
@@ -383,15 +394,15 @@ sequenceDiagram
 
 ---
 
-### CUJ 5: Community Reviewer — Moderate a Submitted Benchmark (Public Instance)
+### CUJ 5: Approver — Review a Submission or a Request (Both Instances)
 
-> **Persona Goal**: Verify that a community-submitted Result has clean telemetry, valid metadata, and DCO sign-off before promoting it to the public catalog.
+> **Persona Goal**: Verify that a submitted Result has clean telemetry and valid metadata (and, on the public store, a DCO sign-off) before it's published or marked Official, GitHub-PR style: any one allow-listed maintainer approves, and lineage records who.
 
-1. **Open Queue**: Navigate to **Review queue** (`?tab=review`), which lists pending submissions oldest-first with automated check summaries.
-2. **Inspect Submission**: Click **Review** to open `ReviewDetail`. Check the DCO line (who signed and when, and whether it will be listed or link-only), compare the submitted curve against existing published results on the overlay chart (toggling `Mean | P50 | P99` and `Per chip`), and review `Metadata` (edited labels flagged), `Validation signals`, `Lineage & attribution`, and `Configs & logs` (the files uploaded with the runs, previewable in place).
+1. **Notice & Open Queue**: Anywhere in Prism, approvers see a header pill (`Review queue · N` / `Approval queue · N`) when something is waiting; it opens **Review queue** (public) or **Approval queue** (internal) (`?tab=review`), which lists what's pending oldest-first with automated check summaries.
+2. **Inspect**: Click **Review** to open `ReviewDetail`. On the public store, check the DCO line (who signed and when, and whether it will be listed or link-only); on an internal instance the item is a request (*Requested … by @a*, *Becomes Official once you approve it, for everyone on this Prism*). Compare the curve against existing published / official results on the overlay chart (toggling `Mean | P50 | P99` and `Per chip`), and review `Metadata` (edited labels flagged), `Validation signals`, `Lineage & attribution`, and `Configs & logs` (the files uploaded with the runs, previewable in place). Nobody approves their own submission or request.
 3. **Record Decision**:
-   - Click **Approve** to promote the Result to `Published`, listed or link-only as the author chose (with an **Undo approval** banner immediately after approving).
-   - Or click **Request changes** / **Decline**, select one or more structured reason chips (`Configs or logs missing`, `Failed requests over 5%`, etc.), add reviewer notes, and submit so the author sees the actionable feedback in **My results** → `Needs changes`. A declined author can reopen the Result as a draft and resubmit.
+   - Click **Approve** to promote the Result to `Published` (listed or link-only as the author chose) or, on an internal instance, `Official` with *Requested by @a · Marked official by @you* in its lineage. An **Undo approval** banner follows immediately, with **See it on the Leaderboard** when the Result ranks there.
+   - Or click **Request changes** / **Decline**, select one or more structured reason chips (`Configs or logs missing`, `Failed requests over 5%`, etc.), add notes, and submit so the author sees the actionable feedback in **My results** → `Needs changes`. A declined author can reopen the Result as a draft and submit (or request) again.
 
 ---
 

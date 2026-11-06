@@ -14,12 +14,31 @@
 
 // Publishing, in one dialog for both ways in: from the result editor, or in
 // one step from a sweep or run (the result is created behind the scenes).
-// Internal: Mark official, by an approver (signed in, admin). Public: Submit
-// for review with attribution and the DCO. `onEditFirst` (one-step only) opens the editor.
+// Internal: Mark official, by an approver (signed in, admin), or Request
+// official (`request`) for anyone else signed in: an approver then marks it
+// official from the Approval queue. Public: Submit for review with attribution
+// and the DCO. `onEditFirst` (one-step only) opens the editor.
 
 import React, { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { Button, Checkbox, Input, Label, Modal, ToggleGroup } from '../ui';
+
+// The journey in three steps, in this instance's words, with this one lit.
+function Steps({ steps }) {
+    if (!steps?.length) return null;
+    return (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3.5 py-2 text-tiny text-zinc-600">
+            {steps.map((label, i) => (
+                <React.Fragment key={label}>
+                    {i > 0 && <span aria-hidden="true">→</span>}
+                    <span className={i === steps.length - 1 ? 'font-semibold text-accent-700' : 'font-semibold text-zinc-900'}>
+                        {i + 1}. {label}
+                    </span>
+                </React.Fragment>
+            ))}
+        </div>
+    );
+}
 
 // `localRuns` counts source runs uploaded only to this browser (the caller
 // knows them even when the result's own list is out of date), and
@@ -34,6 +53,7 @@ export function PublishDialog({
     actor,
     localRuns = 0,
     reviewRuns,
+    request = false,
     isOpen,
     onClose,
     onMarkOfficial,
@@ -58,6 +78,7 @@ export function PublishDialog({
     const localOnly = Math.max(subject.localRunIds?.length || 0, localRuns);
     const serverRuns = reviewRuns ?? (subject.submissionRunIds?.length || 0);
     const internal = instance === 'internal';
+    const asking = internal && request;
     // The sign-off as given, kept with the submission so reviewers can see it.
     const dcoRecord = () => ({ version: '1.1', by: attribution.trim() || actor, at: Date.now() });
 
@@ -73,7 +94,7 @@ export function PublishDialog({
             )}
             {internal ? (
                 <Button size="sm" disabled={blocking.length > 0} onClick={onMarkOfficial}>
-                    Mark official
+                    {asking ? 'Request official' : 'Mark official'}
                 </Button>
             ) : localOnly ? (
                 <Button size="sm" disabled={blocking.length > 0 || !dco} onClick={() => onContinueUpload({ attribution })}>
@@ -88,18 +109,27 @@ export function PublishDialog({
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} size="md" title={internal ? 'Mark as official?' : 'Submit for review'} footer={footer}>
+        <Modal isOpen={isOpen} onClose={onClose} size="md" title={internal ? (asking ? 'Request official?' : 'Mark as official?') : 'Submit for review'} footer={footer}>
             <div className="surface-light space-y-4 text-sm text-zinc-700">
                 <div>
                     <div className="font-semibold text-zinc-900">{subject.name}</div>
                     {summary && <p className="mt-0.5 text-xs text-zinc-600">{summary}</p>}
                 </div>
+                <Steps steps={copy?.steps} />
                 {internal ? (
-                    // Only approvers get here: signed in, or previewing a role on the dev server.
+                    // Approvers mark it official; anyone else signed in asks one to.
+                    // Signed-out people never get here.
                     <>
-                        <p>
-                            It becomes Official, with <span className="font-semibold text-zinc-900">{actor}</span> recorded as the approver today. The source runs don’t change.
-                        </p>
+                        {asking ? (
+                            <p>
+                                An approver looks at it in the {copy?.reviewTab || 'Approval queue'}. Once one approves, it becomes Official, with{' '}
+                                <span className="font-semibold text-zinc-900">{actor}</span> recorded as the one who asked and them as the approver. The source runs don’t change.
+                            </p>
+                        ) : (
+                            <p>
+                                It becomes Official, with <span className="font-semibold text-zinc-900">{actor}</span> recorded as the approver today. The source runs don’t change.
+                            </p>
+                        )}
                         {localOnly > 0 && (
                             <p className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                                 {localOnly} of its runs {localOnly === 1 ? 'was' : 'were'} uploaded only to this browser, so nobody else can check {localOnly === 1 ? 'it' : 'them'}. Once results
@@ -109,13 +139,6 @@ export function PublishDialog({
                     </>
                 ) : (
                     <>
-                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-3.5 py-2 text-tiny text-zinc-600">
-                            <span className="font-semibold text-zinc-900">1. Upload runs</span>
-                            <span aria-hidden="true">→</span>
-                            <span className="font-semibold text-zinc-900">2. Curate result</span>
-                            <span aria-hidden="true">→</span>
-                            <span className="font-semibold text-accent-700">3. Submit for review</span>
-                        </div>
                         {!signedIn && (
                             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                                 <span>
@@ -199,7 +222,9 @@ export function PublishDialog({
                 )}
                 {!internal && copy && <p className="text-micro text-zinc-500">{copy.rule}</p>}
                 <p className="text-micro text-zinc-500">
-                    {internal
+                    {asking
+                        ? 'For now the request is saved in this browser only. Approvers elsewhere will see it once results are stored on the server.'
+                        : internal
                         ? 'For now the result is saved in this browser, so only you can see it.'
                         : serverRuns > 0
                           ? 'For now the result itself is saved in this browser. Reviewers see the runs you uploaded.'

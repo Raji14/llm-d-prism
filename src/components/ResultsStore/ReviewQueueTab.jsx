@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useMemo, useState } from 'react';
-import { Inbox, RefreshCw, RotateCcw } from 'lucide-react';
+import { Inbox, RefreshCw, RotateCcw, Trophy } from 'lucide-react';
 import { Badge, Button, ChartContainer, EmptyState, Label, Panel, Spinner, StatusChip, Textarea, seriesColor } from '../ui';
 import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
@@ -29,13 +29,27 @@ const CHANGE_REASONS = [
     'Clarify setup or notes',
 ];
 
-const DECLINE_REASONS = [
-    'Duplicates an already-published result',
-    'Failed requests over 5% across the sweep',
-    'Synthetic or incomplete run data',
-    'Wrong benchmark harness or unverified source',
-    'Withdrawn by contributor',
-];
+// The same queue on both instances, named the way each one names it: on
+// Internal Prism a request to mark a result official, on the public store a
+// submission to publish.
+function wordsFor(instance) {
+    const internal = instance === 'internal';
+    return {
+        internal,
+        item: internal ? 'request' : 'submission',
+        person: internal ? 'requester' : 'contributor',
+        submitted: internal ? 'Requested' : 'Submitted',
+        live: internal ? 'official' : 'published',
+        reviewer: internal ? 'approver' : 'reviewer',
+        declineReasons: [
+            `Duplicates an already-${internal ? 'official' : 'published'} result`,
+            'Failed requests over 5% across the sweep',
+            'Synthetic or incomplete run data',
+            'Wrong benchmark harness or unverified source',
+            internal ? 'Withdrawn by the requester' : 'Withdrawn by contributor',
+        ],
+    };
+}
 
 const cleanHandle = (s) => String(s || '').trim().replace(/^@/, '').toLowerCase();
 
@@ -97,7 +111,7 @@ function reviewFiles(runs) {
     return runs.flatMap((r) => (r.attachments || []).map((f) => (runs.length > 1 ? { ...f, group: `${f.group} · run ${r.idLabel || r.runId}` } : f)));
 }
 
-function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }) {
+function ReviewDetail({ item, actor, words: W, baselines, runsFromKeys, onBack, onDecide }) {
     const [mode, setMode] = useState(null);
     const [reasons, setReasons] = useState([]);
     const [note, setNote] = useState('');
@@ -120,8 +134,9 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
     const view = useChartView(c ? [c.points] : [], { extraLists: overlaid.map((b) => b.points.filter((p) => p.included)) });
     const { latency, stat, throughput } = view;
 
+    // Like a pull request: whoever asked can't approve it themselves.
     const actorHandle = cleanHandle(actor);
-    const submitterHandles = [cleanHandle(item.by), cleanHandle(c?.owner), cleanHandle(c?.attribution)].filter(Boolean);
+    const submitterHandles = [cleanHandle(item.by), cleanHandle(c?.owner), cleanHandle(c?.attribution), cleanHandle(c?.requestedBy)].filter(Boolean);
     const isSameNamedUser = Boolean(actorHandle && actorHandle !== 'you' && submitterHandles.includes(actorHandle));
     const isPreviewSelf = Boolean(actorHandle === 'you' && submitterHandles.includes('you'));
     const blockingErrors = (item.checks || []).filter((chk) => chk.level === 'error');
@@ -143,20 +158,24 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
         }
     };
 
-    const activeReasons = mode === 'decline' ? DECLINE_REASONS : CHANGE_REASONS;
+    const activeReasons = mode === 'decline' ? W.declineReasons : CHANGE_REASONS;
 
     return (
         <div className="space-y-6">
             <BackButton onClick={onBack}>Back to queue</BackButton>
             <header className="flex flex-wrap items-end justify-between gap-4">
                 <div className="min-w-0">
-                    <div className="kicker text-accent-600">Review</div>
+                    <div className="kicker text-accent-600">{W.internal ? 'Request' : 'Review'}</div>
                     <h2 className="display-title mt-1 text-2xl text-zinc-900">{item.title}</h2>
                     <p className="mt-1 text-xs text-zinc-600">
-                        Submitted {item.submittedAt ? fmtDay(item.submittedAt) : ''} by <span className="font-medium text-zinc-900">{item.by}</span> · {summarize(item.checks)}
+                        {W.submitted} {item.submittedAt ? fmtDay(item.submittedAt) : ''} by <span className="font-medium text-zinc-900">{item.by}</span> · {summarize(item.checks)}
                     </p>
-                    {/* Results submitted here record the sign-off and where it goes once approved. */}
-                    {item.kind === 'curve' && c && (
+                    {/* Public results record the sign-off and where they go once approved;
+                        an internal result goes to everyone on this Prism. */}
+                    {item.kind === 'curve' && c && W.internal && (
+                        <p className="mt-0.5 text-xs text-zinc-600">Becomes Official once you approve it, for everyone on this Prism.</p>
+                    )}
+                    {item.kind === 'curve' && c && !W.internal && (
                         <p className="mt-0.5 text-xs text-zinc-600">
                             {c.dco ? (
                                 <>
@@ -179,7 +198,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                             )}
                             {item.duplicates?.length > 0 && (
                                 <Badge tone="warning" size="xs">
-                                    Shares runs with published: {item.duplicates.map((d) => d.name).join(', ')}
+                                    Shares runs with {W.live}: {item.duplicates.map((d) => d.name).join(', ')}
                                 </Badge>
                             )}
                         </div>
@@ -197,7 +216,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                         disabled={busy || isSameNamedUser || blockingErrors.length > 0}
                         title={
                             isSameNamedUser
-                                ? 'You cannot approve your own submission'
+                                ? `You can’t approve your own ${W.item}`
                                 : blockingErrors.length > 0
                                   ? 'Fix blocking validation errors before approving'
                                   : undefined
@@ -211,57 +230,76 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
 
             {isSameNamedUser && (
                 <Notice tone="warning">
-                    You submitted this result (<span className="font-medium">{item.by}</span>), so another reviewer must approve it. You can still request changes or decline it.
+                    {W.internal ? 'You asked for this' : 'You submitted this result'} (<span className="font-medium">{item.by}</span>), so another {W.reviewer} must approve it. You can
+                    still request changes or decline it.
                 </Notice>
             )}
             {blockingErrors.length > 0 && (
                 <Notice tone="warning">
-                    This submission has {blockingErrors.length} blocking validation error{blockingErrors.length === 1 ? '' : 's'} ({blockingErrors.map((e) => e.text).join(' ')}) and cannot be approved until resolved. Request changes so the contributor can fix it.
+                    This {W.item} has {blockingErrors.length} blocking validation error{blockingErrors.length === 1 ? '' : 's'} ({blockingErrors.map((e) => e.text).join(' ')}) and cannot be
+                    approved until resolved. Request changes so the {W.person} can fix it.
                 </Notice>
             )}
 
             {mode === 'approve' && (
                 <Panel
                     variant="editorial"
-                    title="Confirm approval & publication"
+                    title={W.internal ? 'Confirm and mark official' : 'Confirm approval & publication'}
                     subtitle={
-                        c?.publishVisibility === 'link'
-                            ? `Marks this result Published (link-only) attributed to ${item.by}. You can undo right after approving.`
-                            : `Publishes this result to the store attributed to ${item.by}. You can undo right after approving.`
+                        W.internal
+                            ? `Marks this result Official, with ${item.by} recorded as the one who asked and you as the approver. You can undo right after approving.`
+                            : c?.publishVisibility === 'link'
+                              ? `Marks this result Published (link-only) attributed to ${item.by}. You can undo right after approving.`
+                              : `Publishes this result to the store attributed to ${item.by}. You can undo right after approving.`
                     }
                 >
                     <div className="space-y-3 text-xs text-zinc-700">
-                        <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 sm:grid-cols-3">
-                            <div>
-                                <div className="label-caps text-zinc-500">Attribution</div>
-                                <div className="mt-0.5 font-medium text-zinc-900">{item.by || 'Not recorded'}</div>
-                            </div>
-                            <div>
-                                <div className="label-caps text-zinc-500">DCO sign-off</div>
-                                <div className="mt-0.5 font-medium text-zinc-900">
-                                    {c?.dco ? `${c.dco.version} signed by ${c.dco.by}` : 'Not recorded'}
+                        {W.internal ? (
+                            <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 sm:grid-cols-3">
+                                <div>
+                                    <div className="label-caps text-zinc-500">Requested by</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">{item.by || 'Not recorded'}</div>
+                                </div>
+                                <div>
+                                    <div className="label-caps text-zinc-500">Approver</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">{actor}</div>
+                                </div>
+                                <div>
+                                    <div className="label-caps text-zinc-500">Who sees it</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">Everyone on this Prism</div>
                                 </div>
                             </div>
-                            <div>
-                                <div className="label-caps text-zinc-500">Visibility once approved</div>
-                                <div className="mt-0.5 font-medium text-zinc-900">
-                                    {c?.publishVisibility === 'link' ? 'Anyone with the link' : 'Listed in the store'}
+                        ) : (
+                            <div className="grid gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 sm:grid-cols-3">
+                                <div>
+                                    <div className="label-caps text-zinc-500">Attribution</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">{item.by || 'Not recorded'}</div>
+                                </div>
+                                <div>
+                                    <div className="label-caps text-zinc-500">DCO sign-off</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">{c?.dco ? `${c.dco.version} signed by ${c.dco.by}` : 'Not recorded'}</div>
+                                </div>
+                                <div>
+                                    <div className="label-caps text-zinc-500">Visibility once approved</div>
+                                    <div className="mt-0.5 font-medium text-zinc-900">{c?.publishVisibility === 'link' ? 'Anyone with the link' : 'Listed in the store'}</div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                         {isPreviewSelf && (
                             <Notice tone="warning">
-                                Preview mode note: both contributor and reviewer are <span className="font-mono">@you</span> in this browser preview. In production, a submission requires a second reviewer to approve.
+                                Preview mode note: both {W.person} and {W.reviewer} are <span className="font-mono">@you</span> in this browser preview. In production, a {W.item} needs a second{' '}
+                                {W.reviewer} to approve it.
                             </Notice>
                         )}
                         {item.editedFields?.length > 0 && (
                             <Notice tone="warning">
-                                Contributor edited recorded labels: <span className="font-medium">{item.editedFields.join(', ')}</span>. Verify against the attached config files before publishing.
+                                The {W.person} edited recorded labels: <span className="font-medium">{item.editedFields.join(', ')}</span>. Verify against the attached config files before
+                                approving.
                             </Notice>
                         )}
                         {item.duplicates?.length > 0 && (
                             <Notice tone="warning">
-                                Shares underlying runs with already-published result{item.duplicates.length === 1 ? '' : 's'}:{' '}
+                                Shares underlying runs with already-{W.live} result{item.duplicates.length === 1 ? '' : 's'}:{' '}
                                 <span className="font-medium">{item.duplicates.map((d) => d.name).join(', ')}</span>.
                             </Notice>
                         )}
@@ -275,7 +313,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                                 Cancel
                             </Button>
                             <Button size="sm" disabled={busy || isSameNamedUser || blockingErrors.length > 0} onClick={() => decide('approve')}>
-                                Confirm & publish
+                                {W.internal ? 'Confirm & mark official' : 'Confirm & publish'}
                             </Button>
                         </div>
                     </div>
@@ -285,11 +323,15 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
             {(mode === 'changes' || mode === 'decline') && (
                 <Panel
                     variant="editorial"
-                    title={mode === 'decline' ? 'Decline this submission' : 'Request changes from contributor'}
+                    title={mode === 'decline' ? `Decline this ${W.item}` : `Request changes from the ${W.person}`}
                     subtitle={
-                        mode === 'decline'
-                            ? 'Closes this review and marks the submission “Declined” in the contributor’s My work. Use this when the benchmark itself isn’t suitable to publish.'
-                            : 'Sends the submission back to the contributor in My work as “Needs changes” so they can fix labels, points or attachments and resubmit.'
+                        W.internal
+                            ? mode === 'decline'
+                                ? 'Closes the request and marks the result “Declined” in the requester’s My work. Use this when the result shouldn’t be official.'
+                                : 'Sends the result back to the requester’s My work as “Needs changes”, so they can fix labels or points and request again.'
+                            : mode === 'decline'
+                              ? 'Closes this review and marks the submission “Declined” in the contributor’s My work. Use this when the benchmark itself isn’t suitable to publish.'
+                              : 'Sends the submission back to the contributor in My work as “Needs changes” so they can fix labels, points or attachments and resubmit.'
                     }
                 >
                     <div className="flex flex-wrap gap-2">
@@ -310,7 +352,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                     </div>
                     <div className="mt-4">
                         <Label surface="light" htmlFor="rs-review-note">
-                            {mode === 'decline' ? 'Why is this submission being declined?' : 'What should the contributor change?'}
+                            {mode === 'decline' ? `Why is this ${W.item} being declined?` : `What should the ${W.person} change?`}
                         </Label>
                         <Textarea
                             surface="light"
@@ -321,8 +363,8 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                             onChange={(e) => setNote(e.target.value)}
                             placeholder={
                                 mode === 'decline'
-                                    ? 'Explain why this benchmark cannot be published (shown to the contributor in My work)…'
-                                    : 'Describe the label, stage or config fixes needed before resubmitting…'
+                                    ? `Explain why this result can’t be ${W.live} (shown to the ${W.person} in My work)…`
+                                    : `Describe the label, stage or config fixes needed before ${W.internal ? 'requesting again' : 'resubmitting'}…`
                             }
                         />
                     </div>
@@ -331,7 +373,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                             Cancel
                         </Button>
                         <Button size="sm" variant={mode === 'decline' ? 'danger' : 'primary'} disabled={!feedback || busy} onClick={() => decide(mode, feedback)}>
-                            {mode === 'decline' ? 'Decline submission' : 'Send back for changes'}
+                            {mode === 'decline' ? `Decline ${W.item}` : 'Send back for changes'}
                         </Button>
                     </div>
                 </Panel>
@@ -340,8 +382,8 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
             {c ? (
                 <>
                     <ChartContainer
-                        title="Against published results"
-                        subtitle={sameModel.length ? `${sameModel.length} published result${sameModel.length === 1 ? '' : 's'} for ${c.meta.model} overlaid (dashed).` : 'No published result for this model yet.'}
+                        title={`Against ${W.live} results`}
+                        subtitle={sameModel.length ? `${sameModel.length} ${W.live} result${sameModel.length === 1 ? '' : 's'} for ${c.meta.model} overlaid (dashed).` : `No ${W.live} result for this model yet.`}
                         actions={<MetricToggles view={view} />}
                     >
                         <CurveChart
@@ -386,7 +428,7 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                             <CheckList checks={item.checks} readOnly />
                         </Panel>
                     </div>
-                    <Panel variant="editorial" title="Lineage & attribution" subtitle={`Attribution: ${item.by}`}>
+                    <Panel variant="editorial" title="Lineage & attribution" subtitle={`${W.internal ? 'Requested by' : 'Attribution'}: ${item.by}`}>
                         <p className="mb-3 text-xs text-zinc-600">
                             Built from {c.builtFrom.runs} run{c.builtFrom.runs === 1 ? '' : 's'} · {c.builtFrom.label}
                         </p>
@@ -401,22 +443,44 @@ function ReviewDetail({ item, actor, baselines, runsFromKeys, onBack, onDecide }
                     </Panel>
                 </>
             ) : (
-                <EmptyState title="Run data isn’t loaded" message="The submission’s files aren’t in this view yet. Approve or request changes from its metadata, or open it in the classic view." />
+                <EmptyState title="Run data isn’t loaded" message={`The ${W.item}’s files aren’t in this view yet. You can still approve it or request changes from its metadata.`} />
             )}
         </div>
     );
 }
 
-// One queue, oldest first, each with a summary of its automatic checks.
-export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error, runsById, runsFromKeys = () => [], baselines, onRefresh, onDecide, onUndoApprove }) {
+// One queue, oldest first, each with a summary of its automatic checks: the
+// Review queue on the public store, the Approval queue on an internal one.
+// `leaderboardOf(id)` says where an approved result now ranks, if it does.
+export function ReviewQueueTab({
+    localCurves,
+    serverItems,
+    actor,
+    copy,
+    instance = 'public',
+    loading,
+    error,
+    runsById,
+    runsFromKeys = () => [],
+    baselines,
+    leaderboardOf = () => null,
+    onOpenLeaderboard,
+    onRefresh,
+    onDecide,
+    onUndoApprove,
+}) {
+    const W = wordsFor(instance);
+    const queueName = copy?.reviewTab || (W.internal ? 'Approval queue' : 'Review queue');
     const [activeId, setActiveId] = useState(null);
     const [lastApproved, setLastApproved] = useState(null);
     const items = useMemo(() => {
-        const local = localCurves.map((c) => ({ kind: 'curve', id: c.id, title: c.name, by: c.attribution || c.owner, submittedAt: c.submittedAt, curve: c }));
+        const local = localCurves.map((c) => ({ kind: 'curve', id: c.id, title: c.name, by: c.requestedBy || c.attribution || c.owner, submittedAt: c.submittedAt, curve: c }));
         const remote = serverItems.map((s) => ({ kind: 'server', id: s.runId, runId: s.runId, title: s.title, by: s.by, submittedAt: s.submittedAt, state: s.state }));
         return [...local, ...remote].map((e) => toReviewItem(e, runsById, baselines)).sort((a, b) => (a.submittedAt || 0) - (b.submittedAt || 0));
     }, [localCurves, serverItems, runsById, baselines]);
     const active = items.find((i) => i.id === activeId);
+    // Where the result just approved now ranks (once the approval has saved).
+    const approvedTarget = lastApproved?.kind === 'curve' && onOpenLeaderboard ? leaderboardOf(lastApproved.id) : null;
 
     if (active) {
         return (
@@ -424,6 +488,7 @@ export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error
                 key={active.id}
                 item={active}
                 actor={actor}
+                words={W}
                 baselines={baselines}
                 runsFromKeys={runsFromKeys}
                 onBack={() => setActiveId(null)}
@@ -442,25 +507,33 @@ export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error
 
     return (
         <div className="space-y-4">
-            <h2 className="sr-only">Review queue</h2>
+            <h2 className="sr-only">{queueName}</h2>
             {lastApproved && onUndoApprove && (
                 <Notice onDismiss={() => setLastApproved(null)}>
                     <span className="flex flex-wrap items-center justify-between gap-2">
                         <span>
-                            Approved <span className="font-medium text-zinc-900">“{lastApproved.title}”</span> and published it.
+                            Approved <span className="font-medium text-zinc-900">“{lastApproved.title}”</span> and {W.internal ? 'marked it official' : 'published it'}.
                         </span>
-                        <Button
-                            size="xs"
-                            variant="secondary"
-                            onClick={() => {
-                                onUndoApprove(lastApproved);
-                                setActiveId(lastApproved.id);
-                                setLastApproved(null);
-                            }}
-                        >
-                            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                            Undo approval
-                        </Button>
+                        <span className="flex flex-wrap gap-2">
+                            {approvedTarget && (
+                                <Button size="xs" variant="secondary" onClick={() => onOpenLeaderboard(approvedTarget)}>
+                                    <Trophy className="h-3.5 w-3.5" aria-hidden="true" />
+                                    See it on the Leaderboard
+                                </Button>
+                            )}
+                            <Button
+                                size="xs"
+                                variant="secondary"
+                                onClick={() => {
+                                    onUndoApprove(lastApproved);
+                                    setActiveId(lastApproved.id);
+                                    setLastApproved(null);
+                                }}
+                            >
+                                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                                Undo approval
+                            </Button>
+                        </span>
                     </span>
                 </Notice>
             )}
@@ -481,7 +554,11 @@ export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error
             )}
             {items.length === 0 ? (
                 <div className="rounded-3xl border border-zinc-200 bg-white">
-                    <EmptyState icon={<Inbox className="h-8 w-8" />} title="Nothing to review" message="Submissions waiting for a reviewer show up here, oldest first." />
+                    <EmptyState
+                        icon={<Inbox className="h-8 w-8" />}
+                        title={W.internal ? 'Nothing to approve' : 'Nothing to review'}
+                        message={W.internal ? 'Requests to mark results official show up here, oldest first.' : 'Submissions waiting for a reviewer show up here, oldest first.'}
+                    />
                 </div>
             ) : (
                 <ul className="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200 bg-white">
@@ -508,7 +585,8 @@ export function ReviewQueueTab({ localCurves, serverItems, actor, loading, error
                                     )}
                                 </div>
                                 <p className="mt-0.5 text-micro text-zinc-500">
-                                    {item.by} · submitted {item.submittedAt ? fmtDay(item.submittedAt) : 'recently'} · {item.checks.length ? summarize(item.checks) : 'checks run when the files load'}
+                                    {item.by} · {W.submitted.toLowerCase()} {item.submittedAt ? fmtDay(item.submittedAt) : 'recently'} ·{' '}
+                                    {item.checks.length ? summarize(item.checks) : 'checks run when the files load'}
                                 </p>
                             </div>
                             <Button size="xs" variant="secondary" onClick={() => setActiveId(item.id)}>

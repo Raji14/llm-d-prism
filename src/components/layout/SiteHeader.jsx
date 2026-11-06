@@ -14,12 +14,47 @@
 
 // Prism 2.0 top navigation bar — shared across Home and every inner view.
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, Github, Menu, X, ArrowUpRight } from 'lucide-react';
+import { ChevronDown, Github, Inbox, Menu, X, ArrowUpRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Button } from '../ui/Button';
 import { BrandLockup } from '../ui/BrandMarks.jsx';
 import { readSiteProfile } from '../../config/site.js';
+import { useGitHubAuth } from '../../hooks/useGitHubAuth.js';
+import { countWaitingResults } from '../../utils/resultsWorkspace.js';
 import { NAV, SUBMIT, REPO_URL, DOCS_URL, isActive, submitFor } from './navigation';
+
+const DEV = Boolean(import.meta.env?.DEV);
+
+// Approvers see what's waiting for them from anywhere in Prism (v1 of
+// "who's notified"): the results waiting in this browser, plus, on the
+// public store, the community runs waiting in the server's review queue.
+// On the dev server, the Results Store's ?role= preview applies here too.
+function useWaitingForApprover(instance, currentView) {
+    const { user } = useGitHubAuth();
+    const previewRole = DEV ? new URLSearchParams(window.location.search).get('role') : null;
+    const approver = previewRole === 'admin' || previewRole === 'contributor' ? previewRole === 'admin' : user?.permission === 'admin';
+    const [serverWaiting, setServerWaiting] = useState(0);
+
+    useEffect(() => {
+        if (!approver || instance !== 'public') return undefined;
+        let cancelled = false;
+        const headers = {};
+        const token = localStorage.getItem('prism_github_token');
+        if (token) headers['X-Prism-Github-Token'] = token;
+        fetch('/api/results?status=submitted_pending_review&limit=50', { headers })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+                if (!cancelled) setServerWaiting(Array.isArray(json?.items) ? json.items.length : 0);
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [approver, instance, currentView]);
+
+    if (!approver) return 0;
+    return countWaitingResults(instance) + (instance === 'public' ? serverWaiting : 0);
+}
 
 function NavLink({ view, onNavigate, className, children, ...rest }) {
     return (
@@ -144,6 +179,30 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
     // Which Prism this is (one deployment each): its mark, name and submit words.
     const site = readSiteProfile();
     const submit = submitFor(site.instance);
+    // What waits for an approver; on the Results Store its queue tab says so.
+    const waiting = useWaitingForApprover(site.instance, currentView);
+    const queueName = site.instance === 'internal' ? 'Approval queue' : 'Review queue';
+    const showQueue = waiting > 0 && currentView !== 'results-store';
+    const openQueue = (e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+        e.preventDefault();
+        onNavigate?.('results-store', { tab: 'review' });
+    };
+    const queuePill = (className) => (
+        <a
+            href="?view=results-store&tab=review"
+            onClick={openQueue}
+            aria-label={`${queueName}: ${waiting} waiting for you`}
+            className={cn(
+                'items-center gap-1.5 rounded-full border border-accent-200 bg-accent-50 px-3 text-sm font-medium text-accent-800 transition-colors hover:bg-accent-100',
+                className
+            )}
+        >
+            <Inbox className="w-4 h-4" aria-hidden="true" />
+            {queueName}
+            <span className="rounded-full bg-accent-600 px-1.5 text-tiny font-semibold tabular-nums text-white">{waiting}</span>
+        </a>
+    );
 
     return (
         <header className="surface-light relative z-50 shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl text-zinc-900 font-sans">
@@ -200,6 +259,7 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                 >
                     <Github className="w-4 h-4" /> GitHub
                 </a>
+                {showQueue && queuePill('hidden h-9 sm:inline-flex')}
                 {!hideSubmit && (
                     <Button
                         href={`?view=${submit.view}`}
@@ -260,6 +320,7 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                         </div>
                     ))}
                     <div className="mt-2 pt-4 border-t border-zinc-100 flex flex-wrap items-center gap-3">
+                        {showQueue && queuePill('inline-flex h-10')}
                         {!hideSubmit && (
                             <Button href={`?view=${submit.view}`} onClick={(e) => goTo(e, submit.view)} size="md" className="h-10 py-0">
                                 {submit.label}

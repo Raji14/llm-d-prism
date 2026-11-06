@@ -17,10 +17,13 @@
 // Nouns in the UI: Runs (measured, read-only), Sweeps (runs of one setup
 // across concurrency levels), Results (curated views over runs; "curves" in
 // code) and Watches & reports. Three tabs: Browse, My work, Watches & reports,
-// plus a Review queue for reviewers on the public store and Sources for
-// admins. The instance mode (see ResultsStore/instance.js) decides whether
-// publishing marks a result Official (internal) or submits it for review.
-// Sweeps and runs publish in one step; the result is created behind the scenes.
+// plus the queue for approvers (Review queue on the public store, Approval
+// queue on an internal one) and Sources for admins. The journey is the same on
+// both instances; the instance mode (see ResultsStore/instance.js) only decides
+// the words and who approves: publishing marks a result Official (internal
+// approvers), asks an approver to (anyone else internal), or submits it for
+// review (public). Sweeps and runs publish in one step; the result is created
+// behind the scenes. Once a result ranks, Prism links to it on the Leaderboard.
 
 import React, { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, CircleAlert, Github, LogOut, Shield, Upload, X } from 'lucide-react';
@@ -30,7 +33,9 @@ import { useGitHubAuth } from '../hooks/useGitHubAuth.js';
 import { decodeShareLink } from '../utils/shareLinkEncoder';
 import { parseReportV02, stageToEntry } from '../utils/benchmarkReportV02Parser';
 import { buildStagedBundle, queueBundlesForWizard } from '../utils/stagedBundle';
-import { BROWSER_NOTE, INSTANCE_COPY, readInstanceMode, resultStatusLabel } from './ResultsStore/instance';
+import { leaderboardLinkFor } from '../utils/leaderboardSources.js';
+import { readSiteName } from '../config/site.js';
+import { BROWSER_NOTE, copyFor, readInstanceMode, resultStatusLabel } from './ResultsStore/instance';
 import {
     LATENCY_METRICS,
     LATENCY_STATS,
@@ -379,23 +384,12 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, curveLoca
 
 // Dev server only. Role overrides your real role either way, so a signed-in
 // admin can check the contributor view too; picking your real role clears it.
-function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRole }) {
+// There's no instance switch: each Prism is its own entry point
+// (?instance=internal&site=… on the dev server), as it is in production.
+function PreviewBar({ instance, isAdmin, signedInAdmin, onPreviewRole }) {
     return (
         <div className="my-1.5 flex flex-wrap items-center gap-2.5 rounded-full border border-dashed border-zinc-300 bg-zinc-50/70 px-3 py-1 text-micro text-zinc-600">
             <span className="label-caps text-zinc-500">Preview · dev only</span>
-            <span className="flex items-center gap-1.5">
-                Instance
-                <ToggleGroup
-                    size="xs"
-                    aria-label="Preview instance"
-                    value={instance}
-                    onChange={onInstance}
-                    options={[
-                        { value: 'internal', label: 'Internal' },
-                        { value: 'public', label: 'Public' },
-                    ]}
-                />
-            </span>
             <span className="flex items-center gap-1.5">
                 Role
                 <ToggleGroup
@@ -414,9 +408,8 @@ function PreviewBar({ instance, onInstance, isAdmin, signedInAdmin, onPreviewRol
     );
 }
 
-function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboardData, auth, instance, onInstance, previewRole, onPreviewRole, onOpenClassic }) {
+function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboardData, auth, instance, previewRole, onPreviewRole }) {
     const ws = useWorkspace();
-    const copy = INSTANCE_COPY[instance];
     const { user, isAuthenticated, login, isConfigured } = auth;
     const {
         data = [],
@@ -439,15 +432,22 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const signedInAdmin = user?.permission === 'admin';
     // On the dev server the preview bar can override the real role either way.
     const isAdmin = DEV && previewRole ? previewRole === 'admin' : signedInAdmin;
-    const isReviewer = instance === 'public' && isAdmin;
-    // Internal instance: only approvers mark a result official, and only when
-    // signed in, so Prism records who did it. Approvers are admins: llm-d org
-    // admins or people on the admin allowlist (specs/main/completed/results-api/iam.md).
-    // On the dev server a preview role stands in for a signed-in account.
-    // Null when allowed (always on the public store), else why not: 'signin' or 'approver'.
+    // Approvers work the queue on both instances: the Review queue on the
+    // public store, the Approval queue on an internal one.
+    const isReviewer = isAdmin;
+    // Internal instance: approvers mark a result official; anyone else signed
+    // in asks an approver to (Request official). Either way they must be
+    // signed in, so Prism records who did it. Approvers are admins: people on
+    // the admin allowlist, plus llm-d org admins on llm-d Prism
+    // (specs/main/completed/results-api/iam.md). On the dev server a preview
+    // role stands in for a signed-in account.
+    // Null when they can mark official (always on the public store); else
+    // 'approver' (they request it instead) or 'signin' (they need to sign in first).
     const signedIn = !!(isAuthenticated && user?.username);
     const previewing = DEV && !!previewRole;
     const officialBlock = instance !== 'internal' ? null : !signedIn && !previewing ? 'signin' : isAdmin ? null : 'approver';
+    const siteName = readSiteName();
+    const copy = useMemo(() => copyFor(instance, { canApprove: officialBlock !== 'approver', siteName }), [instance, officialBlock, siteName]);
 
     const [tab, setTab] = useState(initialTab);
     const [stack, setStack] = useState(initialStack);
@@ -499,9 +499,10 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     // Make result from a hand-picked selection or a comparison: only when the
     // runs form one curve (one setup, no load level twice), as the spec says.
     const canMakeResult = useCallback((list = []) => canCurate(list) && formsSweep(list), [canCurate]);
-    // Who may publish them in one step: on the internal instance, approvers
-    // (see officialBlock); on the public store, only the owner of the uploaded runs.
-    const canPublish = useCallback((list = []) => ownsRuns(list) && !officialBlock, [ownsRuns, officialBlock]);
+    // Who may publish them in one step: on the internal instance, anyone
+    // signed in (approvers mark official, others request it; see
+    // officialBlock); on the public store, only the owner of the uploaded runs.
+    const canPublish = useCallback((list = []) => ownsRuns(list) && officialBlock !== 'signin', [ownsRuns, officialBlock]);
 
     // ------------------------------------------------------------ catalog
     const aliases = useMemo(
@@ -753,7 +754,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     );
 
     // ------------------------------------------------------------ navigation
+    // The server's queue holds community run submissions, so only the public
+    // store loads it. Internal Prism's Approval queue holds requests to mark
+    // results official, made here.
     const loadReviewQueue = useCallback(async () => {
+        if (instance !== 'public') {
+            setQueue({ items: [], loading: false, error: null });
+            return;
+        }
         setQueue((q) => ({ ...q, loading: true, error: null }));
         try {
             const headers = {};
@@ -776,7 +784,32 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         } catch {
             setQueue({ items: [], loading: false, error: 'The review service isn’t reachable right now, so only reviews submitted from this browser are listed.' });
         }
-    }, []);
+    }, [instance]);
+
+    // Where a result ranks on the Leaderboard (null when it doesn't), and the
+    // way there: the Leaderboard opens on its model and workload with the
+    // result's drawer open.
+    const leaderboardOf = useCallback((curve) => (curve ? leaderboardLinkFor(curve, instance) : null), [instance]);
+    const openLeaderboard = useCallback((target) => target && onNavigate('model-leaderboard', target), [onNavigate]);
+    // Says where a result went, with the way there once it ranks.
+    const announce = useCallback(
+        (text, curve) => {
+            const target = leaderboardOf(curve);
+            if (!target) {
+                notify(text);
+                return;
+            }
+            notify(
+                <span>
+                    {text}{' '}
+                    <button type="button" onClick={() => openLeaderboard(target)} className="font-semibold underline decoration-white/50 underline-offset-2 hover:decoration-white">
+                        See it on the Leaderboard
+                    </button>
+                </span>
+            );
+        },
+        [leaderboardOf, openLeaderboard, notify]
+    );
 
     // Set once the queue has been asked for, by a tab click or on arrival.
     const queueRequested = useRef(false);
@@ -883,7 +916,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
 
     // Where Back goes, named: the screen underneath, else the tab.
     const prevScreen = stack.length > 1 ? stack[stack.length - 2] : null;
-    const backLabel = prevScreen ? `Back to ${SCREEN_NAMES[prevScreen.type] || 'the previous screen'}` : `Back to ${TAB_NAMES[tab] || 'Browse'}`;
+    const tabName = tab === 'review' ? copy.reviewTab : TAB_NAMES[tab];
+    const backLabel = prevScreen ? `Back to ${SCREEN_NAMES[prevScreen.type] || 'the previous screen'}` : `Back to ${tabName || 'Browse'}`;
 
     const nav = useMemo(
         () => ({
@@ -906,8 +940,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 setStack([]);
             },
             // One step from a sweep or run to Official / In review. Already
-            // published? Open that result instead of making a duplicate. Only
-            // approvers mark results official (officialBlock).
+            // published? Open that result instead of making a duplicate. On an
+            // internal instance approvers mark it official and anyone else
+            // signed in requests it (officialBlock).
             publish: (list) => {
                 const unique = uniqueRuns(list);
                 const existing = resultOf(unique);
@@ -1077,7 +1112,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         }
         const local = item.kind === 'curve';
         const message = {
-            approve: local ? 'Approved. It shows as published in this browser only for now.' : 'Approved and published.',
+            approve: local
+                ? instance === 'internal'
+                    ? 'Approved and marked official. It’s saved in this browser for now.'
+                    : 'Approved. It shows as published in this browser only for now.'
+                : 'Approved and published.',
             decline: local ? 'Declined. Your note is saved with the result in this browser.' : 'Declined. The contributor sees your note in My work.',
             changes: local ? 'Sent back. Your note is saved with the result in this browser.' : 'Sent back with your note.',
         };
@@ -1323,7 +1362,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             label: watchRegressedCount > 0 ? `Watches & reports (${watchRegressedCount} regressed)` : 'Watches & reports',
             count: ws.watches.length + ws.showcases.length || null,
         },
-        ...(isReviewer ? [{ value: 'review', label: 'Review queue', count: ws.curves.filter((c) => c.status === 'in_review').length + queue.items.length || null }] : []),
+        ...(isReviewer ? [{ value: 'review', label: copy.reviewTab, count: ws.curves.filter((c) => c.status === 'in_review').length + queue.items.length || null }] : []),
         ...(isAdmin ? [{ value: 'sources', label: 'Sources' }] : []),
     ];
     const activeTab = tabs.some((t) => t.value === tab) ? tab : 'browse';
@@ -1391,6 +1430,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 signInReady={!!isConfigured}
                 nav={nav}
                 notify={notify}
+                announce={announce}
+                leaderboardTarget={leaderboardOf(shownCurve)}
+                onOpenLeaderboard={openLeaderboard}
                 onShare={setShare}
                 onAddToDashboard={(curveIds) => setDashDialog({ curveIds, raw: [] })}
                 onWatch={(c) => setWatchDialog({ configKey: curveConfigKey(c, runsByKey), refCurveId: c.id })}
@@ -1410,7 +1452,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 canPublish={canPublish}
                 officialBlock={officialBlock}
                 nav={nav}
-                onOpenClassic={onOpenClassic}
+                runOfId={(runId) => runsById.get(runId) || null}
+                leaderboardOf={leaderboardOf}
+                onOpenLeaderboard={openLeaderboard}
                 onUpload={onUpload}
                 onSignIn={() => login?.()}
                 signInReady={!!isConfigured}
@@ -1440,12 +1484,15 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 runsFromKeys={runsFromKeys}
                 baselines={publishedCurves}
                 actor={actor}
-                isPreviewRole={previewing}
+                copy={copy}
+                instance={instance}
+                leaderboardOf={(id) => leaderboardOf(ws.getCurve(id))}
+                onOpenLeaderboard={openLeaderboard}
                 onRefresh={loadReviewQueue}
                 onDecide={decide}
                 onUndoApprove={(last) => {
                     if (last.kind === 'curve') ws.unapprove(last.id);
-                    notify('Approval undone. Returned to Review queue.');
+                    notify(`Approval undone. Returned to the ${copy.reviewTab}.`);
                 }}
             />
         );
@@ -1483,7 +1530,6 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     onAddToCurve={addSelectionToCurve}
                     onWatchFilters={(filters, query) => setWatchDialog({ filters, query })}
                     onUpload={onUpload}
-                    onOpenClassic={onOpenClassic}
                 />
             </>
         );
@@ -1521,19 +1567,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             <div className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6">
                 <div className="flex flex-wrap items-center justify-between gap-3 shadow-[inset_0_-1px_0_0_var(--color-zinc-200)]">
                     <Tabs tabs={tabs} value={activeTab} onChange={goTab} ariaLabel="Results store sections" idBase={tabsId} className="shadow-none" />
-                    {DEV && (
-                        <PreviewBar
-                            instance={instance}
-                            onInstance={(v) => {
-                                setStack([]);
-                                setBrowse((b) => ({ ...b, selected: new Set(), addTo: null }));
-                                onInstance(v);
-                            }}
-                            isAdmin={isAdmin}
-                            signedInAdmin={signedInAdmin}
-                            onPreviewRole={onPreviewRole}
-                        />
-                    )}
+                    {DEV && <PreviewBar instance={instance} isAdmin={isAdmin} signedInAdmin={signedInAdmin} onPreviewRole={onPreviewRole} />}
                 </div>
                 {!noticeDismissed && (
                     <Notice className="mt-3" onDismiss={dismissNotice} dismissLabel="Dismiss browser storage note">
@@ -1580,14 +1614,17 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                         setQuick(null);
                         makeCurve(picked);
                     }}
+                    request={officialBlock === 'approver'}
                     onMarkOfficial={() => {
-                        if (officialBlock) return;
-                        ws.publishRuns(quick.runs);
+                        if (officialBlock === 'signin') return;
+                        const request = officialBlock === 'approver';
+                        const made = ws.publishRuns(quick.runs, { request });
                         // Like Edit, publishing uses up the selection: the sweep
                         // now shows as its result, so a pick on it would linger.
                         setBrowse((b) => ({ ...b, selected: new Set() }));
                         setQuick(null);
-                        notify(`Marked official: ${quickSubject.name}. It’s saved in this browser for now.`);
+                        if (request) notify(`Requested official: ${quickSubject.name}. It waits in the ${copy.reviewTab} for an approver, saved in this browser for now.`);
+                        else announce(`Marked official: ${quickSubject.name}. It’s saved in this browser for now.`, made);
                     }}
                     onSubmit={async ({ attribution, visibility, dco }) => {
                         const picked = quick.runs;
@@ -1678,10 +1715,13 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
 
 export default function ResultsStore(props) {
     const auth = useGitHubAuth();
-    const [instance, setInstance] = useState(readInstanceMode);
+    // One Prism per deployment, so the instance never changes on the page.
+    const [instance] = useState(readInstanceMode);
     // Dev-only role preview: 'admin' or 'contributor' overrides your real role,
     // so either view can be checked from one dev server. null = your real role.
     const [previewRole, setPreviewRole] = useState(() => (DEV && PREVIEW_ROLES.includes(readParam('role')) ? readParam('role') : null));
+    // The previous Results Store, kept reachable only by `?classic=1` (nothing
+    // links to it) until the next-gen store covers server submissions fully.
     const [classic, setClassic] = useState(() => readParam('classic') === '1');
     const actor = auth.user?.username ? `@${auth.user.username}` : 'you';
 
@@ -1712,18 +1752,10 @@ export default function ResultsStore(props) {
                 {...props}
                 auth={auth}
                 instance={instance}
-                onInstance={(v) => {
-                    setUrlParam('instance', v);
-                    setInstance(v);
-                }}
                 previewRole={previewRole}
                 onPreviewRole={(v) => {
                     setUrlParam('role', v);
                     setPreviewRole(v);
-                }}
-                onOpenClassic={() => {
-                    setUrlParam('classic', '1');
-                    setClassic(true);
                 }}
             />
         </WorkspaceProvider>

@@ -19,6 +19,10 @@ PUBLIC_URL=""
 PRISM_INSTANCE="public"
 PRISM_BRAND="prism"
 PRISM_PINNED_REPORTS=""
+# Optional GitHub org whose admins approve results here. Empty: llm-d Prism
+# (PRISM_BRAND=llm-d) trusts the llm-d org; every other Prism uses only its
+# own allowlists in the IAM bucket (server/oauth.ts, server/iam.ts).
+PRISM_GITHUB_ADMIN_ORG=""
 
 # Helper function to print usage
 usage() {
@@ -35,6 +39,7 @@ usage() {
   echo "  --instance <internal|public>  Who can get in and how results rank (default: public)"
   echo "  --brand <llm-d|prism>         Logo: only llm-d's public Prism uses llm-d (default: prism)"
   echo "  --pinned-reports \"<IDS>\"      Space-separated report ids pinned to Home, in order"
+  echo "  --github-admin-org <ORG>      GitHub org whose admins approve here (default: llm-d on llm-d Prism, none elsewhere)"
   echo "  --[no-]allow-unauthenticated Control whether the service is publicly accessible"
   echo "  -h, --help                    Show this help message"
   exit 1
@@ -76,6 +81,7 @@ while [[ "$#" -gt 0 ]]; do
         --instance) PRISM_INSTANCE="$2"; shift ;;
         --brand) PRISM_BRAND="$2"; shift ;;
         --pinned-reports) PRISM_PINNED_REPORTS="$2"; shift ;;
+        --github-admin-org) PRISM_GITHUB_ADMIN_ORG="$2"; shift ;;
         --no-allow-unauthenticated) ALLOW_UNAUTHENTICATED="false" ;;
         --allow-unauthenticated) ALLOW_UNAUTHENTICATED="true" ;;
         -h|--help) usage ;;
@@ -93,6 +99,11 @@ case "$PRISM_BRAND" in
     llm-d|prism) ;;
     *) echo "Error: --brand must be 'llm-d' or 'prism' (got '$PRISM_BRAND')." >&2; exit 1 ;;
 esac
+# A GitHub org name (it travels inside --set-env-vars, which splits on commas).
+if [ -n "$PRISM_GITHUB_ADMIN_ORG" ] && ! [[ "$PRISM_GITHUB_ADMIN_ORG" =~ ^[A-Za-z0-9-]+$ ]]; then
+    echo "Error: --github-admin-org must be a GitHub organization name (got '$PRISM_GITHUB_ADMIN_ORG')." >&2
+    exit 1
+fi
 # gcloud --set-env-vars splits on commas, so pinned ids travel space-separated.
 PRISM_PINNED_REPORTS="${PRISM_PINNED_REPORTS//,/ }"
 
@@ -128,6 +139,7 @@ ALLOW_UNAUTHENTICATED="$ALLOW_UNAUTHENTICATED"
 PRISM_INSTANCE="$PRISM_INSTANCE"
 PRISM_BRAND="$PRISM_BRAND"
 PRISM_PINNED_REPORTS="$PRISM_PINNED_REPORTS"
+PRISM_GITHUB_ADMIN_ORG="$PRISM_GITHUB_ADMIN_ORG"
 EOL
 
 IMAGE_NAME="gcr.io/$PROJECT_ID/$SERVICE_NAME"
@@ -152,7 +164,7 @@ DEPLOY_ARGS=(
   --region $REGION
   --port 8080
   --project $PROJECT_ID
-  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",DEFAULT_PROJECTS="${GIQ_PROJECTS:-$PROJECT_ID}",DEFAULT_BUCKETS="${GCS_BUCKETS:-prism-internal-results}",SITE_NAME="$SITE_NAME",GA_TRACKING_ID="$GA_TRACKING_ID",CONTACT_US_URL="$CONTACT_US_URL",GOOGLE_API_KEY="$GOOGLE_API_KEY",GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID",GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET",PUBLIC_URL="$PUBLIC_URL",PRISM_INSTANCE="$PRISM_INSTANCE",PRISM_BRAND="$PRISM_BRAND",PRISM_PINNED_REPORTS="$PRISM_PINNED_REPORTS"
+  --set-env-vars GOOGLE_CLOUD_PROJECT="$PROJECT_ID",DEFAULT_PROJECTS="${GIQ_PROJECTS:-$PROJECT_ID}",DEFAULT_BUCKETS="${GCS_BUCKETS:-prism-internal-results}",SITE_NAME="$SITE_NAME",GA_TRACKING_ID="$GA_TRACKING_ID",CONTACT_US_URL="$CONTACT_US_URL",GOOGLE_API_KEY="$GOOGLE_API_KEY",GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID",GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET",PUBLIC_URL="$PUBLIC_URL",PRISM_INSTANCE="$PRISM_INSTANCE",PRISM_BRAND="$PRISM_BRAND",PRISM_PINNED_REPORTS="$PRISM_PINNED_REPORTS",PRISM_GITHUB_ADMIN_ORG="$PRISM_GITHUB_ADMIN_ORG"
 )
 
 if [ "$ALLOW_UNAUTHENTICATED" = "false" ]; then

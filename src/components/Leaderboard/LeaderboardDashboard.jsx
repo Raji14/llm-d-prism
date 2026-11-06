@@ -95,11 +95,16 @@ const readInitialState = (navigationParams, publishedEntries) => {
         seedRecipes: includeSamples ? SEED_LEADERBOARD_RECIPES : [],
         publishedResults: publishedEntries,
     });
-    const defaultScope = pickDefaultScope(scopePool, {
-        workload: initialWorkloadHint || 'all',
-        hardware: initialHardware,
-        engine: initialEngine,
-    });
+    // Opened on one result (the Results Store's "See it on the Leaderboard"):
+    // land on its model and workload, so its row sits beside its drawer.
+    const linked = recipeParam && !modelParam && !initialWorkloadHint && !hasQueryModel ? scopePool.find((r) => r.id === recipeParam) : null;
+    const defaultScope = linked?.model_family
+        ? { model: linked.model_family, workload: linked.workload_class || 'all' }
+        : pickDefaultScope(scopePool, {
+              workload: initialWorkloadHint || 'all',
+              hardware: initialHardware,
+              engine: initialEngine,
+          });
 
     return {
         defaultIncludeSamples,

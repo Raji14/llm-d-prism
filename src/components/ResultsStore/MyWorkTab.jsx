@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React from 'react';
-import { Check, CircleAlert, Inbox, Upload } from 'lucide-react';
+import { Check, CircleAlert, Inbox, Trophy, Upload } from 'lucide-react';
 import { Button, EmptyState, Panel, StatusChip, VisibilityChip } from '../ui';
 import { cn } from '../../utils/cn';
 import { ResultVisibilityChip } from './parts';
@@ -59,23 +59,33 @@ function serverSteps(status) {
 // Results saved in this browser: Prism's own checks as they stand now, and
 // whether reviewers can see anything. Only uploaded runs that live on the
 // server reach them, and only if they were sent when it was submitted
-// (`reviewReach`); the result itself can't leave this browser yet.
-function localSteps(curve) {
+// (`reviewReach`); the result itself can't leave this browser yet. An
+// internal request waits for an approver and ends at Official.
+function localSteps(curve, copy) {
     const checks = curveChecks(curve);
     const errors = checks.filter((c) => c.level === 'error').length;
     const warns = checks.filter((c) => c.level === 'warn').length;
     const reached = curve.reviewReach || 0;
+    const checkStep = errors
+        ? { label: `Checks: ${errors} failed`, state: 'warn' }
+        : warns
+          ? { label: `Checks: ${warns} need${warns === 1 ? 's' : ''} attention`, state: 'warn' }
+          : { label: 'Checks passed', state: 'done' };
+    if (copy.publishedStatus === 'official') {
+        return [
+            { label: 'Saved in this browser', state: 'done' },
+            checkStep,
+            { label: 'Waiting for an approver', state: 'now' },
+            { label: copy.publishedLabel, state: 'todo' },
+        ];
+    }
     return [
         { label: 'Saved in this browser', state: 'done' },
-        errors
-            ? { label: `Checks: ${errors} failed`, state: 'warn' }
-            : warns
-              ? { label: `Checks: ${warns} need${warns === 1 ? 's' : ''} attention`, state: 'warn' }
-              : { label: 'Checks passed', state: 'done' },
+        checkStep,
         reached
             ? { label: `Reviewers see its ${reached} uploaded run${reached === 1 ? '' : 's'}`, state: 'now' }
             : { label: 'Reviewers can’t see it yet', state: 'todo' },
-        { label: 'Published', state: 'todo' },
+        { label: copy.publishedLabel, state: 'todo' },
     ];
 }
 
@@ -110,8 +120,27 @@ function Section({ title, count, subtitle, actions, children }) {
 }
 
 // Everything you're curating, apart from browsing: drafts, uploads, what's
-// waiting on a reviewer and what you've published.
-export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor, canPublish, officialBlock, nav, onOpenClassic, onUpload, onSignIn, signInReady = false }) {
+// waiting on an approver or reviewer, and what you've published. The sections
+// are the same on both instances; only the words differ. `runOfId` finds a
+// server submission's run when it's loaded, and `leaderboardOf` where a live
+// result ranks.
+export function MyWorkTab({
+    curves,
+    uploads,
+    serverItems,
+    instance,
+    copy,
+    actor,
+    canPublish,
+    officialBlock,
+    nav,
+    runOfId = () => null,
+    leaderboardOf = () => null,
+    onOpenLeaderboard,
+    onUpload,
+    onSignIn,
+    signInReady = false,
+}) {
     // Results saved before signing in are owned by 'you'; they're still in
     // this browser, so they stay in My Work after sign-in.
     const mine = curves.filter((c) => c.owner === actor || !c.owner || c.owner === 'you');
@@ -124,6 +153,10 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
     const isPublic = instance === 'public';
     const signedIn = typeof actor === 'string' && actor.startsWith('@');
     const uploadsFormSweep = uploads.length >= 2 && formsSweep(uploads);
+    // "1. Submit a run → 2. Curate the result → 3. Submit for review", in this instance's words.
+    const flow = copy.steps.map((step, i) => `${i + 1}. ${step}`).join(' → ');
+    const whoSentBack = copy.reviewer === 'approver' ? 'An approver' : 'A reviewer';
+    const resubmit = copy.resubmitVerb.toLowerCase();
 
     const mapped = serverItems.map((s) => ({ ...s, ui: mapSubmissionState(s.status, { feedback: s.feedback, instance }) })).filter((s) => s.ui);
     const serverDrafts = mapped.filter((s) => s.ui.status === 'draft' && !uploads.some((r) => r.runId === s.runId));
@@ -135,18 +168,19 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
         drafts.length + uploads.length + serverDrafts.length + needsChanges.length + inReview.length + published.length + declined.length + serverChanges.length + serverReview.length + serverPublished.length;
 
     if (!total) {
+        const message = isPublic
+            ? `How it works: ${flow} (GitHub sign-in needed to submit). Drafts, reviews and what you publish show up here.`
+            : officialBlock === 'signin'
+              ? 'Edit a sweep in Browse to start a draft, or upload runs. Sign in to mark results official, or to ask an approver to.'
+              : officialBlock === 'approver'
+                ? `How it works: ${flow}. Drafts, your requests and what’s marked official show up here.`
+                : `How it works: ${flow}. Drafts and what you mark official show up here.`;
         return (
             <div className="rounded-3xl border border-zinc-200 bg-white">
                 <EmptyState
                     icon={<Inbox className="h-8 w-8" />}
                     title="Nothing here yet"
-                    message={
-                        isPublic
-                            ? 'Workflow: 1. Upload runs → 2. Curate result → 3. Submit for review (requires GitHub sign-in). Drafts, reviews and what you publish show up here.'
-                            : officialBlock
-                              ? 'Edit a sweep in Browse to start a draft, or upload runs. Your drafts show up here; an approver marks results official.'
-                              : 'Mark a sweep official in Browse, or upload runs. Drafts and what you publish show up here.'
-                    }
+                    message={message}
                     action={
                         <div className="flex flex-wrap justify-center gap-2">
                             <Button size="xs" variant="secondary" onClick={() => nav.goTab('browse')}>
@@ -163,30 +197,75 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
         );
     }
 
-    const curveRow = (c, extra = {}) => (
-        <WorkRow
-            key={c.id}
-            title={c.name}
-            status={c.status}
-            statusLabel={resultStatusLabel(c.status, copy)}
-            chip={resultAudience(c.status) ? null : <ResultVisibilityChip curve={c} size="xs" />}
-            meta={`v${c.version} · updated ${fmtDay(c.updatedAt)} · ${c.points.filter((p) => p.included).length} points`}
-            action={
-                <Button size="xs" variant={extra.primary ? 'secondary' : 'ghost'} onClick={() => nav.openCurve(c.id)}>
-                    {extra.label || 'Open'}
-                </Button>
-            }
-            {...extra.rowProps}
-        />
-    );
+    // A server submission's run, opened right here once it's loaded.
+    const runAction = (s) => {
+        const run = runOfId(s.runId);
+        return run ? (
+            <Button size="xs" variant="ghost" onClick={() => nav.openRun(run.key)}>
+                View run
+            </Button>
+        ) : null;
+    };
+
+    // `leaderboard` adds the way to a live result's row on the Leaderboard.
+    const curveRow = (c, extra = {}) => {
+        const target = extra.leaderboard && onOpenLeaderboard ? leaderboardOf(c) : null;
+        return (
+            <WorkRow
+                key={c.id}
+                title={c.name}
+                status={c.status}
+                statusLabel={resultStatusLabel(c.status, copy)}
+                chip={resultAudience(c.status) ? null : <ResultVisibilityChip curve={c} size="xs" />}
+                meta={`v${c.version} · updated ${fmtDay(c.updatedAt)} · ${c.points.filter((p) => p.included).length} points`}
+                action={
+                    <>
+                        {target && (
+                            <Button size="xs" variant="ghost" onClick={() => onOpenLeaderboard(target)}>
+                                <Trophy className="h-3.5 w-3.5" aria-hidden="true" /> Leaderboard
+                            </Button>
+                        )}
+                        <Button size="xs" variant={extra.primary ? 'secondary' : 'ghost'} onClick={() => nav.openCurve(c.id)}>
+                            {extra.label || 'Open'}
+                        </Button>
+                    </>
+                }
+                {...extra.rowProps}
+            />
+        );
+    };
+
+    // Who stands behind a live result, in one line: who asked (Internal
+    // Prism), who marked it official or approved it, and when.
+    const lineage = (c) => {
+        const when = c.markedAt ? ` · ${fmtDay(c.markedAt)}` : '';
+        if (c.status === 'official' && c.markedBy) {
+            const asked = c.requestedBy && c.requestedBy !== c.markedBy ? `Requested by ${c.requestedBy} · ` : '';
+            return `${asked}Marked official by ${c.markedBy}${when}`;
+        }
+        return c.reviewedBy ? `Approved by ${c.reviewedBy}${when}` : undefined;
+    };
 
     return (
         <div className="space-y-6">
             {isPublic && !signedIn && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-700">
                     <div>
-                        <span className="font-semibold text-zinc-900">Submission flow:</span> 1. Upload runs → 2. Curate result (prune overloaded stages, check labels) → 3. Submit for review.{' '}
-                        <span className="text-zinc-500">Sign in with GitHub to submit runs to the public review queue.</span>
+                        <span className="font-semibold text-zinc-900">Submission flow:</span> 1. {copy.steps[0]} → 2. {copy.steps[1]} (prune overloaded stages, check labels) → 3.{' '}
+                        {copy.steps[2]}. <span className="text-zinc-500">Sign in with GitHub to submit runs to the public review queue.</span>
+                    </div>
+                    {onSignIn && (
+                        <Button size="xs" variant="secondary" disabled={!signInReady} onClick={onSignIn}>
+                            Sign in with GitHub
+                        </Button>
+                    )}
+                </div>
+            )}
+            {!isPublic && officialBlock === 'signin' && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-700">
+                    <div>
+                        <span className="font-semibold text-zinc-900">How it works:</span> 1. {copy.steps[0]} → 2. {copy.steps[1]} (prune overloaded stages, check labels) → 3. Mark
+                        it official, or ask an approver to. <span className="text-zinc-500">Sign in so Prism can record who asked and who approved.</span>
                     </div>
                     {onSignIn && (
                         <Button size="xs" variant="secondary" disabled={!signInReady} onClick={onSignIn}>
@@ -196,36 +275,37 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                 </div>
             )}
             {/* First: the only section that's waiting on you. */}
-            {isPublic && (
-                <Section
-                    title="Needs changes"
-                    count={needsChanges.length + declined.length + serverChanges.length}
-                    subtitle={
-                        declined.length
-                            ? 'A reviewer sent these back. Fix and submit again; reopen a declined result as a draft to change it.'
-                            : 'A reviewer sent these back. Fix and submit again.'
-                    }
-                >
-                    {[...needsChanges, ...declined].map((c) =>
-                        curveRow(c, { label: c.status === 'declined' ? 'Open' : 'Fix', primary: true, rowProps: { detail: c.feedback ? `“${c.feedback}”` : undefined } })
-                    )}
-                    {serverChanges.map((s) => (
-                        <WorkRow
-                            key={s.runId}
-                            title={`${s.model} · ${s.hardware}`}
-                            status={s.ui.status}
-                            visibility={s.ui.visibility}
-                            detail={s.feedback ? `“${s.feedback}”` : undefined}
-                            meta={`Submitted ${s.submittedAt}`}
-                            action={
-                                <Button size="xs" variant="ghost" onClick={onOpenClassic}>
-                                    Open in classic view
+            <Section
+                title="Needs changes"
+                count={needsChanges.length + declined.length + serverChanges.length}
+                subtitle={
+                    declined.length
+                        ? `${whoSentBack} sent these back. Fix and ${resubmit}; reopen a declined result as a draft to change it.`
+                        : `${whoSentBack} sent these back. Fix and ${resubmit}.`
+                }
+            >
+                {[...needsChanges, ...declined].map((c) =>
+                    curveRow(c, { label: c.status === 'declined' ? 'Open' : 'Fix', primary: true, rowProps: { detail: c.feedback ? `“${c.feedback}”` : undefined } })
+                )}
+                {serverChanges.map((s) => (
+                    <WorkRow
+                        key={s.runId}
+                        title={`${s.model} · ${s.hardware}`}
+                        status={s.ui.status}
+                        visibility={s.ui.visibility}
+                        detail={s.feedback ? `“${s.feedback}”` : undefined}
+                        meta={`Submitted ${s.submittedAt} · upload a fixed run to try again`}
+                        action={
+                            <>
+                                {runAction(s)}
+                                <Button size="xs" variant="ghost" onClick={onUpload}>
+                                    {copy.uploadLabel}
                                 </Button>
-                            }
-                        />
-                    ))}
-                </Section>
-            )}
+                            </>
+                        }
+                    />
+                ))}
+            </Section>
 
             <Section title="Drafts" count={drafts.length} subtitle="Only you can see a draft.">
                 {/* The heading says Draft and the subtitle says who sees it, so rows only flag a draft someone shared. */}
@@ -238,7 +318,9 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                 title="Uploaded runs"
                 count={uploads.length + serverDrafts.length}
                 subtitle={`Runs you uploaded that aren’t in a result yet. ${
-                    officialBlock ? 'Edit one to prune points or fix labels; an approver marks it official.' : `${copy.publishVerb} in one step, or edit first to prune points or fix labels.`
+                    officialBlock === 'signin'
+                        ? 'Edit one to prune points or fix labels; sign in to mark it official, or to ask an approver to.'
+                        : `${copy.publishVerb} in one step, or edit first to prune points or fix labels.`
                 }`}
                 actions={
                     uploadsFormSweep ? (
@@ -276,45 +358,37 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                     );
                 })}
                 {serverDrafts.map((s) => (
-                    <WorkRow
-                        key={s.runId}
-                        title={`${s.model} · ${s.hardware}`}
-                        visibility={s.ui.visibility}
-                        meta={`Uploaded ${s.submittedAt}`}
-                        action={
-                            <Button size="xs" variant="ghost" onClick={onOpenClassic}>
-                                Open in classic view
-                            </Button>
-                        }
-                    />
+                    <WorkRow key={s.runId} title={`${s.model} · ${s.hardware}`} visibility={s.ui.visibility} meta={`Uploaded ${s.submittedAt}`} action={runAction(s)} />
                 ))}
             </Section>
 
-            {isPublic && (
-                <Section
-                    title="In review"
-                    count={inReview.length + serverReview.length}
-                    subtitle={
-                        inReview.length
-                            ? 'Results are saved in this browser for now, so reviewers only see runs you uploaded to the server.'
-                            : 'Waiting for a reviewer. Nothing to do.'
-                    }
-                >
-                    {inReview.map((c) =>
-                        curveRow(c, {
-                            rowProps: {
-                                detail: `Saved for review ${fmtDay(c.submittedAt)} as ${c.attribution || actor}`,
-                                children: <Timeline steps={localSteps(c)} />,
-                            },
-                        })
-                    )}
-                    {serverReview.map((s) => (
-                        <WorkRow key={s.runId} title={`${s.model} · ${s.hardware}`} status="in_review" visibility="reviewers" detail={s.ui.detail} meta={`Submitted ${s.submittedAt}`}>
-                            <Timeline steps={serverSteps(s.status)} />
-                        </WorkRow>
-                    ))}
-                </Section>
-            )}
+            <Section
+                title="In review"
+                count={inReview.length + serverReview.length}
+                subtitle={
+                    !isPublic
+                        ? inReview.length
+                            ? 'Waiting for an approver. Requests are saved in this browser until results are stored on the server.'
+                            : 'Waiting for an approver. Nothing to do.'
+                        : inReview.length
+                          ? 'Results are saved in this browser for now, so reviewers only see runs you uploaded to the server.'
+                          : 'Waiting for a reviewer. Nothing to do.'
+                }
+            >
+                {inReview.map((c) =>
+                    curveRow(c, {
+                        rowProps: {
+                            detail: isPublic ? `Saved for review ${fmtDay(c.submittedAt)} as ${c.attribution || actor}` : `Requested ${fmtDay(c.submittedAt)} by ${c.requestedBy || actor}`,
+                            children: <Timeline steps={localSteps(c, copy)} />,
+                        },
+                    })
+                )}
+                {serverReview.map((s) => (
+                    <WorkRow key={s.runId} title={`${s.model} · ${s.hardware}`} status="in_review" visibility="reviewers" detail={s.ui.detail} meta={`Submitted ${s.submittedAt}`}>
+                        <Timeline steps={serverSteps(s.status)} />
+                    </WorkRow>
+                ))}
+            </Section>
 
             <Section
                 title={copy.mineSection}
@@ -322,12 +396,8 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                 subtitle={published.length ? 'Editing one opens a new version.' : isPublic ? 'Live for everyone.' : 'Everyone on this instance can see these.'}
             >
                 {published.map((c) =>
-                    curveRow(c, {
-                        rowProps: {
-                            // The heading and chip already say Official / Published: say who and when.
-                            detail: c.markedBy ? `Marked by ${c.markedBy} · ${fmtDay(c.markedAt)}` : c.reviewedBy ? `Approved by ${c.reviewedBy} · ${fmtDay(c.markedAt)}` : undefined,
-                        },
-                    })
+                    // The heading and chip already say Official / Published: say who and when.
+                    curveRow(c, { leaderboard: true, rowProps: { detail: lineage(c) } })
                 )}
                 {serverPublished.map((s) => (
                     <WorkRow
@@ -337,6 +407,7 @@ export function MyWorkTab({ curves, uploads, serverItems, instance, copy, actor,
                         statusLabel={copy.publishedLabel}
                         visibility={s.ui.visibility}
                         meta={`Submitted ${s.submittedAt}${s.ui.featured ? ' · Featured' : ''}`}
+                        action={runAction(s)}
                     />
                 ))}
             </Section>

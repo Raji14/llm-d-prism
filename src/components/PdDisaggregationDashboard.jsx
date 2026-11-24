@@ -47,6 +47,8 @@ import {
 } from './ui';
 import { cn } from '../utils/cn';
 import { FALLBACK_PD_DATA } from '../utils/wellLitPathData.js';
+import { PD_PROOF, computePdProof } from '../utils/wellLitProofs.js';
+import { renderWellLitProofOutcome } from '../utils/dashboardHelpers';
 
 const THROUGHPUT_LABELS = {
     output: 'Output Tokens/sec',
@@ -109,9 +111,11 @@ const LatencyTooltip = ({ active, payload }) => {
     );
 };
 
-export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobileNav }) {
+export default function PdDisaggregationDashboard({ onNavigateBack, onNavigate, onToggleMobileNav }) {
     const [runs, setRuns] = useState(null);
     const [loadFailed, setLoadFailed] = useState(false);
+    // Home's rule (best split vs. an even split) applied to the live sweep.
+    const [liveProof, setLiveProof] = useState(null);
 
     const [thruMetric, setThruMetric] = useState('total'); // 'output' | 'input' | 'total'
     const [thruPerChip, setThruPerChip] = useState(false);
@@ -131,8 +135,9 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
             })
             .then((data) => {
                 if (active) {
-                    const valid = Array.isArray(data) && data.length > 0 ? data : FALLBACK_PD_DATA;
-                    setRuns(valid);
+                    const live = Array.isArray(data) && data.length > 0;
+                    setRuns(live ? data : FALLBACK_PD_DATA);
+                    setLiveProof(live ? computePdProof(data) : null);
                 }
             })
             .catch(() => {
@@ -343,19 +348,20 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
         <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col items-center w-full font-sans relative overflow-hidden">
             <WellLitHeader
                 kicker="Well-lit path"
-                pageTitle="Prefill/Decode Disaggregation"
+                pageTitle="Prefill/decode disaggregation"
                 subtitle="Sweeping prefill-to-decode replica ratios at a fixed 8-replica budget on long-context agentic workloads."
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
                 isPrototype={true}
             />
 
-            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6">
+            {/* The app shell's <main> wraps every view, so this is a plain container. */}
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6">
                 {/* Prototype Banner Alert */}
                 <div className="surface-light flex items-center gap-3 px-4 py-3 bg-amber-50/70 border border-amber-200/90 rounded-2xl text-amber-900 text-xs">
                     <span className="flex h-2 w-2 rounded-full bg-amber-500 shrink-0" />
                     <span>
-                        <strong className="font-semibold">Preview Notice:</strong> Prefill/Decode Disaggregation is currently in preview. Benchmark sweeps are actively expanding beyond the 2:6 ratio.
+                        <strong className="font-semibold">Preview Notice:</strong> Prefill/decode disaggregation is currently in preview. Benchmark sweeps are actively expanding beyond the 2:6 ratio.
                     </span>
                 </div>
 
@@ -476,12 +482,12 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
                             <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                                 <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex items-center justify-between flex-wrap gap-2">
                                     <div className="flex flex-wrap items-center gap-3">
-                                        <span className="kicker text-accent-600">
+                                        <h2 className="kicker text-accent-600">
                                             Benchmark scenario & outcomes
-                                        </span>
+                                        </h2>
                                         <span className="text-zinc-300" aria-hidden="true">|</span>
                                         <span className="text-xs text-zinc-700">
-                                            inference-perf · Prefill/Decode Disaggregation (8 TPU v7x replicas)
+                                            inference-perf · Prefill/decode disaggregation (8 TPU v7x replicas)
                                         </span>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -549,26 +555,18 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
                                         </div>
                                     </div>
 
-                                    {/* Right: Primary Outcomes Strip */}
-                                    <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
-                                        <div>
-                                            <div className="text-micro font-medium text-zinc-600 mb-1">Peak throughput</div>
-                                            <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
-                                                {fmtTok(outcomes.bestTotal.throughput.total)}
-                                            </div>
-                                            <div className="text-micro font-medium text-zinc-600 mt-1">
-                                                tok/s @ P:D {outcomes.bestTotal.ratio}
-                                            </div>
-                                        </div>
-                                        <div className="border-l border-zinc-200 pl-4">
-                                            <div className="text-micro font-medium text-zinc-600 mb-1">Best TTFT</div>
-                                            <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
-                                                {fmtSec(outcomes.bestMeanTtft.ttft.mean)}s
-                                            </div>
-                                            <div className="text-micro font-medium text-zinc-600 mt-1">
-                                                Mean @ P:D {outcomes.bestMeanTtft.ratio}
-                                            </div>
-                                        </div>
+                                    {/* Headline: the same proof as Home's card, then the live sweep under its own conditions */}
+                                    <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50">
+                                        {renderWellLitProofOutcome({
+                                            proof: PD_PROOF,
+                                            onNavigate,
+                                            live: liveProof && {
+                                                source: 'Live sweep on this page',
+                                                metric: liveProof.metric,
+                                                claim: liveProof.claim,
+                                                context: `${liveProof.context} · peak ${fmtTok(outcomes.bestTotal.throughput.total)} tok/s`,
+                                            },
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -851,9 +849,9 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
                                         <span className="kicker block text-accent-600 mb-0.5">
                                             Stepwise breakdown
                                         </span>
-                                        <h3 className="font-sans text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
+                                        <h2 className="font-sans text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
                                             Summary metrics comparison
-                                        </h3>
+                                        </h2>
                                         <p className="text-xs text-zinc-700 mt-0.5">
                                             TTFT/E2E in seconds; ITL in ms/token; throughput in tokens/s across all evaluated P:D replica splits.
                                         </p>
@@ -920,7 +918,7 @@ export default function PdDisaggregationDashboard({ onNavigateBack, onToggleMobi
                         )}
                     </>
                 )}
-            </main>
+            </div>
         </div>
     );
 }

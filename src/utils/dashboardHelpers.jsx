@@ -15,6 +15,58 @@
 import React from 'react';
 import { Zap, Cloud, FileJson, Target, ExternalLink, GitCompare } from 'lucide-react';
 import { parseReportV02, stageToEntry } from './benchmarkReportV02Parser';
+import { METHODOLOGY } from '../components/layout/navigation.js';
+
+// Where Home's proof cards point too: the methodology section with every sweep.
+const PROOFS_ANCHOR = 'paths';
+
+/**
+ * A well-lit path's headline result. `proof` comes from src/utils/wellLitProofs.js,
+ * the object Home's proof card renders, so the page and Home state the same
+ * number, percentile, unit and conditions. `live` (optional) is the same rule
+ * applied to the page's own live data, shown under its own conditions:
+ * { metric, upTo, claim, context, source }. A plain render helper (no hooks),
+ * so this module keeps exporting no components (fast refresh).
+ */
+export function renderWellLitProofOutcome({ proof, live, onNavigate }) {
+    const href = `?view=${METHODOLOGY.view}#${PROOFS_ANCHOR}`;
+    const go = (e) => {
+        if (!onNavigate || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onNavigate(METHODOLOGY.view, { hash: PROOFS_ANCHOR });
+    };
+    return (
+        <div className="flex flex-col gap-2.5">
+            {proof ? (
+                <div>
+                    <div className="text-micro font-medium text-zinc-600 mb-1">Guide benchmark</div>
+                    <div className="flex items-baseline gap-1.5">
+                        {proof.upTo && <span className="text-xs text-zinc-600">up to</span>}
+                        <span className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">{proof.metric}</span>
+                    </div>
+                    <p className="mt-1 text-xs font-medium text-zinc-800">{proof.claim}</p>
+                    <p className="mt-0.5 text-micro leading-relaxed text-zinc-600">{proof.context}</p>
+                </div>
+            ) : (
+                <p className="text-micro text-zinc-600">The guide&apos;s data doesn&apos;t support a headline number yet.</p>
+            )}
+            {live && (
+                <div className="border-t border-zinc-200 pt-2">
+                    <div className="text-micro font-medium text-zinc-600 mb-0.5">{live.source}</div>
+                    <div className="flex items-baseline gap-1.5">
+                        {live.upTo && <span className="text-micro text-zinc-600">up to</span>}
+                        <span className="text-base font-semibold text-zinc-900 tabular-nums">{live.metric}</span>
+                        <span className="text-micro text-zinc-700">{live.claim}</span>
+                    </div>
+                    <p className="text-micro leading-relaxed text-zinc-600">{live.context}</p>
+                </div>
+            )}
+            <a href={href} onClick={go} className="text-micro font-semibold text-accent-600 hover:text-accent-700 hover:underline w-fit">
+                {METHODOLOGY.label} →
+            </a>
+        </div>
+    );
+}
 
 export const USE_CASE_META = {
     "Advanced Customer Support": "(~9k/256)",

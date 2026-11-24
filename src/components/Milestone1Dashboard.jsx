@@ -6,10 +6,18 @@ import {
 import IntelligentRoutingChart, { SCENARIO_COLORS, SCENARIO_SHAPES } from './IntelligentRoutingChart';
 import { Zap, Download, Copy, Check, Info, ExternalLink, Settings, ShieldAlert, Cpu, Cloud, Server, Bell, Slack, ChevronDown, ChevronUp, Eye, Maximize2, ArrowDown, X, BarChart2, Table } from 'lucide-react';
 import { scanInferenceScheduling } from '../utils/gcsScanner';
-import { getLocalDashboardRuns } from '../utils/dashboardHelpers';
+import { getLocalDashboardRuns, renderWellLitProofOutcome } from '../utils/dashboardHelpers';
 import { WellLitHeader, Badge, Button, ChartTooltip, ChartTooltipRow, SeriesMarkerSvg, SeriesLineSwatch, Input, Label as FieldLabel, Modal, Panel, Select, ToggleGroup, GoogleMark, CHART_STATUS, getChartTheme } from './ui';
 import { cn } from '../utils/cn';
 import { RAW_GEMMA_DATA } from '../utils/wellLitPathData.js';
+import { ROUTING_PROOF, bestPoint, computeRoutingProof, routingPointNear, routingRowsFromReports } from '../utils/wellLitProofs.js';
+
+// The which-Prism preview params (dev server only, src/config/site.js) that a
+// share link keeps, so a preview link opens the same Prism.
+const PREVIEW_PARAMS = ['instance', 'brand', 'site', 'pinned'];
+
+// The load Home's routing headline was measured at (its best point).
+const GUIDE_QPS = bestPoint(ROUTING_PROOF)?.qps ?? null;
 
 const CustomTputTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length >= 2) {
@@ -155,11 +163,16 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
     const [loading, setLoading] = useState(true);
     const [showFilters, setShowFilters] = useState(false);
     const [workloadConfig, setWorkloadConfig] = useState(null);
+    // Home's rule (p99 TTFT vs. a Kubernetes Service) on the live GCS sweep.
+    // Local uploads are left out: their percentiles are estimated from means.
+    const [liveProof, setLiveProof] = useState(null);
+    const liveAtGuideLoad = routingPointNear(liveProof, GUIDE_QPS);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             const reports = await scanInferenceScheduling();
+            setLiveProof(computeRoutingProof(routingRowsFromReports(reports)));
             
             // Get local runs targeting intelligent-routing
             const localRuns = dashboardData?.brv02Runs 
@@ -248,19 +261,11 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
     const [targetQps, setTargetQps] = useState(5);
 
     const [provider, setProvider] = useState('GCP');
-    const [hardware] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('hw') || '4x H100 80GB';
-    });
     const [showFullProfile, setShowFullProfile] = useState(false);
 
     const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
     const [alertSaved, setAlertSaved] = useState(false);
 
-    const [latencyScale, setLatencyScale] = useState(() => {
-        const params = new URLSearchParams(window.location.search);
-        return params.get('scale') || 'linear';
-    });
     const [ttftHistory, setTtftHistory] = useState('snapshot');
     const [itlScale, setItlScale] = useState('linear');
     const [itlHistory, setItlHistory] = useState('snapshot');
@@ -537,16 +542,18 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
                 getShareUrl={() => {
-                    const params = new URLSearchParams();
-                    params.set('share', '1');
-                    params.set('view', 'intelligent-routing');
-                    params.set('hw', hardware);
-                    params.set('scale', latencyScale);
+                    // The route is inference-scheduling ("intelligent-routing" never was one).
+                    const current = new URLSearchParams(window.location.search);
+                    const params = new URLSearchParams({ view: 'inference-scheduling' });
+                    PREVIEW_PARAMS.forEach((k) => {
+                        if (current.get(k) != null) params.set(k, current.get(k));
+                    });
                     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
                 }}
             />
 
-            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6 z-10 relative">
+            {/* The app shell's <main> wraps every view, so this is a plain container. */}
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6 z-10 relative">
                 {/* Architectural Overview Card */}
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                     <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
@@ -642,9 +649,9 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                     <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-3">
-                            <span className="kicker text-accent-600">
+                            <h2 className="kicker text-accent-600">
                                 Benchmark scenario & outcomes
-                            </span>
+                            </h2>
                             <span className="text-zinc-300" aria-hidden="true">|</span>
                             <span className="text-xs text-zinc-700">
                                 inference-perf · Interactive Chat
@@ -708,22 +715,18 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                             </div>
                         </div>
 
-                        {/* Compact Primary Outcomes Strip */}
-                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
-                            <div>
-                                <div className="text-micro font-medium text-zinc-600 mb-1">Latency reduction</div>
-                                <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
-                                    -41%
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">Tail TTFT (P90)</div>
-                            </div>
-                            <div className="border-l border-zinc-200 pl-4">
-                                <div className="text-micro font-medium text-zinc-600 mb-1">Peak throughput</div>
-                                <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
-                                    22.2k
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">tok / sec</div>
-                            </div>
+                        {/* Headline: the same proof as Home's card, then the live sweep under its own conditions */}
+                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50">
+                            {renderWellLitProofOutcome({
+                                proof: ROUTING_PROOF,
+                                onNavigate,
+                                live: liveAtGuideLoad && {
+                                    source: 'Live sweep on this page',
+                                    metric: `${(liveAtGuideLoad.ratio >= 1 ? liveAtGuideLoad.ratio : 1 / liveAtGuideLoad.ratio).toFixed(1)}×`,
+                                    claim: liveAtGuideLoad.ratio >= 1 ? 'lower p99 TTFT' : 'higher p99 TTFT',
+                                    context: `p99 time to first token at ${liveAtGuideLoad.qps} QPS (the guide's ${GUIDE_QPS} QPS point), vs. a standard Kubernetes Service`,
+                                },
+                            })}
                         </div>
                     </div>
                 </div>
@@ -740,7 +743,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                             <span className="kicker block text-accent-600 mb-0.5">
                                 Stepwise breakdown
                             </span>
-                            <h3 className="text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">Summary metrics comparison</h3>
+                            <h2 className="text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">Summary metrics comparison</h2>
                             <span className="text-xs text-zinc-700">Comparing Standard Kubernetes against Approx. prefix aware routing across QPS levels.</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2.5">
@@ -868,7 +871,7 @@ const Milestone1Dashboard = ({ onNavigateBack, onNavigate, onToggleMobileNav, da
                         </table>
                     </div>
                 </div>
-            </main>
+            </div>
 
             {/* Reproduction Modal Workflow */}
             <Modal

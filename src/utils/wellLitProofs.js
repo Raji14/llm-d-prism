@@ -73,6 +73,41 @@ export function computeRoutingProof(rows = RAW_GEMMA_DATA) {
     };
 }
 
+// Live inference-scheduling reports (gcsScanner's scanInferenceScheduling)
+// -> the rows computeRoutingProof() reads. The Service and the gateway runs
+// share load stages, so pair them by stage; their achieved rates differ a
+// little, so the row's QPS is their mean.
+export function routingRowsFromReports(reports = []) {
+    const byStage = new Map();
+    (reports || []).forEach((r) => {
+        if (!(r?.stage > 0) || !(r.ttft?.p99 > 0)) return;
+        const side = r.scenario === 'k8s-service-baseline' ? 'baseline' : 'optimal';
+        byStage.set(r.stage, { ...byStage.get(r.stage), [side]: r });
+    });
+    return [...byStage.values()]
+        .filter((s) => s.baseline && s.optimal)
+        .map((s) => ({
+            qps: Math.round(((s.baseline.qps + s.optimal.qps) / 2) * 10) / 10,
+            baseline_ttft_p99: s.baseline.ttft.p99,
+            optimal_ttft_p99: s.optimal.ttft.p99,
+        }))
+        .sort((a, b) => a.qps - b.qps);
+}
+
+// The comparison measured closest to a given load. Pages quote their live
+// sweep at the headline's own condition, not at whichever rate the Service
+// saturated (where the ratio explodes).
+export function routingPointNear(proof, qps) {
+    if (!proof?.points?.length || !(qps > 0)) return null;
+    return proof.points.reduce((b, p) => (Math.abs(p.qps - qps) < Math.abs(b.qps - qps) ? p : b));
+}
+
+// The point a proof's headline ratio comes from (its best comparison).
+export function bestPoint(proof) {
+    if (!proof?.points?.length) return null;
+    return proof.points.reduce((b, p) => (p.ratio > b.ratio ? p : b));
+}
+
 const OFFLOAD_TIER = { cpu: 'CPU', 'cpu-lustre': 'CPU + Lustre' };
 
 // Prefix cache offloading: for each context length, the best offload tier's

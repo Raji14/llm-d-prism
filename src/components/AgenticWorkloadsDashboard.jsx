@@ -35,8 +35,9 @@ import {
 } from './ui';
 import { cn } from '../utils/cn';
 import { scanAgenticWorkloads } from '../utils/gcsScanner';
-import { getLocalDashboardRuns } from '../utils/dashboardHelpers';
+import { getLocalDashboardRuns, renderWellLitProofOutcome } from '../utils/dashboardHelpers';
 import { FALLBACK_AGENTIC_DATA } from '../utils/wellLitPathData.js';
+import { AGENTIC_PROOF, computeAgenticProof } from '../utils/wellLitProofs.js';
 
 const SCENARIOS = [
     {
@@ -494,7 +495,7 @@ function AgenticTelemetryChart({
     );
 }
 
-export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobileNav, dashboardData }) {
+export default function AgenticWorkloadsDashboard({ onNavigateBack, onNavigate, onToggleMobileNav, dashboardData }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [activeRecipeTab, setActiveRecipeTab] = useState(0);
     const [copiedStates, setCopiedStates] = useState({});
@@ -507,12 +508,15 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    // Home's rule applied to the live GCS reports (null when they don't support it).
+    const [liveProof, setLiveProof] = useState(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
                 setLoading(true);
                 const reports = await scanAgenticWorkloads();
+                setLiveProof(reports.length ? computeAgenticProof(reports) : null);
 
                 // Get local runs targeting agentic-serving
                 const localRuns = dashboardData?.brv02Runs
@@ -564,26 +568,6 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
             setCopiedStates((prev) => ({ ...prev, [key]: false }));
         }, 2500);
     };
-
-    const outcomes = useMemo(() => {
-        if (!data.length || selectedConcurrency === null) return null;
-        const refData = data.find((d) => d.scenarioId === 0 && d.concurrency === selectedConcurrency);
-        if (!refData) return null;
-
-        const combinedData = data.find((d) => d.scenarioId === 2 && d.concurrency === selectedConcurrency);
-        if (!combinedData) return null;
-
-        const tputGain = ((combinedData.throughput.total - refData.throughput.total) / refData.throughput.total) * 100;
-        const ttftRef = refData.ttft.p50;
-        const ttftOpt = combinedData.ttft.p50;
-        const latencyReduction = ttftRef > 0 ? ((ttftRef - ttftOpt) / ttftRef) * 100 : 0;
-
-        return {
-            throughput: `${tputGain > 0 ? '+' : ''}${tputGain.toFixed(1)}%`,
-            latency: `${latencyReduction > 0 ? '-' : '+'}${Math.abs(latencyReduction).toFixed(1)}%`,
-            concurrency: selectedConcurrency,
-        };
-    }, [data, selectedConcurrency]);
 
     const tableRows = useMemo(() => {
         const pKey = selectedPercentile.toLowerCase();
@@ -677,7 +661,8 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
                 onToggleMobileNav={onToggleMobileNav}
             />
 
-            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6 z-10 relative">
+            {/* The app shell's <main> wraps every view, so this is a plain container. */}
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6 z-10 relative">
 
                 {/* Architectural Overview Card (Matches Intelligent Routing 3-column layout) */}
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
@@ -793,12 +778,12 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                     <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-3">
-                            <span className="kicker text-accent-600">
+                            <h2 className="kicker text-accent-600">
                                 Benchmark scenario & outcomes
-                            </span>
+                            </h2>
                             <span className="text-zinc-300" aria-hidden="true">|</span>
                             <span className="text-xs text-zinc-700">
-                                inference-perf · Agentic Code Generation ({outcomes?.concurrency ? `Concurrency ${outcomes.concurrency}` : '60 concurrent sessions'})
+                                inference-perf · Agentic Code Generation ({selectedConcurrency != null ? `Concurrency ${selectedConcurrency}` : '60 concurrent sessions'})
                             </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -871,26 +856,18 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
                             </div>
                         </div>
 
-                        {/* Right: Primary Outcomes Strip */}
-                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
-                            <div>
-                                <div className="text-micro font-medium text-zinc-600 mb-1">Throughput gain</div>
-                                <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
-                                    {outcomes?.throughput || '+94.3%'}
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">
-                                    Total tok/s gain
-                                </div>
-                            </div>
-                            <div className="border-l border-zinc-200 pl-4">
-                                <div className="text-micro font-medium text-zinc-600 mb-1">TTFT reduction</div>
-                                <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
-                                    {outcomes?.latency || '-63.9%'}
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">
-                                    P50 latency reduction
-                                </div>
-                            </div>
+                        {/* Headline: the same proof as Home's card, then the live reports under their own conditions */}
+                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50">
+                            {renderWellLitProofOutcome({
+                                proof: AGENTIC_PROOF,
+                                onNavigate,
+                                live: liveProof && {
+                                    source: 'Live reports on this page',
+                                    metric: liveProof.metric,
+                                    claim: 'total throughput',
+                                    context: liveProof.context,
+                                },
+                            })}
                         </div>
                     </div>
                 </div>
@@ -922,9 +899,9 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
                             <span className="kicker block text-accent-600 mb-0.5">
                                 Stepwise breakdown
                             </span>
-                            <h3 className="text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
+                            <h2 className="text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
                                 Summary metrics comparison
-                            </h3>
+                            </h2>
                             <span className="text-xs text-zinc-700">
                                 Comparing K8s Service (Reference), llm-d Routing, and Combined Optimizations across concurrency levels.
                             </span>
@@ -1065,7 +1042,7 @@ export default function AgenticWorkloadsDashboard({ onNavigateBack, onToggleMobi
                         </table>
                     </div>
                 </div>
-            </main>
+            </div>
 
             <Modal
                 isOpen={isModalOpen}

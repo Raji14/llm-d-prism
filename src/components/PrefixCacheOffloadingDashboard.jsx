@@ -48,6 +48,10 @@ import {
 } from './ui';
 import { cn } from '../utils/cn';
 import { FALLBACK_PREFIX_CACHE_DATA } from '../utils/wellLitPathData.js';
+import { PREFIX_CACHE_PROOF, computePrefixCacheProof } from '../utils/wellLitProofs.js';
+import { renderWellLitProofOutcome } from '../utils/dashboardHelpers';
+
+const CONTEXT_SIZES = ['30k', '50k', '70k'];
 
 export const TIER_COLORS = {
     baseline: seriesColor(2), // Amber   — Baseline (HBM only)
@@ -263,11 +267,14 @@ function PrefixCacheTelemetryChart({
         );
     };
 
+    const sizes = CONTEXT_SIZES.filter((s) => (fetchedData || []).some((r) => r.model === selectedModel && r.workloadSize === s));
+    const sizeLabel = sizes.length > 1 ? `${sizes[0]}–${sizes[sizes.length - 1]}` : sizes[0] || 'no';
+
     return (
         <ChartContainer
             kicker="Tiered cache telemetry"
             title={`${yTitleLabels[zoomYAxis] || zoomYAxis} vs. ${xTitleLabels[zoomXAxis] || zoomXAxis} (${zoomLogScale ? 'Log' : 'Linear'})`}
-            subtitle="Comparing sustained token throughput and tail latency across HBM-only, host CPU RAM, and multi-connector CPU + Lustre storage tiers (30k–70k shared prefix)."
+            subtitle={`Comparing sustained token throughput and tail latency across HBM-only, host CPU RAM, and multi-connector CPU + Lustre storage tiers (${sizeLabel} shared prefix).${sizes.length === 1 ? ' The reports cover one context size, so each tier is a single point.' : ''}`}
             metaPills={
                 <>
                     <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 font-sans text-micro font-medium text-zinc-700">
@@ -443,11 +450,13 @@ function PrefixCacheTelemetryChart({
     );
 }
 
-export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggleMobileNav }) {
+export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onNavigate, onToggleMobileNav }) {
     const [workloadSize, setWorkloadSize] = useState('50k');
     const [selectedModel] = useState('qwen3_32b');
     const [fetchedData, setFetchedData] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    // Home's rule applied to the live reports (null when they can't support it).
+    const [liveProof, setLiveProof] = useState(null);
 
     // Table filters matching Milestone1Dashboard
     const [tableMetricMode, setTableMetricMode] = useState('ttft');
@@ -465,7 +474,12 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                     const filtered = (Array.isArray(data) ? data : []).filter(
                         (r) => r.model !== 'llama_3_3_70b' && r.tech !== 'lm-cache'
                     );
-                    setFetchedData(filtered.length > 0 ? filtered : FALLBACK_PREFIX_CACHE_DATA);
+                    const rows = filtered.length > 0 ? filtered : FALLBACK_PREFIX_CACHE_DATA;
+                    setFetchedData(rows);
+                    setLiveProof(filtered.length > 0 ? computePrefixCacheProof(filtered) : null);
+                    // Focus the largest context the data has (the live set can be 30k only).
+                    const sizes = CONTEXT_SIZES.filter((s) => rows.some((r) => r.model === 'qwen3_32b' && r.workloadSize === s));
+                    if (sizes.length && !sizes.includes('50k')) setWorkloadSize(sizes[sizes.length - 1]);
                     setIsLoading(false);
                 }
             })
@@ -486,50 +500,11 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
         cpuLustre: true,
     });
 
-    const derivedOutcomesMap = useMemo(() => {
-        if (!fetchedData || fetchedData.length === 0) return {};
-
-        const sizes = ['30k', '50k', '70k'];
-        const map = {};
-
-        sizes.forEach((size) => {
-            const sizeRuns = fetchedData.filter(
-                (r) => r.model === selectedModel && r.workloadSize === size
-            );
-            if (sizeRuns.length === 0) return;
-
-            const baseline = sizeRuns.find((r) => r.tech === 'pure-vllm' && r.setup === 'hbm');
-            const fsCpu = sizeRuns.find((r) => r.tech === 'llm-d-fs' && r.setup === 'cpu');
-            const fsLustre = sizeRuns.find(
-                (r) => r.tech === 'llm-d-fs' && r.setup === 'cpu-lustre'
-            );
-
-            const getPct = (run, refRun) => {
-                if (!run || !refRun) return 'N/A';
-                const pct = ((run.throughput - refRun.throughput) / refRun.throughput) * 100;
-                return `${pct >= 0 ? '+' : ''}${Math.round(pct)}%`;
-            };
-
-            const getLatencyPct = (run, refRun) => {
-                if (!run || !refRun) return 'N/A';
-                const pct = ((run.ttft.p50 - refRun.ttft.p50) / refRun.ttft.p50) * 100;
-                return `${pct <= 0 ? '' : '+'}${Math.round(pct)}%`;
-            };
-
-            map[size] = {
-                cpu: {
-                    throughput: getPct(fsCpu, baseline),
-                    latency: getLatencyPct(fsCpu, baseline),
-                },
-                ssd: {
-                    throughput: getPct(fsLustre, baseline),
-                    latency: getLatencyPct(fsLustre, baseline),
-                },
-            };
-        });
-
-        return map;
-    }, [fetchedData, selectedModel]);
+    // Context sizes this model has data for; the toggle and table offer only these.
+    const contextSizes = useMemo(
+        () => CONTEXT_SIZES.filter((s) => (fetchedData || []).some((r) => r.model === selectedModel && r.workloadSize === s)),
+        [fetchedData, selectedModel]
+    );
 
     const activeConfig = useMemo(() => {
         if (!fetchedData || fetchedData.length === 0) {
@@ -551,10 +526,9 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
     }, [fetchedData, selectedModel, workloadSize]);
 
     const tableRows = useMemo(() => {
-        const sizes = ['30k', '50k', '70k'];
         const pField = selectedPercentile.toLowerCase();
 
-        return sizes.map((size) => {
+        return contextSizes.map((size) => {
             const sizeRuns = (fetchedData || []).filter(
                 (r) => r.model === selectedModel && r.workloadSize === size
             );
@@ -587,7 +561,7 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                 gain,
             };
         });
-    }, [fetchedData, selectedModel, tableMetricMode, selectedPercentile]);
+    }, [fetchedData, selectedModel, tableMetricMode, selectedPercentile, contextSizes]);
 
     const exportToCSV = () => {
         const headers = [
@@ -645,7 +619,8 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                 onToggleMobileNav={onToggleMobileNav}
             />
 
-            <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6">
+            {/* The app shell's <main> wraps every view, so this is a plain container. */}
+            <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 flex flex-col space-y-6">
                 {/* ROW 1: Architectural Overview Card */}
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                     <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-zinc-200">
@@ -840,9 +815,9 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                 <div className="surface-light rounded-3xl border border-zinc-200 bg-white overflow-hidden">
                     <div className="border-b border-zinc-200 bg-zinc-50/80 px-5 sm:px-6 py-2.5 flex items-center justify-between flex-wrap gap-2">
                         <div className="flex flex-wrap items-center gap-3">
-                            <span className="kicker text-accent-600">
+                            <h2 className="kicker text-accent-600">
                                 Benchmark scenario & outcomes
-                            </span>
+                            </h2>
                             <span className="text-zinc-300" aria-hidden="true">
                                 |
                             </span>
@@ -854,11 +829,7 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                                     size="xs"
                                     value={workloadSize}
                                     onChange={setWorkloadSize}
-                                    options={[
-                                        { value: '30k', label: '30k' },
-                                        { value: '50k', label: '50k' },
-                                        { value: '70k', label: '70k' },
-                                    ]}
+                                    options={contextSizes.map((s) => ({ value: s, label: s }))}
                                 />
                             </div>
                         </div>
@@ -941,30 +912,18 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                             </div>
                         </div>
 
-                        {/* Compact Primary Outcomes Strip */}
-                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50 grid grid-cols-2 gap-4 items-center">
-                            <div>
-                                <div className="text-micro font-medium text-zinc-600 mb-1">
-                                    Throughput gain
-                                </div>
-                                <div className="display-title text-2xl font-bold text-emerald-600 tabular-nums leading-none">
-                                    {derivedOutcomesMap[workloadSize]?.ssd?.throughput || '+83%'}
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">
-                                    CPU+Lustre vs HBM
-                                </div>
-                            </div>
-                            <div className="border-l border-zinc-200 pl-4">
-                                <div className="text-micro font-medium text-zinc-600 mb-1">
-                                    Latency reduction
-                                </div>
-                                <div className="display-title text-2xl font-bold text-accent-600 tabular-nums leading-none">
-                                    {derivedOutcomesMap[workloadSize]?.ssd?.latency || '-63%'}
-                                </div>
-                                <div className="text-micro font-medium text-zinc-600 mt-1">
-                                    TTFT (P50)
-                                </div>
-                            </div>
+                        {/* Headline: the same proof as Home's card, then the live reports under their own conditions */}
+                        <div className="lg:col-span-4 xl:col-span-3 p-4 sm:p-5 bg-zinc-50/50">
+                            {renderWellLitProofOutcome({
+                                proof: PREFIX_CACHE_PROOF,
+                                onNavigate,
+                                live: liveProof && {
+                                    source: 'Live reports on this page',
+                                    metric: liveProof.metric,
+                                    claim: 'throughput',
+                                    context: liveProof.context,
+                                },
+                            })}
                         </div>
                     </div>
                 </div>
@@ -1001,9 +960,9 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                             <div className="kicker text-accent-600 mb-0.5">
                                 Stepwise breakdown
                             </div>
-                            <h3 className="font-sans text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
+                            <h2 className="font-sans text-base sm:text-lg font-semibold text-zinc-900 tracking-tight">
                                 Summary metrics comparison
-                            </h3>
+                            </h2>
                             <p className="text-xs text-zinc-700 mt-0.5">
                                 Comparing Baseline (HBM), CPU Offloading, and CPU + Lustre across context lengths. Click a row to focus that context scale.
                             </p>
@@ -1130,7 +1089,7 @@ export default function PrefixCacheOffloadingDashboard({ onNavigateBack, onToggl
                         </table>
                     </div>
                 </div>
-            </main>
+            </div>
         </div>
     );
 }

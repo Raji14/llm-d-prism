@@ -111,7 +111,7 @@ export const parseReport = (content, filePath) => {
                 configOverrides
             }
         };
-    } catch (e) {
+    } catch {
         console.warn(`YAML Parsing failed for ${filePath}, falling back to URI parsing.`);
         return parseFromUri(filePath);
     }
@@ -340,13 +340,37 @@ export const scanLocalBenchmarks = async () => {
     }
 };
 
+/**
+ * Nightly regression rows from the server (GET /api/regressions). Throws with
+ * a readable reason (the server's error text and HTTP status) so the page can
+ * tell "couldn't load" apart from "no runs yet".
+ */
+export const fetchRegressionRuns = async () => {
+    let response;
+    try {
+        response = await fetch('/api/regressions');
+    } catch (e) {
+        throw new Error(`the Prism server didn't answer (${e?.message || 'network error'})`);
+    }
+    if (!response.ok) {
+        let reason = '';
+        try {
+            const body = await response.json();
+            reason = [body?.error, body?.details].filter(Boolean).join(': ');
+        } catch {
+            // Not JSON; the status says enough.
+        }
+        throw new Error(`${reason || 'the server returned an error'} (HTTP ${response.status})`);
+    }
+    const rows = await response.json();
+    if (!Array.isArray(rows)) throw new Error('the server sent an unexpected response');
+    return rows;
+};
+
+// Kept for existing callers: same rows, but [] on any failure.
 export const scanRegressions = async () => {
     try {
-        const response = await fetch('/api/regressions');
-        if (!response.ok) {
-            throw new Error(`Failed to load regressions from server API: ${response.status}`);
-        }
-        return await response.json();
+        return await fetchRegressionRuns();
     } catch (e) {
         console.error('Regressions GCS Scan Error:', e);
         return [];

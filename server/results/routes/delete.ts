@@ -14,7 +14,8 @@
 
 import { Request, Response } from 'express';
 import { validateGitHubToken } from '../../oauth.ts';
-import { readResultMetadata, deleteResult } from '../gcs.ts';
+import { readResultMetadata, deleteResult, getPrismResultsBucket } from '../gcs.ts';
+import { storageFailure } from '../errors.ts';
 
 export interface DeleteResultsResponse {
     success: boolean;
@@ -96,8 +97,9 @@ export async function deleteResultsHandler(
             message: `Benchmark ${runId} successfully deleted.`
         });
     } catch (error: unknown) {
-        console.error('[Results Delete API Error]', error);
-        const msg = error instanceof Error ? error.message : String(error);
-        return res.status(500).json({ error: 'Failed to delete benchmark result', details: msg });
+        const failure = storageFailure(error, { bucket: getPrismResultsBucket(), action: 'delete', fallbackMessage: 'Failed to delete benchmark result' });
+        if (failure.status === 403) console.warn('[Results Delete API]', failure.body.error);
+        else console.error('[Results Delete API Error]', error);
+        return res.status(failure.status).json(failure.body);
     }
 }

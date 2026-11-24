@@ -49,7 +49,10 @@ export function GoogleMark({ className, title = 'Google Cloud' }) {
     );
 }
 
-const LLMD_LOGOTYPE_URL = 'https://llm-d.ai/img/llm-d-logotype-and-icon.png';
+// Shipped with the app (public/), so the header keeps its logo when llm-d.ai
+// is slow or down. A 4× copy of https://llm-d.ai/img/llm-d-logotype-and-icon.png
+// for the 24px-high lockup; refresh it from there if llm-d's logo changes.
+const LLMD_LOGOTYPE_URL = '/llm-d-logotype-and-icon.png';
 
 /**
  * Prism's own mark: the rainbow prism Prism launched with (the 128px version

@@ -244,7 +244,8 @@ export async function readResultMetadata(runId: string): Promise<{ user: string;
     } catch (e: unknown) {
         if (e && typeof e === 'object' && 'code' in e && (e as { code?: number }).code === 404) return null;
         const message = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to fetch metadata from GCS: ${message}`);
+        // `cause` keeps Storage's status (403 = missing permission) for the routes.
+        throw Object.assign(new Error(`Failed to fetch metadata from GCS: ${message}`), { cause: e });
     }
 }
 
@@ -298,7 +299,7 @@ export async function writeResult(
         } else {
             message = String(e);
         }
-        throw new Error(`GCS upload failed: ${message}`);
+        throw Object.assign(new Error(`GCS upload failed: ${message}`), { cause: e });
     }
 }
 
@@ -314,7 +315,7 @@ export async function deleteResult(runId: string): Promise<void> {
     } catch (e: unknown) {
         if (e && typeof e === 'object' && 'code' in e && (e as { code?: number }).code === 404) return;
         const message = e instanceof Error ? e.message : String(e);
-        throw new Error(`Failed to delete result from GCS: ${message}`);
+        throw Object.assign(new Error(`Failed to delete result from GCS: ${message}`), { cause: e });
     }
 }
 

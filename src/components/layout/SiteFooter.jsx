@@ -15,7 +15,7 @@
 // Prism 2.0 site footer, rendered at the end of every view.
 import React from 'react';
 import { readSiteProfile } from '../../config/site.js';
-import { NAV, METHODOLOGY, REPO_URL, DOCS_URL, submitFor } from './navigation';
+import { NAV, REPO_URL, LLMD_URL, submitFor } from './navigation';
 
 // The line under the wordmark: llm-d's community on llm-d Prism, your team on
 // an internal Prism, nobody's brand on anyone else's.
@@ -49,13 +49,17 @@ export default function SiteFooter({ onNavigate }) {
         </li>
     );
     const paths = NAV.find((n) => n.id === 'paths').items;
+    // The header's Docs menu, item for item (How we measure, Report format, llm-d docs).
+    const docs = NAV.find((n) => n.id === 'docs').items;
     // Every top-level view in the nav (Leaderboard, Results store, Regressions).
     const views = NAV.filter((n) => n.view);
     const heading = 'text-xs font-semibold uppercase tracking-kicker text-zinc-600';
 
     return (
-        <footer className="surface-light relative overflow-hidden border-t border-zinc-200/90 bg-white text-zinc-900 font-sans">
-            <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_1fr_1fr_1fr] text-sm">
+        // shrink-0: main is a flex column, and overflow-hidden would otherwise
+        // let the footer collapse to its 1px border when the page is long.
+        <footer className="surface-light relative shrink-0 overflow-hidden border-t border-zinc-200/90 bg-white text-zinc-900 font-sans">
+            <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 pb-6 grid grid-cols-2 gap-x-6 gap-y-10 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr] text-sm">
                 <div className="col-span-2 md:col-span-1">
                     <span className="text-base font-semibold">Prism</span>
                     <p className="mt-2 text-zinc-600 max-w-xs">{taglineFor(site)}</p>
@@ -65,7 +69,6 @@ export default function SiteFooter({ onNavigate }) {
                     <ul className="mt-3 space-y-2 text-zinc-600">
                         {link('home', 'Home')}
                         {views.map((v) => link(v.view, v.label))}
-                        {link(METHODOLOGY.view, METHODOLOGY.label)}
                         {link(submit.view, submit.label)}
                     </ul>
                 </div>
@@ -74,10 +77,14 @@ export default function SiteFooter({ onNavigate }) {
                     <ul className="mt-3 space-y-2 text-zinc-600">{paths.map((p) => link(p.view, p.label))}</ul>
                 </div>
                 <div>
+                    <p className={heading}>Docs</p>
+                    <ul className="mt-3 space-y-2 text-zinc-600">{docs.map((d) => (d.href ? ext(d.href, d.label) : link(d.view, d.label)))}</ul>
+                </div>
+                <div>
                     <p className={heading}>Project</p>
                     <ul className="mt-3 space-y-2 text-zinc-600">
                         {ext(REPO_URL, 'GitHub')}
-                        {ext(DOCS_URL, 'llm-d.ai')}
+                        {ext(LLMD_URL, 'llm-d.ai')}
                         {ext('https://github.com/llm-d/llm-d-benchmark', 'llm-d-benchmark')}
                         {ext(`${REPO_URL}/tree/main/users`, 'Agent skills')}
                         {ext(`${REPO_URL}/issues`, 'Report an issue')}

@@ -22,12 +22,11 @@ import { ArrowRight, ArrowUpRight, UploadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { DEFAULT_SLO, OBJECTIVES, WORKLOADS, describeSlo } from '../utils/leaderboardFacets.js';
 import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF, shortModelName } from '../utils/wellLitProofs.js';
+import { readSiteProfile } from '../config/site.js';
 import { PageHeader } from './ui/PageHeader.jsx';
 import { Button } from './ui/Button.jsx';
 import { Badge, StatusChip } from './ui/Badge.jsx';
-import { NAV, SUBMIT } from './layout/navigation';
-
-const REPORT_FORMAT_URL = 'https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report';
+import { NAV, REPORT_FORMAT_URL, submitFor } from './layout/navigation';
 
 const SECTIONS = [
     { id: 'runs', label: 'Runs and recipes' },
@@ -40,13 +39,38 @@ const SECTIONS = [
 
 const LOWER_IS_BETTER = new Set(['ttft_p50', 'itl_p50', 'cost_per_1m']);
 
-// The status chips a leaderboard entry can carry. Real entries come from the
-// Results Store (src/utils/leaderboardSources.js); samples ship with the UI.
-const STATUSES = [
-    { status: 'published', meaning: 'Reviewed and approved in the Results Store, then listed publicly. This is what ranks on the public leaderboard.' },
-    { status: 'official', meaning: 'Marked Official by an approver on an internal Results Store. Ranks on that instance’s leaderboard only.' },
-    { status: 'sample', meaning: 'Illustrative entry that ships with the UI. Never counts as a verified result.' },
-];
+// What changes between instances (src/config/site.js): the publish rule. A
+// public Prism ranks reviewed, Published results; on an internal one an
+// approver marks a result Official. An internal Prism never says "public",
+// "community" or "Published". The status chips a leaderboard entry can carry:
+// real entries come from the Results Store (src/utils/leaderboardSources.js);
+// samples ship with the UI.
+const SAMPLE_STATUS = { status: 'sample', meaning: 'Illustrative entry that ships with the UI. Never counts as a verified result.' };
+const METHODOLOGY_COPY = {
+    public: {
+        validation:
+            'Submitted reports are checked against the Benchmark Report v0.2 schema, then peer-reviewed before they rank. That review happens in the Results Store, and only results that make it through reach the leaderboard. Each entry carries its status:',
+        statuses: [
+            { status: 'published', meaning: 'Reviewed and approved in the Results Store, then listed publicly. This is what ranks on the public leaderboard.' },
+            { status: 'official', meaning: 'Marked Official by an approver on an internal Results Store. Ranks on that instance’s leaderboard only.' },
+            SAMPLE_STATUS,
+        ],
+        untilReal: 'Until results are published',
+        onceReal: 'Once a real result is published',
+        cta: 'Submit its Benchmark Report v0.2. It ranks once it passes validation and review.',
+    },
+    internal: {
+        validation:
+            'Uploaded reports are checked against the Benchmark Report v0.2 schema. An approver then checks each result in the Results Store and marks it Official, and only Official results reach this Prism’s leaderboard. Each entry carries its status:',
+        statuses: [
+            { status: 'official', meaning: 'Marked Official by an approver in the Results Store. This is what ranks on this Prism’s leaderboard.' },
+            SAMPLE_STATUS,
+        ],
+        untilReal: 'Until results are marked Official',
+        onceReal: 'Once a result is marked Official',
+        cta: 'Upload its Benchmark Report v0.2. It ranks once an approver marks it Official.',
+    },
+};
 
 const PATH_ITEMS = NAV.find((n) => n.id === 'paths')?.items || [];
 
@@ -172,6 +196,10 @@ const pdReference = (PD_PROOF?.points || []).find((p) => p.isReference);
 const agenticSetup = AGENTIC_PROOF?.points?.[0];
 
 export default function MethodologyPage({ onNavigate, onNavigateBack }) {
+    // Which Prism this is: same sections, its own publish rule and words.
+    const { instance } = readSiteProfile();
+    const copy = METHODOLOGY_COPY[instance] || METHODOLOGY_COPY.public;
+    const submit = submitFor(instance);
     const go = (view) => (e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
@@ -237,13 +265,9 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
                     </Section>
 
                     <Section id="validation" kicker="02" title="Validation">
-                        <p>
-                            Submitted reports are checked against the Benchmark Report v0.2 schema, then peer-reviewed before
-                            they rank. That review happens in the Results Store, and only results that make it through reach
-                            the leaderboard. Each entry carries its status:
-                        </p>
+                        <p>{copy.validation}</p>
                         <ul className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200/90 bg-white shadow-xs">
-                            {STATUSES.map((s) => (
+                            {copy.statuses.map((s) => (
                                 <li key={s.status} className="flex flex-col gap-1.5 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
                                     <span className="w-44 shrink-0">
                                         <StatusChip status={s.status} />
@@ -315,9 +339,9 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
 
                     <Section id="paths" kicker="05" title="Well-lit path numbers">
                         <p>
-                            Home quotes one number per llm-d well-lit path. Each comes from the benchmark sweep published
-                            with its guide, against the baseline named below. Every point of the sweep is listed, including
-                            the ones that don&apos;t flatter the path.
+                            Home quotes one number per llm-d well-lit path. Each comes from the benchmark sweep that ships with
+                            its guide, against the baseline named below. Every point of the sweep is listed, including the ones
+                            that don&apos;t flatter the path.
                         </p>
                         <div className="space-y-4">
                             <PathProof
@@ -427,20 +451,18 @@ export default function MethodologyPage({ onNavigate, onNavigateBack }) {
 
                     <Section id="samples" kicker="06" title="Sample data">
                         <p>
-                            Until results are published, the leaderboard shows illustrative entries so you can explore how it
-                            works. They are labelled <StatusChip status="sample" size="xs" className="align-middle" />, never
-                            counted on Home, and their curves are drawn dashed so they can&apos;t pass for measurements. Once a
-                            real result is published they step aside; you can still turn them back on from the leaderboard.
+                            {copy.untilReal}, the leaderboard shows illustrative entries so you can explore how it works. They
+                            are labelled <StatusChip status="sample" size="xs" className="align-middle" />, never counted on Home,
+                            and their curves are drawn dashed so they can&apos;t pass for measurements. {copy.onceReal} they step
+                            aside; you can still turn them back on from the leaderboard.
                         </p>
                         <div className="flex flex-col gap-4 rounded-3xl border border-zinc-200/90 bg-white p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6 shadow-xs">
                             <div>
                                 <p className="text-base font-semibold text-zinc-900">Have a run that belongs here?</p>
-                                <p className="mt-1 text-sm text-zinc-700">
-                                    Upload its Benchmark Report v0.2. It ranks once it passes validation.
-                                </p>
+                                <p className="mt-1 text-sm text-zinc-700">{copy.cta}</p>
                             </div>
-                            <Button href={`?view=${SUBMIT.view}`} onClick={go(SUBMIT.view)} size="md" className="shrink-0">
-                                <UploadCloud className="h-4 w-4" /> {SUBMIT.label}
+                            <Button href={`?view=${submit.view}`} onClick={go(submit.view)} size="md" className="shrink-0">
+                                <UploadCloud className="h-4 w-4" /> {submit.label}
                             </Button>
                         </div>
                     </Section>

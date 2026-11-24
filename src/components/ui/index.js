@@ -18,6 +18,7 @@
 export { Button } from './Button';
 export { Badge, StatusChip, VisibilityChip } from './Badge';
 export { Modal } from './Modal';
+export { useFocusTrap, focusableWithin } from './useFocusTrap';
 export { Input, Select, Textarea, Checkbox, Label } from './FormControls';
 export { Panel } from './Panel';
 export { StatCard } from './StatCard';

@@ -145,7 +145,7 @@ export function ShareLinkButton({ label = 'Share link', getUrl, className }) {
             )}
         >
             {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5 text-zinc-600" />}
-            <span>{copied ? 'Link copied' : label}</span>
+            <span aria-live="polite">{copied ? 'Copied' : label}</span>
         </button>
     );
 }

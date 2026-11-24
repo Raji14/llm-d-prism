@@ -14,7 +14,8 @@
 
 import { Request, Response } from 'express';
 import { validateGitHubToken } from '../../oauth.ts';
-import { readResultPayload, writeResult, readResultMetadata } from '../gcs.ts';
+import { readResultPayload, writeResult, readResultMetadata, getPrismResultsBucket } from '../gcs.ts';
+import { storageFailure } from '../errors.ts';
 import { processSubmission } from '../processing.ts';
 import { PrismSubmissionState } from '../api.ts';
 
@@ -173,8 +174,9 @@ export async function reviewResultsHandler(
         });
 
     } catch (error: unknown) {
-        console.error('[Results Review API Error]', error);
-        const msg = error instanceof Error ? error.message : String(error);
-        res.status(500).json({ error: 'Failed to update result submission status', details: msg });
+        const failure = storageFailure(error, { bucket: getPrismResultsBucket(), action: 'write', fallbackMessage: 'Failed to update result submission status' });
+        if (failure.status === 403) console.warn('[Results Review API]', failure.body.error);
+        else console.error('[Results Review API Error]', error);
+        res.status(failure.status).json(failure.body);
     }
 }

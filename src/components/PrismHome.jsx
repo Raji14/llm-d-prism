@@ -6,10 +6,9 @@ import { AGENTIC_PROOF, PD_PROOF, PREFIX_CACHE_PROOF, ROUTING_PROOF } from '../u
 import { readSiteProfile } from '../config/site.js';
 import { Badge } from './ui/Badge.jsx';
 import { Button } from './ui/Button.jsx';
-import { DOCS_URL, METHODOLOGY, NAV, REPO_URL, SUBMIT, submitFor } from './layout/navigation';
+import { LLMD_URL, METHODOLOGY, NAV, REPO_URL, REPORT_FORMAT_URL, SUBMIT, submitFor } from './layout/navigation';
 
 const LEADERBOARD = 'model-leaderboard';
-const REPORT_FORMAT_URL = 'https://github.com/llm-d/llm-d-benchmark/blob/main/benchmark_report';
 // MethodologyPage section that publishes the full sweeps behind each proof.
 const PROOFS_ANCHOR = 'paths';
 
@@ -92,7 +91,7 @@ const TOOLKIT = [
         ...COMPARE,
         kicker: 'Results store',
         title: 'Validate an optimization',
-        body: 'Put your runs next to a baseline from the same setup, and see what changed at the same latency target.',
+        body: 'Put your runs next to a baseline that differs only in what you changed, and see the difference at the same latency target.',
         icon: GitCompare,
     },
     {
@@ -353,7 +352,7 @@ function ProofBand({ go, site }) {
     const isLlmd = site.brand === 'llm-d';
     const llmdLink = (
         <a
-            href={DOCS_URL}
+            href={LLMD_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="font-medium text-zinc-900 underline decoration-zinc-300 underline-offset-2 transition-colors hover:decoration-accent-400"

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // Prism 2.0 top navigation bar — shared across Home and every inner view.
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Github, Inbox, Menu, X, ArrowUpRight } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { Button } from '../ui/Button';
@@ -21,7 +21,7 @@ import { BrandLockup } from '../ui/BrandMarks.jsx';
 import { readSiteProfile } from '../../config/site.js';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth.js';
 import { countWaitingResults } from '../../utils/resultsWorkspace.js';
-import { NAV, SUBMIT, REPO_URL, DOCS_URL, isActive, submitFor } from './navigation';
+import { NAV, SUBMIT, REPO_URL, isActive, submitFor } from './navigation';
 
 const DEV = Boolean(import.meta.env?.DEV);
 
@@ -73,17 +73,99 @@ function NavLink({ view, onNavigate, className, children, ...rest }) {
     );
 }
 
+// What a top-level item is for (navigation.js `desc`), on hover and keyboard
+// focus, so the header alone says where each job lives without more labels.
+function NavHint({ id, children }) {
+    return (
+        <span
+            id={id}
+            role="tooltip"
+            className="pointer-events-none invisible absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-normal text-white shadow-lg group-hover:visible group-has-[:focus-visible]:visible"
+        >
+            {children}
+        </span>
+    );
+}
+
+// One row of a header dropdown: an in-app view, or a page outside Prism.
+function DropdownItem({ it, here, onNavigate }) {
+    const Icon = it.icon;
+    const body = (
+        <>
+            <span
+                className={cn(
+                    'mt-0.5 w-8 h-8 shrink-0 rounded-lg border flex items-center justify-center',
+                    here ? 'border-accent-200 text-accent-700 bg-white' : 'border-zinc-200 text-zinc-600 bg-white'
+                )}
+            >
+                <Icon className="w-4 h-4" strokeWidth={1.75} aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+                <span className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+                    {it.label}
+                    {it.href && <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />}
+                    {it.badge && (
+                        <span className="text-tiny font-medium rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/20">
+                            {it.badge}
+                        </span>
+                    )}
+                </span>
+                <span className="block text-xs text-zinc-600">{it.desc}</span>
+            </span>
+        </>
+    );
+    const className = cn(
+        'flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
+        here ? 'bg-accent-50' : 'hover:bg-zinc-50 focus-visible:bg-zinc-50'
+    );
+    if (it.href) {
+        return (
+            <a href={it.href} target="_blank" rel="noopener noreferrer" className={className}>
+                {body}
+                <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+        );
+    }
+    return (
+        <NavLink view={it.view} onNavigate={onNavigate} aria-current={here ? 'page' : undefined} className={className}>
+            {body}
+        </NavLink>
+    );
+}
+
+// A disclosure (button + list of links), the pattern for site navigation:
+// Tab walks the links, and ArrowUp/ArrowDown, Home and End move between
+// them too. Escape closes it and puts focus back on the button.
 function Dropdown({ entry, currentView, onNavigate, open, setOpen }) {
     const ref = useRef(null);
+    const buttonRef = useRef(null);
+    const panelRef = useRef(null);
+    const panelId = useId();
+    // Which item gets focus once the panel renders (opened from the keyboard).
+    const focusOnOpen = useRef(null);
     const active = isActive(entry, currentView);
+
+    const items = () => [...(panelRef.current?.querySelectorAll('a') || [])];
+    const close = (refocus) => {
+        setOpen(null);
+        if (refocus) buttonRef.current?.focus();
+    };
 
     useEffect(() => {
         if (!open) return;
+        if (focusOnOpen.current) {
+            const list = items();
+            (focusOnOpen.current === 'last' ? list[list.length - 1] : list[0])?.focus();
+            focusOnOpen.current = null;
+        }
         const onDoc = (e) => {
             if (!ref.current?.contains(e.target)) setOpen(null);
         };
         const onKey = (e) => {
-            if (e.key === 'Escape') setOpen(null);
+            if (e.key !== 'Escape') return;
+            // Back to the button only if focus was in this dropdown.
+            close(ref.current?.contains(document.activeElement));
         };
         document.addEventListener('mousedown', onDoc);
         document.addEventListener('keydown', onKey);
@@ -91,15 +173,50 @@ function Dropdown({ entry, currentView, onNavigate, open, setOpen }) {
             document.removeEventListener('mousedown', onDoc);
             document.removeEventListener('keydown', onKey);
         };
-    }, [open, setOpen]);
+    }, [open, setOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const onButtonKeyDown = (e) => {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+        e.preventDefault();
+        if (open) {
+            const list = items();
+            (e.key === 'ArrowUp' ? list[list.length - 1] : list[0])?.focus();
+        } else {
+            focusOnOpen.current = e.key === 'ArrowUp' ? 'last' : 'first';
+            setOpen(entry.id);
+        }
+    };
+
+    const onPanelKeyDown = (e) => {
+        const list = items();
+        const at = list.indexOf(document.activeElement);
+        let next = null;
+        if (e.key === 'ArrowDown') next = list[(at + 1) % list.length];
+        else if (e.key === 'ArrowUp') next = list[(at - 1 + list.length) % list.length];
+        else if (e.key === 'Home') next = list[0];
+        else if (e.key === 'End') next = list[list.length - 1];
+        if (next) {
+            e.preventDefault();
+            next.focus();
+        }
+    };
+
+    // Tabbing out of the dropdown closes it, like clicking elsewhere.
+    const onBlur = (e) => {
+        if (open && e.relatedTarget && !ref.current?.contains(e.relatedTarget)) setOpen(null);
+    };
 
     return (
-        <div ref={ref} className="relative">
+        <div ref={ref} className="relative" onBlur={onBlur}>
             <button
+                ref={buttonRef}
                 type="button"
                 aria-expanded={open}
-                aria-haspopup="menu"
+                aria-controls={open ? panelId : undefined}
+                // The section you're in, even while the dropdown is closed.
+                aria-current={active ? 'true' : undefined}
                 onClick={() => setOpen(open ? null : entry.id)}
+                onKeyDown={onButtonKeyDown}
                 className={cn(
                     'relative px-3 py-2 rounded-lg inline-flex items-center gap-1 transition-colors cursor-pointer',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
@@ -107,54 +224,30 @@ function Dropdown({ entry, currentView, onNavigate, open, setOpen }) {
                 )}
             >
                 {entry.label}
-                <ChevronDown className={cn('w-3.5 h-3.5 text-zinc-400 transition-transform', open && 'rotate-180')} />
+                <ChevronDown className={cn('w-3.5 h-3.5 text-zinc-400 transition-transform', open && 'rotate-180')} aria-hidden="true" />
                 {active && <span className="absolute left-3 right-3 -bottom-[13px] h-0.5 rounded-full bg-accent-500" />}
             </button>
             {open && (
                 <div
-                    role="menu"
+                    ref={panelRef}
+                    id={panelId}
+                    onKeyDown={onPanelKeyDown}
                     className="absolute left-0 top-full mt-2 w-80 rounded-2xl border border-zinc-200 bg-white p-2 shadow-xl shadow-zinc-900/10 z-50"
                 >
-                    {entry.items.map((it) => {
-                        const Icon = it.icon;
-                        const here = it.view === currentView;
-                        return (
-                            <NavLink
-                                key={it.view}
-                                view={it.view}
-                                role="menuitem"
-                                onNavigate={(v) => {
-                                    setOpen(null);
-                                    onNavigate?.(v);
-                                }}
-                                aria-current={here ? 'page' : undefined}
-                                className={cn(
-                                    'flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors',
-                                    here ? 'bg-accent-50' : 'hover:bg-zinc-50'
-                                )}
-                            >
-                                <span
-                                    className={cn(
-                                        'mt-0.5 w-8 h-8 shrink-0 rounded-lg border flex items-center justify-center',
-                                        here ? 'border-accent-200 text-accent-700 bg-white' : 'border-zinc-200 text-zinc-600 bg-white'
-                                    )}
-                                >
-                                    <Icon className="w-4 h-4" strokeWidth={1.75} />
-                                </span>
-                                <span className="min-w-0">
-                                    <span className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-                                        {it.label}
-                                        {it.badge && (
-                                            <span className="text-tiny font-medium rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-600/20">
-                                                {it.badge}
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="block text-xs text-zinc-600">{it.desc}</span>
-                                </span>
-                            </NavLink>
-                        );
-                    })}
+                    <ul aria-label={entry.label}>
+                        {entry.items.map((it) => (
+                            <li key={it.view || it.href}>
+                                <DropdownItem
+                                    it={it}
+                                    here={!!it.view && it.view === currentView}
+                                    onNavigate={(v) => {
+                                        setOpen(null);
+                                        onNavigate?.(v);
+                                    }}
+                                />
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
         </div>
@@ -163,8 +256,13 @@ function Dropdown({ entry, currentView, onNavigate, open, setOpen }) {
 
 export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobileOpenChange }) {
     const [openMenu, setOpenMenu] = useState(null);
-    useEffect(() => {
+    // A new view closes whatever dropdown led there.
+    const [menuView, setMenuView] = useState(currentView);
+    if (menuView !== currentView) {
+        setMenuView(currentView);
         setOpenMenu(null);
+    }
+    useEffect(() => {
         onMobileOpenChange?.(false);
     }, [currentView]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -204,6 +302,52 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
         </a>
     );
 
+    // Escape closes the mobile menu and returns focus to its button.
+    const menuButtonRef = useRef(null);
+    useEffect(() => {
+        if (!mobileOpen) return undefined;
+        const onKey = (e) => {
+            if (e.key !== 'Escape') return;
+            onMobileOpenChange?.(false);
+            menuButtonRef.current?.focus();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [mobileOpen, onMobileOpenChange]);
+
+    const mobileLink = (item, active) => {
+        const Icon = item.icon;
+        const content = (
+            <>
+                <Icon className="mt-0.5 w-4 h-4 shrink-0 text-zinc-500" strokeWidth={1.75} aria-hidden="true" />
+                <span className="min-w-0">
+                    <span className="flex items-center gap-1.5">
+                        {item.label}
+                        {item.href && <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />}
+                    </span>
+                    {item.desc && <span className="block text-xs font-normal text-zinc-500">{item.desc}</span>}
+                </span>
+            </>
+        );
+        const className = cn(
+            'flex items-start gap-3 rounded-lg px-2 py-2.5 text-sm',
+            active ? 'bg-accent-50 text-zinc-900 font-medium' : 'text-zinc-700 hover:bg-zinc-50'
+        );
+        if (item.href) {
+            return (
+                <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className={className}>
+                    {content}
+                    <span className="sr-only"> (opens in a new tab)</span>
+                </a>
+            );
+        }
+        return (
+            <NavLink key={item.view} view={item.view} onNavigate={onNavigate} aria-current={active ? 'page' : undefined} className={className}>
+                {content}
+            </NavLink>
+        );
+    };
+
     return (
         <header className="surface-light relative z-50 shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl text-zinc-900 font-sans">
             <nav aria-label="Primary" className="mx-auto max-w-6xl h-16 px-4 sm:px-6 flex items-center gap-4 md:gap-6">
@@ -223,31 +367,26 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                                 setOpen={setOpenMenu}
                             />
                         ) : (
-                            <NavLink
-                                key={entry.id}
-                                view={entry.view}
-                                onNavigate={onNavigate}
-                                aria-current={isActive(entry, currentView) ? 'page' : undefined}
-                                className={cn(
-                                    'relative px-3 py-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
-                                    isActive(entry, currentView) ? 'text-zinc-900 font-medium' : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
-                                )}
-                            >
-                                {entry.label}
-                                {isActive(entry, currentView) && (
-                                    <span className="absolute left-3 right-3 -bottom-[13px] h-0.5 rounded-full bg-accent-500" />
-                                )}
-                            </NavLink>
+                            <span key={entry.id} className="group relative inline-flex">
+                                <NavLink
+                                    view={entry.view}
+                                    onNavigate={onNavigate}
+                                    aria-current={isActive(entry, currentView) ? 'page' : undefined}
+                                    aria-describedby={entry.desc ? `nav-hint-${entry.id}` : undefined}
+                                    className={cn(
+                                        'relative px-3 py-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
+                                        isActive(entry, currentView) ? 'text-zinc-900 font-medium' : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100'
+                                    )}
+                                >
+                                    {entry.label}
+                                    {isActive(entry, currentView) && (
+                                        <span className="absolute left-3 right-3 -bottom-[13px] h-0.5 rounded-full bg-accent-500" />
+                                    )}
+                                </NavLink>
+                                {entry.desc && <NavHint id={`nav-hint-${entry.id}`}>{entry.desc}</NavHint>}
+                            </span>
                         )
                     )}
-                    <a
-                        href={DOCS_URL}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors flex items-center gap-1"
-                    >
-                        Docs <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" />
-                    </a>
                 </div>
 
                 <div className="flex-1" />
@@ -272,10 +411,12 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                     </Button>
                 )}
                 <button
+                    ref={menuButtonRef}
                     type="button"
-                    className="lg:hidden h-9 w-9 rounded-full flex items-center justify-center text-zinc-700 hover:bg-zinc-100"
+                    className="lg:hidden h-9 w-9 rounded-full flex items-center justify-center text-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                     aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
                     aria-expanded={!!mobileOpen}
+                    aria-controls={mobileOpen ? 'mobile-nav' : undefined}
                     onClick={() => onMobileOpenChange?.(!mobileOpen)}
                 >
                     {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -283,39 +424,19 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
             </nav>
 
             {mobileOpen && (
-                <div className="lg:hidden absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b border-zinc-200 bg-white px-4 sm:px-6 pb-6 pt-2 shadow-xl">
+                <div
+                    id="mobile-nav"
+                    className="lg:hidden absolute inset-x-0 top-full max-h-[calc(100vh-4rem)] overflow-y-auto border-b border-zinc-200 bg-white px-4 sm:px-6 pb-6 pt-2 shadow-xl"
+                >
                     {NAV.map((entry) => (
                         <div key={entry.id} className="py-2">
                             {entry.items ? (
                                 <>
-                                    <p className="kicker px-2 pt-2 pb-1 text-zinc-500">
-                                        {entry.label}
-                                    </p>
-                                    {entry.items.map((it) => (
-                                        <NavLink
-                                            key={it.view}
-                                            view={it.view}
-                                            onNavigate={onNavigate}
-                                            className={cn(
-                                                'flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm',
-                                                it.view === currentView ? 'bg-accent-50 text-zinc-900 font-medium' : 'text-zinc-700 hover:bg-zinc-50'
-                                            )}
-                                        >
-                                            <it.icon className="w-4 h-4 text-zinc-500" strokeWidth={1.75} /> {it.label}
-                                        </NavLink>
-                                    ))}
+                                    <p className="kicker px-2 pt-2 pb-1 text-zinc-500">{entry.label}</p>
+                                    {entry.items.map((it) => mobileLink(it, !!it.view && it.view === currentView))}
                                 </>
                             ) : (
-                                <NavLink
-                                    view={entry.view}
-                                    onNavigate={onNavigate}
-                                    className={cn(
-                                        'flex items-center gap-3 rounded-lg px-2 py-2.5 text-sm',
-                                        isActive(entry, currentView) ? 'bg-accent-50 text-zinc-900 font-medium' : 'text-zinc-700 hover:bg-zinc-50'
-                                    )}
-                                >
-                                    <entry.icon className="w-4 h-4 text-zinc-500" strokeWidth={1.75} /> {entry.label}
-                                </NavLink>
+                                mobileLink(entry, isActive(entry, currentView))
                             )}
                         </div>
                     ))}
@@ -326,9 +447,6 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
                                 {submit.label}
                             </Button>
                         )}
-                        <Button href={DOCS_URL} target="_blank" rel="noopener noreferrer" variant="secondary" size="md" className="h-10 py-0">
-                            Docs
-                        </Button>
                         <a
                             href={REPO_URL}
                             target="_blank"

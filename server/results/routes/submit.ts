@@ -15,7 +15,8 @@
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { validateGitHubToken } from '../../oauth.ts';
-import { writeResult, deleteResult } from '../gcs.ts';
+import { writeResult, deleteResult, getPrismResultsBucket } from '../gcs.ts';
+import { storageFailure } from '../errors.ts';
 import { processSubmission } from '../processing.ts';
 import { PrismSubmissionState, PrismResultPayload } from '../api.ts';
 
@@ -124,6 +125,12 @@ export async function submitResultsHandler(
                 console.error('[Results Submit API Cleanup Error]', cleanupErr);
             });
         }
-        res.status(502).json({ error: 'Failed to submit or process result in storage backend', details: error.message });
+        const failure = storageFailure(error, {
+            bucket: getPrismResultsBucket(),
+            action: 'write',
+            fallbackMessage: 'Failed to submit or process result in storage backend',
+            fallbackStatus: 502,
+        });
+        res.status(failure.status).json(failure.body);
     }
 }

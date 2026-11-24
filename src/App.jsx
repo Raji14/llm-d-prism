@@ -17,9 +17,11 @@ import { Loader, ArrowRight } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';
 import PrismHome from './components/PrismHome';
 import { LoadingState } from './components/ui/Spinner';
+import { Button } from './components/ui/Button.jsx';
 
 import SiteHeader from './components/layout/SiteHeader';
 import SiteFooter from './components/layout/SiteFooter';
+import { isKnownView, planNavigation, readNavigationParams, resolveView, sameNavigationParams } from './components/layout/navigation';
 import { useTheme } from './theme/useTheme';
 import { useDashboardState } from './hooks/useDashboardState';
 import { useDashboardData } from './hooks/useDashboardData';
@@ -40,30 +42,67 @@ const LeaderboardDashboard = lazy(() => import('./components/Leaderboard/Leaderb
 const RecipeComparisonPage = lazy(() => import('./components/Leaderboard/RecipeComparisonPage'));
 const MethodologyPage = lazy(() => import('./components/MethodologyPage'));
 
-// Leaderboard filters live in the URL so a filtered ranking can be shared and
-// linked from Home. Only the leaderboard reads them; WorkloadCatalog reads its
-// own `workload` id, which shares the name, so they never carry across views.
-const LEADERBOARD_PARAMS = [
-  'workload',
-  'hardware',
-  'engine',
-  'sort',
-  'q',
-  'ttft_sla',
-  'tpot_sla',
-  'sla_pct',
-  'samples',
-  'layout',
-  'curves',
-  'x',
-  'y',
-  'scale',
-];
+// Views that read the shared benchmark catalog (useDashboardData's
+// loadAllData). Home, the Leaderboard, Methodology, Regressions and the
+// well-lit paths don't, so the full load (dozens of bucket and API requests)
+// starts the first time one of these opens instead of on every landing.
+const DATA_VIEWS = new Set(['results-store', 'benchmark-browser', 'submit-benchmarks']);
+
+// The view the address bar asks for. Old ids resolve to the view they became;
+// which URL params carry across views lives in src/components/layout/navigation.js.
+const viewFromLocation = () => resolveView(new URLSearchParams(window.location.search).get('view'));
+
+// A link that uses an old view id (say ?view=intelligent-routing) opens the
+// view it became, and the address bar is corrected so the next share is canonical.
+function canonicalizeViewParam() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get('view');
+  if (!raw || resolveView(raw) === raw) return;
+  params.set('view', resolveView(raw));
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+}
+
+// An unknown ?view= (a typo, a retired page) gets a way back instead of a blank page.
+function NotFoundView({ view, onNavigate }) {
+  const go = (e, target) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    onNavigate(target);
+  };
+  const links = [
+    { view: 'home', label: 'Home' },
+    { view: 'model-leaderboard', label: 'Leaderboard' },
+    { view: 'results-store', label: 'Results store' },
+  ];
+  return (
+    <div className="surface-light flex min-h-full flex-col items-center justify-center bg-theme-bg px-4 py-24 text-center font-sans text-zinc-900">
+      <p className="kicker text-accent-600">Page not found</p>
+      <h1 className="mt-3 font-display text-3xl font-semibold tracking-display sm:text-4xl">There&apos;s no page here</h1>
+      <p className="mt-3 max-w-md break-words text-base text-zinc-600">
+        Prism has no page called <code className="font-mono text-zinc-800">{String(view).slice(0, 80)}</code>. The link may be
+        mistyped, or the page may have moved.
+      </p>
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        {links.map((l, i) => (
+          <Button key={l.view} href={`?view=${l.view}`} onClick={(e) => go(e, l.view)} variant={i === 0 ? 'primary' : 'secondary'} size="md">
+            {l.label}
+            {i === 0 && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const mainRef = useRef(null);
+  // Legacy ids resolve to their view (see VIEW_ALIASES in navigation.js).
+  const [currentView, setCurrentView] = useState(viewFromLocation);
+  // Latches on the first visit to a view that reads the catalog (DATA_VIEWS);
+  // until then the data hook holds back its loads too.
+  const [dataWanted, setDataWanted] = useState(() => DATA_VIEWS.has(viewFromLocation()));
   const dashboardState = useDashboardState();
-  const dashboardData = useDashboardData(dashboardState.initialState, dashboardState);
+  const dashboardData = useDashboardData(dashboardState.initialState, dashboardState, { active: dataWanted });
 
   const [stagedBundles, setStagedBundles] = useState(() => {
     try {
@@ -90,38 +129,39 @@ function App() {
     return () => clearInterval(interval);
   }, [stagedBundles]);
 
-  const [currentView, setCurrentView] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    // Legacy 'benchmark-comparison' deep links land on the Benchmark Browser,
-    // where the comparison renders inline once brv02 runs are submitted.
-    const view = params.get('view') || 'home';
-    if (view === 'benchmark-comparison') return 'benchmark-browser';
-    if (view === 'manage-benchmarks') return 'results-store';
-    return view;
-  });
+  const [navigationParams, setNavigationParams] = useState(() => readNavigationParams(window.location.search));
 
-  const [navigationParams, setNavigationParams] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    return {
-      intent: params.get('intent') || null,
-      recipes: params.get('recipes') || null,
-      baseline: params.get('baseline') || null,
-      recipe: params.get('recipe') || null,
-      model: params.get('model') || null
-    };
-  });
+  // Bumped when a link targets the Results store while it's open, so it
+  // remounts and reads its screen from the new address (it reads it on mount).
+  const [storeVisit, setStoreVisit] = useState(0);
 
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [bypassLoading, setBypassLoading] = useState(false);
 
   const { fetchConfig, loadAllData, enableLLMDResults, loading, isRestoringConnections, gcsProfiles, loadingTasks } = dashboardData;
-  const hasFetchedConfig = useRef(false);
+  const configRequest = useRef(null);
+  const hasLoadedData = useRef(false);
 
   useEffect(() => {
+    canonicalizeViewParam();
+  }, []);
+
+  // The site config (tab title, analytics, default buckets) loads on every page.
+  useEffect(() => {
+    if (!configRequest.current) configRequest.current = fetchConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (DATA_VIEWS.has(currentView)) setDataWanted(true);
+  }, [currentView]);
+
+  useEffect(() => {
+    if (!dataWanted) return;
     const initialize = async () => {
-      if (!hasFetchedConfig.current) {
-        hasFetchedConfig.current = true;
-        const config = await fetchConfig();
+      if (!hasLoadedData.current) {
+        hasLoadedData.current = true;
+        const config = await (configRequest.current || (configRequest.current = fetchConfig()));
         loadAllData(config);
       } else {
         loadAllData();
@@ -129,7 +169,7 @@ function App() {
     };
     initialize();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableLLMDResults]);
+  }, [enableLLMDResults, dataWanted]);
 
   // Prism 2.0 theme (light default). Subscribing here re-renders every view on
   // toggle so charts re-read their theme-resolved chrome colors.
@@ -137,115 +177,35 @@ function App() {
 
   useEffect(() => {
     const onPopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const view = params.get('view') || 'home';
-      if (view === 'benchmark-comparison') {
-        setCurrentView('benchmark-browser');
-      } else if (view === 'manage-benchmarks') {
-        setCurrentView('results-store');
-      } else {
-        setCurrentView(view);
-      }
-      setNavigationParams({
-        intent: params.get('intent') || null,
-        recipes: params.get('recipes') || null,
-        baseline: params.get('baseline') || null,
-        recipe: params.get('recipe') || null,
-        model: params.get('model') || null
-      });
+      canonicalizeViewParam();
+      // Back/Forward within one view (a drawer or detail screen the view
+      // pushed) keeps it mounted: the view restores its own state from the
+      // URL. A different view swaps in. Unchanged params keep their identity,
+      // so views that sync from navigationParams don't re-apply them.
+      setCurrentView(viewFromLocation());
+      const next = readNavigationParams(window.location.search);
+      setNavigationParams((prev) => (sameNavigationParams(prev, next) ? prev : next));
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
 
-  const handleNavigate = (view, extraParams = {}) => {
-    if (currentView !== 'submit-benchmarks' && currentView !== 'recipe-comparison') {
+  const handleNavigate = (target, extraParams = {}) => {
+    const view = resolveView(target);
+    if (isKnownView(currentView) && currentView !== 'submit-benchmarks' && currentView !== 'recipe-comparison') {
       localStorage.setItem('prism_previous_view', currentView);
     }
+    if (view === 'results-store' && currentView === 'results-store') setStoreVisit((n) => n + 1);
     setCurrentView(view);
     setIsMobileNavOpen(false); // Close mobile nav on navigation
-    
-    // Update URL to reflect the current view
-    const params = new URLSearchParams(window.location.search);
-    params.set('view', view);
-    if (view !== 'home') {
-      ['goal', 'm', 'hw', 'wl'].forEach((k) => params.delete(k));
-    }
-    // A different view starts clean: leaderboard filters never leak into it.
-    // Comparing recipes and coming back keeps them, as the two views are one flow.
-    const leaderboardFlow = ['model-leaderboard', 'recipe-comparison'];
-    if (view !== currentView && !(leaderboardFlow.includes(view) && leaderboardFlow.includes(currentView))) {
-      LEADERBOARD_PARAMS.forEach((k) => params.delete(k));
-    }
-    
-    const resolvedParams = {};
-    if (view === 'submit-benchmarks') {
-      if (extraParams && typeof extraParams === 'object' && extraParams.intent) {
-        params.set('intent', extraParams.intent);
-        resolvedParams.intent = extraParams.intent;
-      } else if (typeof extraParams === 'string') {
-        params.set('intent', extraParams);
-        resolvedParams.intent = extraParams;
-      } else {
-        params.delete('intent');
-        resolvedParams.intent = null;
-      }
-    } else if (view === 'recipe-comparison') {
-      if (extraParams && typeof extraParams === 'object') {
-        if (extraParams.recipes) {
-          const recStr = Array.isArray(extraParams.recipes) ? extraParams.recipes.join(',') : extraParams.recipes;
-          params.set('recipes', recStr);
-          resolvedParams.recipes = recStr;
-        }
-        if (extraParams.baseline) {
-          params.set('baseline', extraParams.baseline);
-          resolvedParams.baseline = extraParams.baseline;
-        }
-      }
-      params.delete('intent');
-      resolvedParams.intent = null;
-    } else if (view === 'model-leaderboard') {
-      if (extraParams && typeof extraParams === 'object') {
-        if (extraParams.recipe) {
-          params.set('recipe', extraParams.recipe);
-          resolvedParams.recipe = extraParams.recipe;
-        }
-        if (extraParams.model) {
-          params.set('model', extraParams.model);
-          resolvedParams.model = extraParams.model;
-        }
-        // Pre-filtered entry points (Home's workload and accelerator chips).
-        LEADERBOARD_PARAMS.forEach((k) => {
-          if (extraParams[k] != null && extraParams[k] !== '') params.set(k, String(extraParams[k]));
-        });
-      }
-      params.delete('intent');
-      params.delete('recipes');
-      params.delete('baseline');
-    } else if (view === 'results-store' && extraParams && typeof extraParams === 'object' && (extraParams.curve || extraParams.tab || extraParams.intent === 'compare')) {
-      // A link into one result (the Leaderboard drawer), one tab (the header's
-      // queue pill) or Compare (Home's "Validate an optimization") opens there,
-      // not wherever the store was left.
-      ['run', 'curve', 'compare', 'tab', 'intent', 'recipes', 'baseline', 'recipe', 'model'].forEach((k) => params.delete(k));
-      if (extraParams.curve) params.set('curve', extraParams.curve);
-      if (extraParams.tab) params.set('tab', extraParams.tab);
-      if (extraParams.intent === 'compare') params.set('intent', 'compare');
-      resolvedParams.intent = extraParams.intent === 'compare' ? 'compare' : null;
-    } else {
-      params.delete('intent');
-      params.delete('recipes');
-      params.delete('baseline');
-      params.delete('recipe');
-      params.delete('model');
-      resolvedParams.intent = null;
-    }
-    setNavigationParams(resolvedParams);
 
-    // Optional in-page anchor; the target view scrolls to it once mounted.
-    const hash = extraParams && typeof extraParams === 'object' && extraParams.hash ? `#${extraParams.hash}` : '';
-    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}${hash}`);
-    
+    // Which URL params carry over (leaderboard filters, the store's screen and
+    // Browse filters, intents) is decided in navigation.js, where it's tested.
+    const { search, hash, navigationParams: nextParams } = planNavigation(window.location.search, currentView, view, extraParams);
+    setNavigationParams(nextParams);
+    window.history.pushState({}, '', `${window.location.pathname}${search}${hash}`);
+
     // Reset scroll position on navigation
     window.scrollTo(0, 0);
     if (mainRef.current) {
@@ -285,13 +245,31 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="h-screen bg-slate-950 w-full overflow-hidden font-sans relative flex flex-col">
+        {/* First stop for keyboard users: past the header, straight to the page. */}
+        <a
+          href="#main-content"
+          onClick={(e) => {
+            e.preventDefault();
+            mainRef.current?.focus();
+          }}
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-[300] focus:rounded-full focus:bg-zinc-900 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-accent-500"
+        >
+          Skip to content
+        </a>
         <SiteHeader
           currentView={currentView}
           onNavigate={handleNavigate}
           mobileOpen={isMobileNavOpen}
           onMobileOpenChange={setIsMobileNavOpen}
         />
-        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col relative w-full">
+        {/* Children never shrink (*:shrink-0): main scrolls, and the footer
+            keeps its full height below the view instead of collapsing to 1px. */}
+        <main
+          ref={mainRef}
+          id="main-content"
+          tabIndex={-1}
+          className="flex-1 min-h-0 overflow-y-auto flex flex-col relative w-full *:shrink-0 focus:outline-none"
+        >
           {/* Top Spark Progress Bar */}
           {showOverlays && (
             <div className="fixed top-0 left-0 right-0 h-1 bg-slate-900 z-[9999] pointer-events-none">
@@ -331,6 +309,7 @@ function App() {
             {currentView === 'benchmark-browser' && <Dashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} dashboardState={dashboardState} dashboardData={dashboardData} />}
             {currentView === 'results-store' && (
               <ResultsStore 
+                key={storeVisit}
                 // The store's back button says Home, so it goes Home (it used to
                 // fall back to the benchmark browser, which is no longer linked).
                 onNavigateBack={() => handleNavigate('home')}
@@ -354,9 +333,10 @@ function App() {
             {currentView === 'schema-explorer' && <SchemaExplorer onNavigateBack={() => handleNavigate('home')} />}
             {currentView === 'workload-catalog' && <WorkloadCatalog onNavigateBack={() => handleNavigate('home')} />}
             {currentView === 'prefix-cache-offloading' && <PrefixCacheOffloadingDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
-            {currentView === 'pd-disaggregation' && <PdDisaggregationDashboard onNavigateBack={() => handleNavigate('home')} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
+            {currentView === 'pd-disaggregation' && <PdDisaggregationDashboard onNavigateBack={() => handleNavigate('home')} onNavigate={handleNavigate} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
             {currentView === 'regressions-analysis' && <RegressionsAnalysisDashboard onNavigateBack={() => handleNavigate('home')} onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)} />}
             {currentView === 'guided-analysis' && <div className="p-8 text-center text-slate-400 mt-20">Guided Analysis Coming Soon... <button onClick={() => handleNavigate('home')} className="underline ml-2 text-indigo-400">Back</button></div>}
+            {!isKnownView(currentView) && <NotFoundView view={currentView} onNavigate={handleNavigate} />}
           </Suspense>
 
           <SiteFooter onNavigate={handleNavigate} />

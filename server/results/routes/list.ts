@@ -14,7 +14,8 @@
 
 import { Request, Response } from 'express';
 import { validateGitHubToken } from '../../oauth.ts';
-import { listResults, ListResultsResult as ResultsListResponse } from '../gcs.ts';
+import { listResults, getPrismResultsBucket, ListResultsResult as ResultsListResponse } from '../gcs.ts';
+import { storageFailure, StorageErrorBody } from '../errors.ts';
 import { PrismSubmissionState } from '../api.ts';
 
 export interface ResultsListQuery {
@@ -41,10 +42,12 @@ export interface ResultsListQuery {
  *         - Can list their own benchmarks in any status.
  *         - Can only list approved (`public` or `promoted`) benchmarks of other users.
  *         - Benchmarks in pending or rejected states belonging to other users are filtered out.
+ * - **Errors:** `403` with `code: 'storage_access_denied'`, `bucket` and `permission` when the
+ *   server's credentials can't list the results bucket; `500` for anything else.
  */
 export async function listResultsHandler(
-    req: Request<{}, ResultsListResponse | { error: string; details?: string }, {}, ResultsListQuery>,
-    res: Response<ResultsListResponse | { error: string; details?: string }>
+    req: Request<{}, ResultsListResponse | StorageErrorBody, {}, ResultsListQuery>,
+    res: Response<ResultsListResponse | StorageErrorBody>
 ) {
     // 1. Authenticate user
     const token = req.headers['x-prism-github-token'] as string | undefined;
@@ -78,7 +81,11 @@ export async function listResultsHandler(
         });
         res.json(results);
     } catch (error: any) {
-        console.error('[Results List API Error]', error);
-        res.status(500).json({ error: 'Failed to list results', details: error.message });
+        // The server's credentials can't list the bucket: 403 with the bucket
+        // and permission (configuration, not a crash). Anything else is a 500.
+        const failure = storageFailure(error, { bucket: getPrismResultsBucket(), action: 'list', fallbackMessage: 'Failed to list results' });
+        if (failure.status === 403) console.warn('[Results List API]', failure.body.error, error?.message);
+        else console.error('[Results List API Error]', error);
+        res.status(failure.status).json(failure.body);
     }
 }

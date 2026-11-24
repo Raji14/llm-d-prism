@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useEffect } from 'react';
+import React, { useId, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { focusableWithin, useFocusTrap } from './useFocusTrap';
 
 const SIZES = {
     sm: 'max-w-md',
@@ -22,6 +23,11 @@ const SIZES = {
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
 };
+
+// Focus starts on the first control in the body (a form's first field). With
+// none, on the dialog itself, never on a footer action someone could confirm
+// by accident; screen readers then read the title.
+const firstBodyControl = (root) => focusableWithin(root.querySelector('[data-modal-body]'))[0] || null;
 
 export function Modal({
     isOpen,
@@ -35,14 +41,13 @@ export function Modal({
     className,
     children,
 }) {
-    useEffect(() => {
-        if (!isOpen || !closeOnEscape) return undefined;
-        const onKeyDown = (e) => {
-            if (e.key === 'Escape') onClose?.();
-        };
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [isOpen, closeOnEscape, onClose]);
+    const dialogRef = useRef(null);
+    const titleId = useId();
+    const subtitleId = useId();
+    useFocusTrap(dialogRef, isOpen, {
+        onEscape: closeOnEscape ? onClose : undefined,
+        initialFocus: firstBodyControl,
+    });
 
     if (!isOpen) return null;
 
@@ -54,11 +59,14 @@ export function Modal({
                 aria-hidden="true"
             />
             <div
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
-                aria-label={typeof title === 'string' ? title : undefined}
+                aria-labelledby={title ? titleId : undefined}
+                aria-describedby={subtitle ? subtitleId : undefined}
+                tabIndex={-1}
                 className={cn(
-                    'relative w-full bg-theme-card border border-theme-border rounded-2xl shadow-2xl',
+                    'relative w-full bg-theme-card border border-theme-border rounded-2xl shadow-2xl focus:outline-none',
                     'max-h-[85vh] flex flex-col',
                     SIZES[size],
                     className
@@ -68,24 +76,25 @@ export function Modal({
                     <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-theme-border shrink-0">
                         <div className="min-w-0">
                             {typeof title === 'string' ? (
-                                <h3 className="text-base font-bold text-theme-text">{title}</h3>
+                                <h3 id={titleId} className="text-base font-bold text-theme-text">{title}</h3>
                             ) : (
-                                title
+                                title && <div id={titleId}>{title}</div>
                             )}
-                            {subtitle && <p className="text-xs text-theme-muted mt-1">{subtitle}</p>}
+                            {subtitle && <p id={subtitleId} className="text-xs text-theme-muted mt-1">{subtitle}</p>}
                         </div>
                         {onClose && (
                             <button
+                                type="button"
                                 onClick={onClose}
                                 aria-label="Close"
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         )}
                     </div>
                 )}
-                <div className="px-6 py-4 overflow-y-auto">{children}</div>
+                <div data-modal-body className="px-6 py-4 overflow-y-auto">{children}</div>
                 {footer && (
                     <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-theme-border shrink-0">
                         {footer}

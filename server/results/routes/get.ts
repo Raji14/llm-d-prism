@@ -14,7 +14,8 @@
 
 import { Request, Response } from 'express';
 import { validateGitHubToken } from '../../oauth.ts';
-import { readResultPayload, readResultMetadata } from '../gcs.ts';
+import { readResultPayload, readResultMetadata, getPrismResultsBucket } from '../gcs.ts';
+import { storageFailure, StorageErrorBody } from '../errors.ts';
 import { PrismResultPayload } from '../api.ts';
 
 export type ResultsGetResponse = PrismResultPayload;
@@ -33,7 +34,7 @@ export type ResultsGetResponse = PrismResultPayload;
  *         - Returns `403 Forbidden` (or `404 Not Found`) if the user lacks permissions.
  * - **Response Format:** A JSON object representing the full benchmark result payload matching the `PrismResultPayload` interface (see api.ts).
  */
-export async function getResultsHandler(req: Request, res: Response<ResultsGetResponse | { error: string; details?: string }>) {
+export async function getResultsHandler(req: Request, res: Response<ResultsGetResponse | StorageErrorBody>) {
     const { runId } = req.params;
 
     // Validate UUID format of runId to prevent path traversal
@@ -87,7 +88,9 @@ export async function getResultsHandler(req: Request, res: Response<ResultsGetRe
         res.json(fileContent);
 
     } catch (error: any) {
-        console.error('[Results Get API Error]', error);
-        res.status(500).json({ error: 'Failed to retrieve result details', details: error.message });
+        const failure = storageFailure(error, { bucket: getPrismResultsBucket(), action: 'read', fallbackMessage: 'Failed to retrieve result details' });
+        if (failure.status === 403) console.warn('[Results Get API]', failure.body.error, error?.message);
+        else console.error('[Results Get API Error]', error);
+        res.status(failure.status).json(failure.body);
     }
 }

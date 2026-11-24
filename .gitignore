@@ -42,5 +42,6 @@ node_modules
 zipline-upload.zip
 llm-d-prism.code-workspace
 private/
+.prism-stores/
 scratch/
 scratch_*.json

@@ -263,8 +263,12 @@ export function readRegressionsView(search = '') {
     const pick = (k, allowed, fallback) => (allowed.includes(q.get(k)) ? q.get(k) : fallback);
     const pct = list('pct').map((s) => s.toUpperCase());
     const cap = Number(q.get('cap'));
+    const model = q.get('model');
+    const hardware = q.get('hardware');
     return {
         pipeline: q.get('pipeline') || null,
+        ...(model ? { model } : {}),
+        ...(hardware ? { hardware } : {}),
         runs: list('runs'),
         chart: pick('chart', CHART_MODES, DEFAULT_VIEW.chart),
         metric: pick('metric', LATENCY_METRICS, DEFAULT_VIEW.metric),
@@ -302,10 +306,19 @@ export function writeRegressionsView(view, search = '') {
     return q.toString();
 }
 
-/** Fits a requested view to the loaded data: a known pipeline, its runs, the newest run by default. */
+/** Fits a requested view to the loaded data: a known pipeline (or model/hardware hand-off), its runs, the newest run by default. */
 export function resolveRegressionsView(view, pipelines = []) {
     const requested = pipelines.find((p) => p.id === view.pipeline || (view.pipeline && p.platform === view.pipeline));
-    const pipeline = requested || pipelines.find((p) => p.id === defaultPipelineId(pipelines));
+    const byModelOrHw =
+        !requested && (view.model || view.hardware)
+            ? pipelines.find((p) => {
+                  const modelMatch = !view.model || (p.models || []).some((m) => m.toLowerCase().includes(view.model.toLowerCase()));
+                  const hwMatch = !view.hardware || (p.hardware || []).some((h) => h.toLowerCase().includes(view.hardware.toLowerCase()));
+                  return modelMatch && hwMatch;
+              }) ||
+              pipelines.find((p) => view.model && (p.models || []).some((m) => m.toLowerCase().includes(view.model.toLowerCase())))
+            : null;
+    const pipeline = requested || byModelOrHw || pipelines.find((p) => p.id === defaultPipelineId(pipelines));
     if (!pipeline) return { ...view, pipeline: null, runs: [] };
     const ids = new Set(pipeline.runs.map((r) => r.build));
     const runs = requested ? (view.runs || []).filter((id) => ids.has(id)) : [];

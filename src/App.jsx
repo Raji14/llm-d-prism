@@ -50,7 +50,10 @@ const DATA_VIEWS = new Set(['results-store', 'benchmark-browser', 'submit-benchm
 
 // The view the address bar asks for. Old ids resolve to the view they became;
 // which URL params carry across views lives in src/components/layout/navigation.js.
-const viewFromLocation = () => resolveView(new URLSearchParams(window.location.search).get('view'));
+const viewFromLocation = () => {
+  if (/^\/artifacts\/[^/]+\/[^/]+$/.test(window.location.pathname)) return 'results-store';
+  return resolveView(new URLSearchParams(window.location.search).get('view'));
+};
 
 // A link that uses an old view id (say ?view=intelligent-routing) opens the
 // view it became, and the address bar is corrected so the next share is canonical.

@@ -20,40 +20,43 @@ import { Button } from '../ui/Button';
 import { BrandLockup } from '../ui/BrandMarks.jsx';
 import { readSiteProfile } from '../../config/site.js';
 import { useGitHubAuth } from '../../hooks/useGitHubAuth.js';
-import { countWaitingResults } from '../../utils/resultsWorkspace.js';
 import { NAV, SUBMIT, REPO_URL, isActive, submitFor } from './navigation';
 
 const DEV = Boolean(import.meta.env?.DEV);
 
-// Approvers see what's waiting for them from anywhere in Prism (v1 of
-// "who's notified"): the results waiting in this browser, plus, on the
-// public store, the community runs waiting in the server's review queue.
-// On the dev server, the Results Store's ?role= preview applies here too.
-function useWaitingForApprover(instance, currentView) {
+// Approvers see what's waiting for them across accessible stores from anywhere
+// in Prism (using GET /api/stores stats.pendingCount).
+function useWaitingForApprover(currentView) {
     const { user } = useGitHubAuth();
     const previewRole = DEV ? new URLSearchParams(window.location.search).get('role') : null;
     const approver = previewRole === 'admin' || previewRole === 'contributor' ? previewRole === 'admin' : user?.permission === 'admin';
-    const [serverWaiting, setServerWaiting] = useState(0);
+    const [pendingCount, setPendingCount] = useState(0);
 
     useEffect(() => {
-        if (!approver || instance !== 'public') return undefined;
+        if (!approver) return undefined;
         let cancelled = false;
         const headers = {};
         const token = localStorage.getItem('prism_github_token');
         if (token) headers['X-Prism-Github-Token'] = token;
-        fetch('/api/results?status=submitted_pending_review&limit=50', { headers })
+        if (DEV) {
+            const profile = new URLSearchParams(window.location.search).get('stores');
+            if (profile) headers['X-Prism-Store-Profile'] = profile;
+            if (previewRole) headers['X-Prism-Dev-Role'] = previewRole;
+        }
+        fetch('/api/stores', { headers })
             .then((res) => (res.ok ? res.json() : null))
             .then((json) => {
-                if (!cancelled) setServerWaiting(Array.isArray(json?.items) ? json.items.length : 0);
+                if (cancelled || !Array.isArray(json?.stores)) return;
+                const total = json.stores.reduce((sum, s) => sum + (s.stats?.pendingCount || 0), 0);
+                setPendingCount(total);
             })
             .catch(() => {});
         return () => {
             cancelled = true;
         };
-    }, [approver, instance, currentView]);
+    }, [approver, previewRole, currentView]);
 
-    if (!approver) return 0;
-    return countWaitingResults(instance) + (instance === 'public' ? serverWaiting : 0);
+    return approver ? pendingCount : 0;
 }
 
 function NavLink({ view, onNavigate, className, children, ...rest }) {
@@ -275,11 +278,31 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
 
     const hideSubmit = currentView === 'results-store' || currentView === SUBMIT.view || currentView === 'submit';
     // Which Prism this is (one deployment each): its mark, name and submit words.
+    // Stays neutral when connected to multiple stores or an internal store; wears
+    // llm-d's mark when the primary/only store is the public llm-d store.
     const site = readSiteProfile();
+    const [dynamicBrand, setDynamicBrand] = useState(null);
+    useEffect(() => {
+        const onStoresChanged = (e) => {
+            const list = e.detail?.stores || [];
+            if (!list.length) return;
+            const onlyLlmd = list.length === 1 && list[0].brand === 'llm-d';
+            const customName = list.length === 1 && list[0].brand !== 'llm-d' && list[0].name !== 'Result store'
+                ? list[0].name
+                : list.length > 1
+                  ? list.find((s) => s.brand !== 'llm-d')?.name || null
+                  : null;
+            setDynamicBrand({ brand: onlyLlmd ? 'llm-d' : 'prism', siteName: onlyLlmd ? null : customName });
+        };
+        window.addEventListener('prism:stores-changed', onStoresChanged);
+        return () => window.removeEventListener('prism:stores-changed', onStoresChanged);
+    }, []);
+    const headerBrand = dynamicBrand?.brand || site.brand;
+    const headerSiteName = dynamicBrand ? dynamicBrand.siteName : site.siteName;
     const submit = submitFor(site.instance);
     // What waits for an approver; on the Results Store its queue tab says so.
-    const waiting = useWaitingForApprover(site.instance, currentView);
-    const queueName = site.instance === 'internal' ? 'Approval queue' : 'Review queue';
+    const waiting = useWaitingForApprover(currentView);
+    const queueName = 'Review queue';
     const showQueue = waiting > 0 && currentView !== 'results-store';
     const openQueue = (e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey) return;
@@ -352,7 +375,7 @@ export default function SiteHeader({ currentView, onNavigate, mobileOpen, onMobi
         <header className="surface-light relative z-50 shrink-0 border-b border-zinc-200/80 bg-white/90 backdrop-blur-xl text-zinc-900 font-sans">
             <nav aria-label="Primary" className="mx-auto max-w-6xl h-16 px-4 sm:px-6 flex items-center gap-4 md:gap-6">
                 <NavLink view="home" onNavigate={onNavigate} className="flex items-center shrink-0" aria-label={`${site.displayName} home`}>
-                    <BrandLockup brand={site.brand} siteName={site.siteName} />
+                    <BrandLockup brand={headerBrand} siteName={headerSiteName} />
                 </NavLink>
 
                 <div className="hidden lg:flex items-center gap-1 text-sm">

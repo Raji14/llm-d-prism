@@ -23,6 +23,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { oauthRouter, validateGitHubToken } from './oauth.ts';
 import { resultsRouter } from './results/index.ts';
+import { storesRouter, loadConfiguredStores, toPublicStoreSummary, resolveStoreCapabilities } from './stores/index.ts';
 import { storage } from './results/gcs.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,6 +42,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(oauthRouter);
 app.use(resultsRouter);
+app.use(storesRouter);
 
 // Trust the first proxy (Cloud Run Load Balancer) to properly resolve X-Forwarded-For
 app.set('trust proxy', 1);
@@ -63,6 +65,10 @@ app.get('/api/config', (req, res) => {
     const rawBuckets = process.env.DEFAULT_BUCKETS || 'llm-d-benchmarks-staging,llm-d-benchmarks';
     const defaultBuckets = rawBuckets.split(',');
     const defaultProjects = process.env.DEFAULT_PROJECTS ? process.env.DEFAULT_PROJECTS.split(',') : [];
+    const configuredStores = loadConfiguredStores(process.env);
+    const stores = configuredStores.map((s) =>
+        toPublicStoreSummary(s, resolveStoreCapabilities(s, { username: null, permission: 'none' }))
+    );
 
     res.json({
         buckets: defaultBuckets.map(b => b.trim()).filter(b => b),
@@ -74,8 +80,19 @@ app.get('/api/config', (req, res) => {
         // Which Prism this deployment is (src/config/site.js).
         instance: process.env.PRISM_INSTANCE === 'internal' ? 'internal' : 'public',
         brand: process.env.PRISM_BRAND === 'prism' ? 'prism' : 'llm-d',
+        stores,
         localDir: !!process.env.PRISM_LOCAL_DIR
     });
+});
+
+// Content negotiation for clean shareable artifact URLs: agents requesting JSON get raw JSON;
+// browsers fall through to the SPA.
+app.get('/artifacts/:storeId/:slug', (req, res, next) => {
+    const wantsJson = req.query.format === 'json' || (req.headers.accept || '').includes('application/json');
+    if (wantsJson) {
+        return res.redirect(307, `/api/artifacts/${encodeURIComponent(req.params.storeId)}/${encodeURIComponent(req.params.slug)}`);
+    }
+    return next();
 });
 
 // --- API: GIQ Proxy (Backend-for-Frontend) ---

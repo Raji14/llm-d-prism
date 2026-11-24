@@ -128,6 +128,11 @@ export const LEADERBOARD_PARAMS = ['workload', 'hardware', 'engine', 'sort', 'q'
 // the tab, and Browse's search and filters (ResultsStore.jsx). `q` and `sort`
 // are Browse's too, but the leaderboard shares those names (LEADERBOARD_PARAMS).
 export const RESULTS_STORE_PARAMS = [
+    'store',
+    'result',
+    'artifact',
+    'domain',
+    'scale',
     'run',
     'curve',
     'compare',
@@ -224,13 +229,19 @@ export function planNavigation(search, from, to, extra = {}) {
             if (obj[k] != null && obj[k] !== '') params.set(k, String(obj[k]));
         });
         ['intent', 'recipes', 'baseline'].forEach((k) => params.delete(k));
-    } else if (to === 'results-store' && (obj.curve || obj.tab || obj.intent === 'compare')) {
+    } else if (to === 'regressions-analysis' && (obj.model || obj.hardware)) {
+        ['intent', 'recipes', 'baseline', 'recipe', 'model'].forEach((k) => params.delete(k));
+        if (obj.model) params.set('model', String(obj.model));
+        if (obj.hardware) params.set('hardware', String(obj.hardware));
+        resolved.model = obj.model || null;
+    } else if (to === 'results-store' && (obj.curve || obj.tab || obj.intent === 'compare' || obj.ingest)) {
         // A link into one result (the Leaderboard drawer), one tab (the header's
         // queue pill) or Compare (Home's "Validate an optimization") opens there,
         // not wherever the store was left.
         ['intent', 'recipes', 'baseline', 'recipe', 'model'].forEach((k) => params.delete(k));
         if (obj.curve) params.set('curve', obj.curve);
         if (obj.tab) params.set('tab', obj.tab);
+        if (obj.ingest) params.set('ingest', '1');
         if (obj.intent === 'compare') params.set('intent', 'compare');
         resolved.intent = obj.intent === 'compare' ? 'compare' : null;
     } else {

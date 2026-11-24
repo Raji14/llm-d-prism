@@ -12,14 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { createContext, useContext } from 'react';
-
-// Curves, Watch dashboards and Showcases for the current instance. Provided by
-// WorkspaceProvider; read with useWorkspace().
-export const WorkspaceContext = createContext(null);
-
-export function useWorkspace() {
-    const ctx = useContext(WorkspaceContext);
-    if (!ctx) throw new Error('useWorkspace must be used inside <WorkspaceProvider>');
-    return ctx;
-}
+export * from './schema.ts';
+export * from './registry.ts';
+export * from './storage.ts';
+export * from './baselines.ts';
+export { storesRouter } from './routes.ts';

@@ -299,7 +299,7 @@ export function CurveChart({ series, title = null, latency = 'ttft', stat = null
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/70 px-3 py-1.5 text-xs text-zinc-600">
                     <span>
                         {yMode === 'focus'
-                            ? `Y-axis focused on ${capLabel} so ${clippedCount} overloaded tail point${clippedCount === 1 ? '' : 's'} (up to ${fmtMs(maxY)}) don’t flatten the curve.`
+                            ? `Y-axis focused on ${capLabel} so ${clippedCount} overloaded tail point${clippedCount === 1 ? '' : 's'} (up to ${fmtMs(maxY)}) ${clippedCount === 1 ? 'doesn’t' : 'don’t'} flatten the curve.`
                             : `Showing full y-axis up to ${fmtMs(maxY)} (${clippedCount} tail point${clippedCount === 1 ? '' : 's'} above ${capLabel}).`}
                     </span>
                     <ToggleGroup

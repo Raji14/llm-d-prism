@@ -16,9 +16,9 @@ import React from 'react';
 import { Check, CircleAlert, Inbox, Trophy, Upload } from 'lucide-react';
 import { Button, EmptyState, Panel, StatusChip, VisibilityChip } from '../ui';
 import { cn } from '../../utils/cn';
-import { ResultVisibilityChip } from './parts';
+import { Notice, ResultVisibilityChip } from './parts';
 import { resultAudience, resultStatusLabel } from './instance';
-import { curveChecks, fmtDay, formsSweep, mapSubmissionState } from './catalog';
+import { curveChecks, fmtDay, formsSweep, isReportDraft, mapSubmissionState } from './catalog';
 
 // Each step says what actually happened: done · now · warn · todo.
 function Timeline({ steps }) {
@@ -123,9 +123,11 @@ function Section({ title, count, subtitle, actions, children }) {
 // waiting on an approver or reviewer, and what you've published. The sections
 // are the same on both instances; only the words differ. `runOfId` finds a
 // server submission's run when it's loaded, and `leaderboardOf` where a live
-// result ranks.
+// result ranks. `serviceProblem` says why the results service didn't answer
+// (server submissions can't be listed then), with `onRetryService` to ask again.
 export function MyWorkTab({
     curves,
+    reports = [],
     uploads,
     serverItems,
     instance,
@@ -140,12 +142,17 @@ export function MyWorkTab({
     onUpload,
     onSignIn,
     signInReady = false,
+    serviceProblem = null,
+    onRetryService,
 }) {
     // Results saved before signing in are owned by 'you'; they're still in
     // this browser, so they stay in My Work after sign-in.
     const mine = curves.filter((c) => c.owner === actor || !c.owner || c.owner === 'you');
     const by = (status) => mine.filter((c) => c.status === status).sort((a, b) => b.updatedAt - a.updatedAt);
-    const drafts = by('draft');
+    // Drafts a report made so it could price runs, untouched since, sit in
+    // their own section: they aren't curation anyone started.
+    const reportDrafts = by('draft').filter(isReportDraft);
+    const drafts = by('draft').filter((c) => !isReportDraft(c));
     const needsChanges = by('needs_changes');
     const inReview = by('in_review');
     const published = by(copy.publishedStatus);
@@ -157,6 +164,7 @@ export function MyWorkTab({
     const flow = copy.steps.map((step, i) => `${i + 1}. ${step}`).join(' → ');
     const whoSentBack = copy.reviewer === 'approver' ? 'An approver' : 'A reviewer';
     const resubmit = copy.resubmitVerb.toLowerCase();
+    const reportsUsing = (c) => reports.filter((r) => (r.curveIds || []).includes(c.id)).map((r) => r.name);
 
     const mapped = serverItems.map((s) => ({ ...s, ui: mapSubmissionState(s.status, { feedback: s.feedback, instance }) })).filter((s) => s.ui);
     const serverDrafts = mapped.filter((s) => s.ui.status === 'draft' && !uploads.some((r) => r.runId === s.runId));
@@ -165,7 +173,37 @@ export function MyWorkTab({
     const serverPublished = mapped.filter((s) => s.ui.status === copy.publishedStatus);
 
     const total =
-        drafts.length + uploads.length + serverDrafts.length + needsChanges.length + inReview.length + published.length + declined.length + serverChanges.length + serverReview.length + serverPublished.length;
+        drafts.length +
+        reportDrafts.length +
+        uploads.length +
+        serverDrafts.length +
+        needsChanges.length +
+        inReview.length +
+        published.length +
+        declined.length +
+        serverChanges.length +
+        serverReview.length +
+        serverPublished.length;
+
+    // An alert, so it's read out when it appears: without the service, what
+    // you sent to the server is missing here, and an empty list would lie.
+    const serviceNotice = serviceProblem ? (
+        <div role="alert">
+            <Notice tone="warning">
+                <span className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                        <span className="font-semibold">{serviceProblem}</span> Runs you uploaded to the server may be missing here; everything saved in this browser
+                        is listed.
+                    </span>
+                    {onRetryService && (
+                        <Button size="xs" variant="secondary" onClick={onRetryService}>
+                            Try again
+                        </Button>
+                    )}
+                </span>
+            </Notice>
+        </div>
+    ) : null;
 
     if (!total) {
         const message = isPublic
@@ -176,23 +214,26 @@ export function MyWorkTab({
                 ? `How it works: ${flow}. Drafts, your requests and what’s marked official show up here.`
                 : `How it works: ${flow}. Drafts and what you mark official show up here.`;
         return (
-            <div className="rounded-3xl border border-zinc-200 bg-white">
-                <EmptyState
-                    icon={<Inbox className="h-8 w-8" />}
-                    title="Nothing here yet"
-                    message={message}
-                    action={
-                        <div className="flex flex-wrap justify-center gap-2">
-                            <Button size="xs" variant="secondary" onClick={() => nav.goTab('browse')}>
-                                Browse runs
-                            </Button>
-                            <Button size="xs" variant="ghost" onClick={onUpload}>
-                                <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-                                {copy.uploadLabel}
-                            </Button>
-                        </div>
-                    }
-                />
+            <div className="space-y-4">
+                {serviceNotice}
+                <div className="rounded-3xl border border-zinc-200 bg-white">
+                    <EmptyState
+                        icon={<Inbox className="h-8 w-8" />}
+                        title="Nothing here yet"
+                        message={message}
+                        action={
+                            <div className="flex flex-wrap justify-center gap-2">
+                                <Button size="xs" variant="secondary" onClick={() => nav.goTab('browse')}>
+                                    Browse runs
+                                </Button>
+                                <Button size="xs" variant="ghost" onClick={onUpload}>
+                                    <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+                                    {copy.uploadLabel}
+                                </Button>
+                            </div>
+                        }
+                    />
+                </div>
             </div>
         );
     }
@@ -248,6 +289,7 @@ export function MyWorkTab({
 
     return (
         <div className="space-y-6">
+            {serviceNotice}
             {isPublic && !signedIn && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-700">
                     <div>
@@ -410,6 +452,21 @@ export function MyWorkTab({
                         action={runAction(s)}
                     />
                 ))}
+            </Section>
+
+            {/* Last: nobody started these to curate them. */}
+            <Section
+                title="Made for reports"
+                count={reportDrafts.length}
+                subtitle={`Drafts saved when you added runs to a report, so it could price them. The runs are unchanged; the report marks them ${copy.unofficialLabel} because the results aren’t ${copy.publishedLabel} yet. Open one to curate it.`}
+            >
+                {reportDrafts.map((c) => {
+                    const used = reportsUsing(c);
+                    return curveRow(c, {
+                        label: 'Open',
+                        rowProps: { status: null, chip: null, detail: used.length ? `In ${used.length === 1 ? 'report' : 'reports'}: ${used.join(', ')}` : 'In no report now' },
+                    });
+                })}
             </Section>
         </div>
     );

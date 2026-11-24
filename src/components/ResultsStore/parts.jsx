@@ -146,31 +146,53 @@ export function CopyButton({ text, label = 'Copy link', copiedLabel = 'Copied', 
         timer.current = setTimeout(() => setCopied(false), 1800);
     };
     return (
-        <Button size={size} variant={variant} onClick={onCopy}>
-            {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-            {copied ? copiedLabel : label}
-        </Button>
+        <>
+            <Button size={size} variant={variant} onClick={onCopy}>
+                {copied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                {copied ? copiedLabel : label}
+            </Button>
+            {/* Always present, so screen readers announce the change, not just show it. */}
+            <span role="status" aria-live="polite" className="sr-only">
+                {copied ? copiedLabel : ''}
+            </span>
+        </>
     );
 }
 
 // "Download CSV" and "Copy as Markdown" for a table (Compare, Reports).
 // `csv` is a function, so the file is only built when someone asks for it.
 // When `warnMessage` is given (e.g. exporting Compare without a baseline),
-// clicking either export button prompts for confirmation first.
+// clicking either export button prompts for confirmation first. What
+// happened ("Markdown table copied", "Downloaded …") is announced politely.
 export function ExportActions({ filename, csv, markdown, warnMessage = null }) {
     const [pendingAction, setPendingAction] = useState(null);
     const [copied, setCopied] = useState(false);
+    const [announcement, setAnnouncement] = useState('');
     const timer = useRef(null);
-    useEffect(() => () => clearTimeout(timer.current), []);
+    const announceTimer = useRef(null);
+    useEffect(
+        () => () => {
+            clearTimeout(timer.current);
+            clearTimeout(announceTimer.current);
+        },
+        []
+    );
+    const announce = (message) => {
+        setAnnouncement(message);
+        clearTimeout(announceTimer.current);
+        announceTimer.current = setTimeout(() => setAnnouncement(''), 4000);
+    };
 
     const doCsv = () => {
         downloadText(filename, csv());
         setPendingAction(null);
+        announce(`Downloaded ${filename}`);
     };
     const doMd = () => {
         navigator.clipboard?.writeText(typeof markdown === 'function' ? markdown() : markdown);
         setCopied(true);
         setPendingAction(null);
+        announce('Markdown table copied');
         clearTimeout(timer.current);
         timer.current = setTimeout(() => setCopied(false), 1800);
     };
@@ -187,6 +209,9 @@ export function ExportActions({ filename, csv, markdown, warnMessage = null }) {
                     {copied ? 'Copied' : 'Copy as Markdown'}
                 </Button>
             </div>
+            <span role="status" aria-live="polite" className="sr-only">
+                {announcement}
+            </span>
             {warnMessage && pendingAction && (
                 <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                     <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden="true" />

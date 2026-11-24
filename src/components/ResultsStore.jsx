@@ -49,9 +49,11 @@ import {
     curveConfigKey,
     curveDraftFromRuns,
     fmtDay,
+    fmtOnDay,
     formsSweep,
     handleOf,
     isPublishedState,
+    isReportDraft,
     itemKey,
     loadOrder,
     runKeyOf,
@@ -68,7 +70,7 @@ import { MyWorkTab } from './ResultsStore/MyWorkTab';
 import { AddToDashboardDialog, DashboardsTab, NewWatchDialog } from './ResultsStore/DashboardsTab';
 import { ReviewQueueTab } from './ResultsStore/ReviewQueueTab';
 import { SourcesTab } from './ResultsStore/SourcesTab';
-import { plainSyncError } from './ResultsStore/sourceHealth';
+import { plainSyncError, responseError, serviceProblemText } from './ResultsStore/sourceHealth';
 import { PublishDialog } from './ResultsStore/PublishDialog';
 import { GlossaryDialog } from './ResultsStore/Glossary';
 import { CopyButton, Notice } from './ResultsStore/parts';
@@ -160,7 +162,54 @@ const BROWSE_SORTS = ['newest', 'oldest', 'usable', 'peak', 'model'];
 const BROWSE_KINDS = ['all', 'suggested', 'runs', 'curves'];
 const BROWSE_PARAMS = ['q', 'sort', 'kind', 'f.date', 'f.mine', ...BROWSE_FACETS.map((f) => `f.${f}`)];
 
+// Each screen and tab is a browser history entry, so Back and Forward move
+// between them inside the store: opening a run, a comparison or a result, or
+// switching tabs, pushes an entry; filters and Compare's live view replace
+// the current one. Each entry keeps the screen stack and Browse's search and
+// filters under this key, so Back from a run lands on the comparison it came
+// from, and Back from there on the list as it was filtered. Browsers keep
+// the entry across a reload; Browse's state is mirrored in sessionStorage in
+// case something else replaced it.
+const HISTORY_KEY = 'rsStore';
+const BROWSE_ORIGIN_KEY = 'prism_rs_browse_origin';
+
+// What of Browse an entry keeps: no selection, no "add runs to" mode.
+const browseSnapshot = (b = {}) => ({ query: b.query || '', filters: b.filters || {}, sort: b.sort || 'newest', kind: b.kind || 'all' });
+
+// Compare keeps what's on screen (series, metric, baseline) in `live`. Once
+// another screen covers it, that becomes its items, so it reopens as left.
+const settleScreen = (s) => (s?.type === 'compare' && s.live ? { type: 'compare', items: s.live.items, view: s.live.view } : s);
+
+// The screen the URL names, as a key: a saved entry only applies to it.
+const screenKeyOf = (get) => ['tab', 'run', 'curve', 'compare'].map((k) => get(k) || '').join('|');
+
+// This history entry's saved state, when it belongs to the URL showing.
+function savedEntry() {
+    try {
+        const saved = window.history.state?.[HISTORY_KEY];
+        return saved && saved.screenKey === screenKeyOf(readParam) ? saved : null;
+    } catch {
+        return null;
+    }
+}
+
+function readBrowseOrigin() {
+    try {
+        return JSON.parse(sessionStorage.getItem(BROWSE_ORIGIN_KEY) || 'null');
+    } catch {
+        return null;
+    }
+}
+
 function initialBrowse() {
+    // A detail screen's URL carries no Browse params (it stays shareable):
+    // the list it was opened from comes from the entry, else this tab's
+    // session, so a reload there still goes back to it.
+    if (!BROWSE_PARAMS.some((k) => readParam(k) != null)) {
+        const detail = ['run', 'curve', 'compare'].some((k) => readParam(k));
+        const origin = savedEntry()?.browse || (detail ? readBrowseOrigin() : null);
+        if (origin) return { ...browseSnapshot(origin), selected: new Set(), addTo: null };
+    }
     const filters = {};
     BROWSE_FACETS.forEach((f) => {
         const v = readParam(`f.${f}`);
@@ -196,6 +245,10 @@ function writeBrowseParams(p, browse) {
 }
 
 function initialStack() {
+    // The whole stack when this entry saved it (Back from a run still knows
+    // the comparison underneath), else the one screen the URL names.
+    const saved = savedEntry();
+    if (saved?.stack?.length) return saved.stack.map(settleScreen);
     const run = readParam('run');
     const curve = readParam('curve');
     const compare = readParam('compare');
@@ -211,6 +264,8 @@ function initialStack() {
 function initialTab() {
     const fromUrl = readParam('tab');
     if (TABS.includes(fromUrl)) return fromUrl;
+    const saved = savedEntry()?.tab;
+    if (TABS.includes(saved)) return saved;
     try {
         // The upload wizard leaves these flags when it hands back to the store.
         if (
@@ -370,7 +425,7 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, curveLoca
                     <div className="rounded-2xl bg-zinc-50 p-4 text-xs leading-relaxed">
                         <div className="label-caps mb-1 text-zinc-500">Opens with provenance</div>
                         {curve.status === copy.publishedStatus
-                            ? `${resultStatusLabel(curve.status, copy)} · marked by ${curve.markedBy || curve.owner} on ${fmtDay(curve.markedAt)}`
+                            ? `${resultStatusLabel(curve.status, copy)} · marked by ${curve.markedBy || curve.owner} ${fmtOnDay(curve.markedAt)}`
                             : curve.status === 'in_review'
                               ? resultStatusLabel('in_review', copy)
                               : 'Draft'}{' '}
@@ -384,25 +439,29 @@ function ShareDialog({ target, url, curve, curves = [], localRuns = 0, curveLoca
 
 // Dev server only. Role overrides your real role either way, so a signed-in
 // admin can check the contributor view too; picking your real role clears it.
+// Signed out, your real role is "Signed out" (Prism can't record a name), so
+// Contributor is a preview of its own and shows Request official.
 // There's no instance switch: each Prism is its own entry point
 // (?instance=internal&site=… on the dev server), as it is in production.
-function PreviewBar({ instance, isAdmin, signedInAdmin, onPreviewRole }) {
+function PreviewBar({ instance, previewRole, signedIn, signedInAdmin, onPreviewRole }) {
+    const realRole = signedInAdmin ? 'admin' : signedIn ? 'contributor' : 'signedout';
     return (
         <div className="my-1.5 flex flex-wrap items-center gap-2.5 rounded-full border border-dashed border-zinc-300 bg-zinc-50/70 px-3 py-1 text-micro text-zinc-600">
-            <span className="label-caps text-zinc-500">Preview · dev only</span>
+            <span className="label-caps text-zinc-500">Dev only</span>
             <span className="flex items-center gap-1.5">
                 Role
                 <ToggleGroup
                     size="xs"
                     aria-label="Preview role"
-                    value={isAdmin ? 'admin' : 'contributor'}
-                    onChange={(v) => onPreviewRole(v === (signedInAdmin ? 'admin' : 'contributor') ? null : v)}
+                    value={previewRole || realRole}
+                    onChange={(v) => onPreviewRole(v === realRole ? null : v)}
                     options={[
+                        ...(signedIn ? [] : [{ value: 'signedout', label: 'Signed out' }]),
                         { value: 'contributor', label: 'Contributor' },
                         { value: 'admin', label: instance === 'internal' ? 'Admin / approver' : 'Admin / reviewer' },
                     ]}
                 />
-                {signedInAdmin && !isAdmin && <span className="text-zinc-500">You’re signed in as an admin</span>}
+                {signedInAdmin && previewRole && previewRole !== 'admin' && <span className="text-zinc-500">You’re signed in as an admin</span>}
             </span>
         </div>
     );
@@ -418,6 +477,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         gcsProfiles,
         submissions = [],
         submissionsMap = {},
+        submissionsError = null,
+        loadSubmissions,
         updateSubmissionStatus,
         brv02Runs = [],
         loadAllData,
@@ -462,9 +523,11 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const [quick, setQuick] = useState(null);
     const [queue, setQueue] = useState({ items: [], loading: false, error: null });
     const [syncing, setSyncing] = useState(false);
+    // Dismissed once in this browser, the note stays away in every tab until
+    // its words change (say, once results are stored on the server).
     const [noticeDismissed, setNoticeDismissed] = useState(() => {
         try {
-            return typeof sessionStorage !== 'undefined' && sessionStorage.getItem('prism_results_notice_dismissed') === '1';
+            return typeof localStorage !== 'undefined' && localStorage.getItem('prism_results_notice_dismissed') === BROWSER_NOTE;
         } catch {
             return false;
         }
@@ -472,9 +535,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const dismissNotice = useCallback(() => {
         setNoticeDismissed(true);
         try {
-            sessionStorage.setItem('prism_results_notice_dismissed', '1');
+            localStorage.setItem('prism_results_notice_dismissed', BROWSER_NOTE);
         } catch {
-            // sessionStorage unavailable
+            // localStorage unavailable
         }
     }, []);
     // Ties the section tabs to the panel that shows their content.
@@ -765,12 +828,16 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             return;
         }
         setQueue((q) => ({ ...q, loading: true, error: null }));
+        let failure = null;
         try {
             const headers = {};
             const token = localStorage.getItem('prism_github_token');
             if (token) headers['X-Prism-Github-Token'] = token;
             const res = await fetch('/api/results?status=submitted_pending_review&limit=50', { headers });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                failure = { status: res.status, message: await responseError(res) };
+                throw new Error(`HTTP ${res.status}`);
+            }
             const json = await res.json();
             const items = (json.items || []).map((it) => {
                 const by = handleOf(it.user) || handleOf(it.github_author);
@@ -784,7 +851,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             });
             setQueue({ items, loading: false, error: null });
         } catch {
-            setQueue({ items: [], loading: false, error: 'The review service isn’t reachable right now, so only reviews submitted from this browser are listed.' });
+            setQueue({ items: [], loading: false, error: `${serviceProblemText(failure?.status, failure?.message)} Only reviews submitted from this browser are listed.` });
         }
     }, [instance]);
 
@@ -813,10 +880,15 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         [leaderboardOf, openLeaderboard, notify]
     );
 
+    // How the next address-bar sync writes history: 'push' for a new screen
+    // or tab (Back returns here), 'replace' for changes within one.
+    const historyMode = useRef('replace');
+
     // Set once the queue has been asked for, by a tab click or on arrival.
     const queueRequested = useRef(false);
     const goTab = useCallback(
         (t) => {
+            historyMode.current = 'push';
             setTab(t);
             setStack([]);
             if (t === 'review') {
@@ -835,7 +907,10 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         loadReviewQueue();
     }, [tab, isReviewer, loadReviewQueue]);
 
-    const push = useCallback((next) => setStack((s) => [...s, next]), []);
+    const push = useCallback((next) => {
+        historyMode.current = 'push';
+        setStack((s) => [...s.map(settleScreen), next]);
+    }, []);
 
     // Results made from exactly these runs, any status.
     const resultsOfRuns = useCallback(
@@ -879,7 +954,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             }
             const id = ws.createCurve(unique);
             push({ type: 'curve', id });
-            notify('Draft saved. Only you can see it.');
+            notify('Private draft saved in My work. Only you can see it; discard it there if you were just looking.');
         },
         [ws, push, notify, resultsOfRuns]
     );
@@ -924,7 +999,12 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     const nav = useMemo(
         () => ({
             goTab,
-            back: () => setStack((s) => s.slice(0, -1)),
+            // An entry the store pushed has the previous screen right behind
+            // it: step back through history, so browser Back and this agree.
+            back: () => {
+                if (window.history.state?.[HISTORY_KEY]?.pushed) window.history.back();
+                else setStack((s) => s.slice(0, -1));
+            },
             backLabel,
             openRun: (key) => push({ type: 'run', key }),
             // A comparison uses up the selection that made it, so picks hidden
@@ -938,6 +1018,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             makeCurve,
             makeCurveFromItems: (items) => makeCurve(runsFromItems(items)),
             addRunsTo: (id) => {
+                historyMode.current = 'push';
                 setBrowse((b) => ({ ...b, addTo: id, selected: new Set() }));
                 setTab('browse');
                 setStack([]);
@@ -965,6 +1046,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             const picked = runsFromItems(items);
             ws.addRunsToCurve(id, picked);
             setBrowse((b) => ({ ...b, addTo: null, selected: new Set() }));
+            historyMode.current = 'push';
             setStack([{ type: 'curve', id }]);
             notify(`Added ${picked.length} run${picked.length === 1 ? '' : 's'} to the result.`);
         },
@@ -990,7 +1072,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 if (!made.has(sig)) {
                     let id = resultFromRuns(list)?.id;
                     if (!id) {
-                        id = ws.createCurve(list);
+                        id = ws.createCurve(list, { origin: 'report' });
                         created += 1;
                     }
                     made.set(sig, id);
@@ -1076,6 +1158,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         queueBundlesForWizard(local.map(buildStagedBundle), 'submit-review');
         onNavigate('submit-benchmarks', { intent: 'submit-review' });
     };
+    // A result's browser-only runs: the ones it recorded, plus any of its
+    // loaded source runs that are still only here (older results lack the list).
+    const continueUploadFor = (curve) =>
+        continueUpload({
+            localRunIds: [
+                ...new Set([...(curve?.localRunIds || []), ...runsFromKeys(curve?.builtFrom?.runKeys || []).filter((r) => r.isLocalOnly).map((r) => r.runId)]),
+            ],
+        });
 
     // One-step publish: the result is built behind the scenes from the runs.
     const quickSubject = useMemo(() => {
@@ -1228,7 +1318,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     }, [navScrollKey]);
 
     // Keep the address bar shareable: tab + whatever screen is open, and
-    // Browse's search and filters while Browse is showing.
+    // Browse's search and filters while Browse is showing. A new screen or
+    // tab is a new history entry; anything else updates the current one.
+    // Each entry saves the stack and Browse's state (see HISTORY_KEY).
     const tabVisible = tab === 'review' ? isReviewer : tab === 'sources' ? isAdmin : TABS.includes(tab);
     useEffect(() => {
         const p = new URLSearchParams(window.location.search);
@@ -1239,8 +1331,42 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         if (screen?.type === 'compare') p.set('compare', encodeItems(screen.live?.items || screen.items, screen.live?.view || screen.view));
         writeBrowseParams(p, !screen && (tab === 'browse' || !tabVisible) ? browse : {});
         const next = `${window.location.pathname}?${p.toString()}`;
-        if (`${window.location.pathname}${window.location.search}` !== next) window.history.replaceState(null, '', next);
-    }, [tab, tabVisible, screen, encodeItems, browse]);
+        const entry = { screenKey: screenKeyOf((k) => p.get(k)), tab, stack, browse: browseSnapshot(browse) };
+        const mode = historyMode.current;
+        historyMode.current = 'replace';
+        try {
+            sessionStorage.setItem(BROWSE_ORIGIN_KEY, JSON.stringify(entry.browse));
+        } catch {
+            // sessionStorage unavailable: a reload just starts unfiltered.
+        }
+        const current = window.history.state?.[HISTORY_KEY];
+        const sameUrl = `${window.location.pathname}${window.location.search}` === next;
+        if (mode === 'push' && !sameUrl) {
+            window.history.pushState({ [HISTORY_KEY]: { ...entry, pushed: true } }, '', next);
+        } else if (!sameUrl || JSON.stringify({ ...current, pushed: undefined }) !== JSON.stringify({ ...entry, pushed: undefined })) {
+            window.history.replaceState({ ...(window.history.state || {}), [HISTORY_KEY]: { ...entry, pushed: !!current?.pushed } }, '', next);
+        }
+    }, [tab, tabVisible, screen, stack, encodeItems, browse]);
+
+    // Back and Forward within the store: put back the entry's tab, screens
+    // and Browse filters. Entries without saved state (the one that opened
+    // the store, an old link) are read from the URL. Other views' entries
+    // are App's to handle.
+    useEffect(() => {
+        const onPopState = (event) => {
+            if (!['results-store', 'manage-benchmarks'].includes(readParam('view') || '')) return;
+            const saved = event.state?.[HISTORY_KEY];
+            historyMode.current = 'replace';
+            setTab(TABS.includes(saved?.tab) ? saved.tab : initialTab());
+            setStack(saved ? (saved.stack || []).map(settleScreen) : initialStack());
+            const restored = saved?.browse ? { ...browseSnapshot(saved.browse), selected: new Set(), addTo: null } : initialBrowse();
+            // Picks survive (they're this page's, not the entry's); "add runs
+            // to" ends, as Back has left that step.
+            setBrowse((b) => ({ ...restored, selected: b.selected || new Set(), addTo: null }));
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
 
     // The upload wizard's hand-back flags have done their job (initialTab).
     useEffect(() => {
@@ -1268,7 +1394,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
         const clear = () => {
             const p = new URLSearchParams(window.location.search);
             p.delete('benchmarks');
-            window.history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`);
+            window.history.replaceState(window.history.state, '', `${window.location.pathname}?${p.toString()}`);
         };
         let uuids = [];
         try {
@@ -1345,7 +1471,9 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
     }, [data, loading, addToast, injectDynamicEntries]);
 
     // ------------------------------------------------------------ render
-    const workCount = ws.curves.filter((c) => c.status === 'draft' || c.status === 'needs_changes').length + uploads.length;
+    // Drafts a report made and nobody has touched since are listed in My
+    // work, but they aren't work waiting on anyone, so the badge skips them.
+    const workCount = ws.curves.filter((c) => (c.status === 'draft' && !isReportDraft(c)) || c.status === 'needs_changes').length + uploads.length;
     const watchRegressedCount = useMemo(
         () => ws.watches.filter((w) => watchSummary(w, watchRuns, watchRunsByKey, ws.getCurve).regressedCount > 0).length,
         [ws.watches, watchRuns, watchRunsByKey, ws.getCurve]
@@ -1395,6 +1523,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 customRates={dashboardState?.customRates}
                 nav={nav}
                 onShare={setShare}
+                shareUrlFor={shareUrl}
                 onLiveChange={onLiveCompare}
                 onAddToDashboard={openReportDialog}
             />
@@ -1432,13 +1561,14 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 onAddToDashboard={(curveIds) => setDashDialog({ curveIds, raw: [] })}
                 onWatch={(c) => setWatchDialog({ configKey: curveConfigKey(c, runsByKey), refCurveId: c.id })}
                 onSubmitForReview={submitForReview}
-                onContinueUpload={continueUpload}
+                onContinueUpload={continueUploadFor}
             />
         );
     } else if (activeTab === 'mywork') {
         content = (
             <MyWorkTab
                 curves={ws.curves}
+                reports={ws.showcases}
                 uploads={uploads}
                 serverItems={serverItems}
                 instance={instance}
@@ -1453,6 +1583,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 onUpload={onUpload}
                 onSignIn={() => login?.()}
                 signInReady={!!isConfigured}
+                serviceProblem={submissionsError ? serviceProblemText(submissionsError.status, submissionsError.message) : null}
+                onRetryService={() => loadSubmissions?.()}
             />
         );
     } else if (activeTab === 'dashboards') {
@@ -1499,8 +1631,8 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                 {compareHint && !addToCurve && (
                     <div className="mb-6 flex items-start justify-between gap-3 rounded-2xl border border-accent-200 bg-accent-50 px-4 py-3 text-xs leading-relaxed text-accent-800" role="note">
                         <span className="min-w-0 flex-1">
-                            <span className="font-semibold">Validate an optimization:</span> tick your run and a baseline from the same setup, then choose{' '}
-                            <span className="font-semibold">Compare</span>. Prism checks the setups match and shows the difference at the same latency
+                            <span className="font-semibold">Validate an optimization:</span> tick your run and a baseline that differs only in what you changed, then choose{' '}
+                            <span className="font-semibold">Compare</span>. Prism checks what else differs and shows the difference at the same latency
                             target. Each sweep also has <span className="font-semibold">Compare with…</span>
                         </span>
                         <Button size="xs" variant="ghost" className="shrink-0" onClick={() => setCompareHint(false)}>
@@ -1532,6 +1664,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     canMakeResultItems={canMakeResultItems}
                     canPublish={canPublish}
                     officialBlock={officialBlock}
+                    isReviewer={isReviewer}
                     resultOf={resultOf}
                     addTo={addToCurve}
                     onAddToCurve={addSelectionToCurve}
@@ -1574,7 +1707,7 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
             <div className="mx-auto w-full max-w-6xl px-4 pt-4 sm:px-6">
                 <div className="flex flex-wrap items-center justify-between gap-3 shadow-[inset_0_-1px_0_0_var(--color-zinc-200)]">
                     <Tabs tabs={tabs} value={activeTab} onChange={goTab} ariaLabel="Results store sections" idBase={tabsId} className="shadow-none" />
-                    {DEV && <PreviewBar instance={instance} isAdmin={isAdmin} signedInAdmin={signedInAdmin} onPreviewRole={onPreviewRole} />}
+                    {DEV && <PreviewBar instance={instance} previewRole={previewRole} signedIn={signedIn} signedInAdmin={signedInAdmin} onPreviewRole={onPreviewRole} />}
                 </div>
                 {!noticeDismissed && (
                     <Notice className="mt-3" onDismiss={dismissNotice} dismissLabel="Dismiss browser storage note">
@@ -1647,7 +1780,6 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     }}
                     onContinueUpload={() => {
                         const picked = quick.runs;
-                        ws.createCurve(picked);
                         setQuick(null);
                         continueUpload({ localRunIds: picked.filter((r) => r.isLocalOnly).map((r) => r.runId) });
                     }}
@@ -1688,7 +1820,27 @@ function ResultsStoreView({ onNavigate, onNavigateBack, dashboardState, dashboar
                     onAdd={(showcaseId) => {
                         const { ids, created } = resolveReportDialog();
                         ids.forEach((id) => ws.addToShowcase(showcaseId, id));
-                        notify(`Added to the report.${draftsNote(created)}`);
+                        const name = ws.showcases.find((s) => s.id === showcaseId)?.name;
+                        // Closed first: the dialog's overlay would cover the toast's link.
+                        setDashDialog(null);
+                        let toastId;
+                        toastId = notify(
+                            <span>
+                                Added to {name ? `“${name}”` : 'the report'}.{draftsNote(created)}{' '}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (toastId != null) removeToast?.(toastId);
+                                        setDashDialog(null);
+                                        setDashActive(showcaseId);
+                                        goTab('dashboards');
+                                    }}
+                                    className="font-semibold underline decoration-white/50 underline-offset-2 hover:decoration-white"
+                                >
+                                    Open report
+                                </button>
+                            </span>
+                        );
                     }}
                     onCreate={(name) => {
                         const { ids, created } = resolveReportDialog();
@@ -1736,7 +1888,7 @@ export default function ResultsStore(props) {
         const p = new URLSearchParams(window.location.search);
         if (value == null) p.delete(name);
         else p.set(name, value);
-        window.history.replaceState(null, '', `${window.location.pathname}?${p.toString()}`);
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}?${p.toString()}`);
     };
 
     if (classic) {

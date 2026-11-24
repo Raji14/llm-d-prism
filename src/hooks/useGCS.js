@@ -59,6 +59,32 @@ const limitConcurrency = async (tasks, limit, onProgressUpdate) => {
     });
 };
 
+// Buckets this tab couldn't read, by cache key, with when it was tried, so
+// each page load doesn't send the same failing listings again and fill the
+// console with the same error. The failed profile still carries the error, so
+// Sources keeps saying "access denied". A forced refresh (Sync) always retries,
+// and so does any load once the note is older than DENIED_TTL_MS.
+const DENIED_KEY = 'prism_gcs_denied';
+const DENIED_TTL_MS = 10 * 60 * 1000;
+// Buckets whose public listing needs the server's proxy: go there first.
+const PROXY_KEY = 'prism_gcs_proxy_first';
+const readSession = (key) => {
+    try {
+        return JSON.parse(sessionStorage.getItem(key) || '{}') || {};
+    } catch {
+        return {};
+    }
+};
+const writeSession = (key, value) => {
+    try {
+        sessionStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        // sessionStorage unavailable: every load just asks again.
+    }
+};
+const ACCESS_DENIED = 'Access denied. Bucket must be public or accessible by server service account.';
+const isExpectedFailure = (message) => message === ACCESS_DENIED || message === 'Bucket not found.' || /^Failed to access bucket \(\d+\)\.$/.test(String(message));
+
 export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
     const fetchBucketData = useCallback(async (bucket, forceRefresh = false, prefix = '', onProgress = null) => {
         const cleanBucketName = bucket.replace(/^gs:\/\//, '');
@@ -77,6 +103,15 @@ export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
                 console.log(`[Cache Hit] Loading GCS bucket ${cacheKey} from cache.`);
                 return cached;
             }
+            // Denied a moment ago in this tab: say so again without asking.
+            const deniedAt = readSession(DENIED_KEY)[cacheKey];
+            if (deniedAt && Date.now() - deniedAt < DENIED_TTL_MS) {
+                return {
+                    bucketName: cleanBucketName,
+                    entries: [],
+                    profile: { bucketName: cleanBucketName, files: [], entryCount: 0, loadedAt: new Date().toISOString(), error: ACCESS_DENIED },
+                };
+            }
         }
 
         let usingProxy = false;
@@ -90,10 +125,11 @@ export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
                 const queryString = queryParams.toString();
                 const suffix = queryString ? `?${queryString}` : '';
                 const fetchOpts = forceRefresh ? { cache: 'no-cache' } : {};
-                let response = await fetch(`https://storage.googleapis.com/storage/v1/b/${cleanBucketName}/o${suffix}`, fetchOpts);
+                const proxyFirst = Boolean(readSession(PROXY_KEY)[cleanBucketName]);
+                let response = proxyFirst ? null : await fetch(`https://storage.googleapis.com/storage/v1/b/${cleanBucketName}/o${suffix}`, fetchOpts);
                 
-                if (response.status === 401 || response.status === 403) {
-                    console.log(`[Bucket] Public access denied for ${cleanBucketName}, trying proxy...`);
+                if (!response || response.status === 401 || response.status === 403) {
+                    if (response) writeSession(PROXY_KEY, { ...readSession(PROXY_KEY), [cleanBucketName]: true });
                     const headers = {};
                     if (accessToken) {
                         headers['X-Prism-Github-Token'] = accessToken;
@@ -106,8 +142,14 @@ export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
                 }
 
                 if (response.status === 404) throw new Error('Bucket not found.');
-                if (response.status === 401 || response.status === 403) throw new Error('Access denied. Bucket must be public or accessible by server service account.');
-                if (!response.ok) throw new Error(`Failed to access bucket (${response.status}).`);
+                if (response.status === 401 || response.status === 403) throw new Error(ACCESS_DENIED);
+                if (!response.ok) {
+                    // Servers that predate 403 for permission errors send 500
+                    // with "does not have storage.objects.list access".
+                    const body = await response.text().catch(() => '');
+                    if (/permission|access|denied|forbidden/i.test(body)) throw new Error(ACCESS_DENIED);
+                    throw new Error(`Failed to access bucket (${response.status}).`);
+                }
                 
                 const json = await response.json();
                 if (!json.items) throw new Error('No files found in bucket.');
@@ -260,10 +302,22 @@ export const useGCS = ({ pendingRequests, addToast, accessToken }) => {
                 if (!saved) {
                     addToast(`Browser storage is full, so ${cleanBucketName}${prefix ? ` (${prefix})` : ''} will download again next time.`, 'error');
                 }
+                const denied = readSession(DENIED_KEY);
+                if (denied[cacheKey]) {
+                    delete denied[cacheKey];
+                    writeSession(DENIED_KEY, denied);
+                }
                 return result;
 
             } catch (err) {
-                console.error(`Error fetching bucket ${bucket}:`, err);
+                // A bucket this browser can't read is a known state, not a crash:
+                // one warning, and the profile's error says it where it matters.
+                if (isExpectedFailure(err.message)) {
+                    console.warn(`[Bucket] ${cleanBucketName}: ${err.message}`);
+                    if (err.message === ACCESS_DENIED) writeSession(DENIED_KEY, { ...readSession(DENIED_KEY), [cacheKey]: Date.now() });
+                } else {
+                    console.error(`Error fetching bucket ${bucket}:`, err);
+                }
                 return {
                     bucketName: cleanBucketName,
                     entries: [],

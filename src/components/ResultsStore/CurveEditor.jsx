@@ -29,7 +29,9 @@ import {
     curveChecks,
     curveConfig,
     fmtDay,
+    fmtFailPct,
     fmtInt,
+    fmtOnDay,
     fmtTput,
     latencyLabel,
     latencyValue,
@@ -73,7 +75,7 @@ function PointRow({ p, latency, stat, readOnly, onToggle, onOpenRun }) {
                     {(p.errPct > 0 || p.errCount > 0) && (
                         <span className={cn('inline-flex items-center gap-1', bad ? 'text-amber-700' : 'text-zinc-600')}>
                             {bad && <TriangleAlert className="h-3 w-3" aria-hidden="true" />}
-                            {p.errPct != null ? `${p.errPct.toFixed(1)}% failed` : `${p.errCount} failed (total unknown)`}
+                            {p.errPct != null ? `${fmtFailPct(p.errPct)} failed` : `${p.errCount} failed (total unknown)`}
                         </span>
                     )}
                 </div>
@@ -107,7 +109,7 @@ function OfficialGate({ onSignIn, signInReady }) {
 function PublicOwnershipGate({ copy, onUpload }) {
     return (
         <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="text-xs text-zinc-600">Catalog draft · only your own uploaded runs can be submitted for review.</span>
+            <span className="text-xs text-zinc-600">Private draft of catalog runs: only you can see it. Only runs you uploaded can be submitted for review.</span>
             {onUpload && (
                 <Button size="sm" variant="secondary" onClick={onUpload}>
                     {copy.uploadLabel}
@@ -290,7 +292,8 @@ export function CurveEditor({
                     {/* A draft is private, and Official, Published and In review chips
                         already say who can see it: the chip only marks a draft someone shared. */}
                     {!resultAudience(curve.status) && curve.visibility !== 'me' && <ResultVisibilityChip curve={curve} />}
-                    {curve.version > 1 && <Badge size="sm">v{curve.version}</Badge>}
+                    {/* Every version is named, v1 included, so v2 never looks like the first. */}
+                    <Badge size="sm">v{curve.version}</Badge>
                     {curve.featured && (
                         <Badge tone="brand">
                             <Star className="h-3 w-3" aria-hidden="true" /> Featured
@@ -327,13 +330,13 @@ export function CurveEditor({
                     )}
                     {published && curve.markedBy && (
                         <>
-                            Marked official by <span className="font-medium text-zinc-900">{curve.markedBy}</span> on {fmtDay(curve.markedAt)} ·{' '}
+                            Marked official by <span className="font-medium text-zinc-900">{curve.markedBy}</span> {fmtOnDay(curve.markedAt)} ·{' '}
                         </>
                     )}
                     {curve.status === 'published' && curve.reviewedBy && (
                         <>
                             Approved by <span className="font-medium text-zinc-900">{curve.reviewedBy}</span>
-                            {curve.markedAt ? ` on ${fmtDay(curve.markedAt)}` : ''} ·{' '}
+                            {curve.markedAt ? ` ${fmtOnDay(curve.markedAt)}` : ''} ·{' '}
                         </>
                     )}
                     Built from {curve.builtFrom.runs} run{curve.builtFrom.runs === 1 ? '' : 's'} · {curve.builtFrom.label}
@@ -663,9 +666,9 @@ export function CurveEditor({
                     setDialog(null);
                     onSubmitForReview(curve, { attribution, visibility, dco });
                 }}
-                onContinueUpload={({ attribution }) => {
+                onContinueUpload={() => {
                     setDialog(null);
-                    onContinueUpload(curve, { attribution });
+                    onContinueUpload(curve);
                 }}
             />
 

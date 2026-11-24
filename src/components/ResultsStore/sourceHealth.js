@@ -31,6 +31,46 @@ export function plainSyncError(message) {
     return s ? s.charAt(0).toLowerCase() + s.slice(1) : 'unknown error';
 }
 
+// Why the results service (/api/results) didn't answer, for "Couldn't reach
+// the results store (…)". `status` is the HTTP status (none when the request
+// never got through) and `message` the server's error text. A bucket the
+// server can't read comes back as 403, or as 500 from older servers whose
+// message names the missing permission: both read "access denied".
+export function serviceError(status, message = '') {
+    const s = `${status || ''} ${message || ''}`;
+    if (/\b40[13]\b|denied|forbidden|unauthori[sz]ed|permission|\baccess\b/i.test(s)) return 'access denied';
+    if (/\b404\b|not found/i.test(s)) return 'not found';
+    if (!status) return 'no connection';
+    return status >= 500 ? `server error ${status}` : `error ${status}`;
+}
+
+// The error text of a failed response: its JSON `error`, else a short plain
+// body. HTML error pages and long dumps aren't messages, so they give ''.
+export async function responseError(res) {
+    try {
+        return readableError(await res.text());
+    } catch {
+        return '';
+    }
+}
+export function readableError(text) {
+    const s = String(text || '').trim();
+    try {
+        const json = JSON.parse(s);
+        return String(json?.error || json?.message || '').trim();
+    } catch {
+        return s && s.length <= 200 && !s.startsWith('<') ? s : '';
+    }
+}
+
+// "Couldn't reach the results store", with the server's explanation when it
+// gave one (it names the bucket and the missing permission), else a reason.
+export function serviceProblemText(status, message = '') {
+    const detail = String(message || '').trim();
+    if (detail) return `Couldn’t reach the results store. ${/[.!?]$/.test(detail) ? detail : `${detail}.`}`;
+    return `Couldn’t reach the results store (${serviceError(status, detail)}).`;
+}
+
 // Health from what Prism actually knows. A live sync has its last good fetch
 // (`lastSyncedAt`) and its error; a source without a profile is a static
 // archive that isn't synced at all. `newest` is the source's newest run and

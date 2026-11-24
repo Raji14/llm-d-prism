@@ -36,7 +36,12 @@ const getPrefixForBucket = (bucketName) => {
     return '';
 };
 
-export const useDashboardData = (initialState, dashboardState) => {
+// `active` says whether the view showing needs the store's data (the Results
+// store, Benchmark browser, the upload wizard). While it's false, saved
+// sources aren't restored and submissions aren't loaded (a signed-in admin
+// still gets them, for the header's review pill), so Home and the Leaderboard
+// send no results calls. Both start the first time it turns true.
+export const useDashboardData = (initialState, dashboardState, { active = true } = {}) => {
     const { selectedBenchmarks, setSelectedBenchmarks, xAxisMax, setXAxisMax } = dashboardState;
     const { accessToken, user } = useGitHubAuth();
     const pendingRequests = useRef(new Map());
@@ -265,6 +270,10 @@ export const useDashboardData = (initialState, dashboardState) => {
 
     const API_KEY = window.env?.GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.REACT_APP_GOOGLE_API_KEY || '';
 
+    // The server's default buckets (from /api/config), by canonical name. They
+    // arrive from the server on every load, so they're never saved as sources.
+    const serverBuckets = useRef(new Set());
+
     useEffect(() => {
         if (!isRestored.current) return;
         const cleanBuckets = dedupeBucketConfigs(bucketConfigs);
@@ -273,7 +282,7 @@ export const useDashboardData = (initialState, dashboardState) => {
 
     useEffect(() => {
         if (!isRestored.current) return;
-        const cleanBuckets = dedupeBucketConfigs(bucketConfigs);
+        const cleanBuckets = dedupeBucketConfigs(bucketConfigs).filter((b) => !serverBuckets.current.has(getCanonicalBucketName(b)));
         const cleanAws = dedupeBucketConfigs(awsBucketConfigs);
         const toSave = {
             buckets: cleanBuckets,
@@ -296,6 +305,7 @@ export const useDashboardData = (initialState, dashboardState) => {
             return [...filtered, { id, message, type }];
         });
         setTimeout(() => removeToast(id), 8000); // 8 Seconds
+        return id;
     }, [removeToast]);
 
     // --- Extracted Block ---
@@ -352,6 +362,7 @@ export const useDashboardData = (initialState, dashboardState) => {
                 }
 
                 if (buckets && buckets.length > 0) {
+                    buckets.forEach((b) => serverBuckets.current.add(getCanonicalBucketName(b)));
                     setBucketConfigs(prev => dedupeBucketConfigs([...prev, ...buckets]));
                     // Auto-select these default buckets
                     setSelectedSources(prev => {
@@ -442,7 +453,13 @@ export const useDashboardData = (initialState, dashboardState) => {
     };
 
     // --- Extracted Block ---
+    // Saved sources are fetched the first time a view that shows them opens
+    // (`active`), once. With nothing saved, saving can start right away.
+    const restoreStarted = useRef(false);
     useEffect(() => {
+        if (restoreStarted.current) return;
+        if (isRestoringConnections && !active) return;
+        restoreStarted.current = true;
         const restoreConnections = async () => {
             const savedJson = localStorage.getItem('prism_saved_sources');
             isRestored.current = true; // Safe to allow saves now
@@ -754,7 +771,8 @@ export const useDashboardData = (initialState, dashboardState) => {
         } else {
             isRestored.current = true;
         }
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once, when a data view first opens
+    }, [active]);
 
     // --- Extracted Block ---
     useEffect(() => {
@@ -2288,6 +2306,9 @@ export const useDashboardData = (initialState, dashboardState) => {
 
     const [submissions, setSubmissions] = useState([]);
     const [isLoadingSubmissions, setIsLoadingSubmissions] = useState(false);
+    // Why the results service didn't answer ({ status, message }), or null.
+    // Views that list server submissions say so instead of showing an empty list.
+    const [submissionsError, setSubmissionsError] = useState(null);
 
     const mapStateToStatus = useCallback((state) => {
         return state;
@@ -2301,14 +2322,34 @@ export const useDashboardData = (initialState, dashboardState) => {
                 headers['X-Prism-Github-Token'] = accessToken;
             }
 
-            // Fetch user's own submissions as well as global unlisted submissions
-            const [resOwn, resUnlisted] = await Promise.all([
-                fetch('/api/results?own=true&limit=50', { headers }).catch(() => null),
-                fetch('/api/results?status=unlisted&limit=50', { headers }).catch(() => null)
+            // The user's own submissions (only when someone is signed in: the
+            // server can't tell whose they are otherwise) and global unlisted ones.
+            const list = async (query) => {
+                try {
+                    const res = await fetch(`/api/results?${query}`, { headers });
+                    if (res.ok) return { items: (await res.json()).items || [] };
+                    let message = '';
+                    try {
+                        const text = (await res.text()).trim();
+                        try {
+                            message = String(JSON.parse(text)?.error || '');
+                        } catch {
+                            // A short plain-text reason, not an HTML error page.
+                            message = text.length <= 200 && !text.startsWith('<') ? text : '';
+                        }
+                    } catch {
+                        // No body to read.
+                    }
+                    return { items: [], error: { status: res.status, message } };
+                } catch {
+                    return { items: [], error: { status: 0, message: '' } };
+                }
+            };
+            const [ownData, unlistedData] = await Promise.all([
+                accessToken ? list('own=true&limit=50') : Promise.resolve({ items: [] }),
+                list('status=unlisted&limit=50'),
             ]);
-
-            const ownData = resOwn && resOwn.ok ? await resOwn.json() : { items: [] };
-            const unlistedData = resUnlisted && resUnlisted.ok ? await resUnlisted.json() : { items: [] };
+            setSubmissionsError(ownData.error || unlistedData.error || null);
 
             const itemsMap = new Map();
             (ownData.items || []).forEach(item => itemsMap.set(item.runId, item));
@@ -2525,9 +2566,12 @@ export const useDashboardData = (initialState, dashboardState) => {
         });
     }, []);
 
+    // Data views need submissions; elsewhere only a signed-in admin does (the
+    // header's review pill), so anonymous visitors make no results calls there.
+    const submissionsWanted = active || user?.permission === 'admin';
     useEffect(() => {
-        loadSubmissions();
-    }, [loadSubmissions]);
+        if (submissionsWanted) loadSubmissions();
+    }, [loadSubmissions, submissionsWanted]);
 
     return {
         data, setData, injectDynamicEntries,
@@ -2581,6 +2625,6 @@ export const useDashboardData = (initialState, dashboardState) => {
         brv02CustomLabels, setBrv02CustomLabels,
         brv02BaselineRunId, setBrv02BaselineRunId,
         brv02SelectedStages, setBrv02SelectedStages,
-        submissions, isLoadingSubmissions, loadSubmissions, updateSubmissionStatus, bulkUpdateSubmissionStatus, deleteSubmission, submissionsMap
+        submissions, isLoadingSubmissions, loadSubmissions, updateSubmissionStatus, bulkUpdateSubmissionStatus, deleteSubmission, submissionsMap, submissionsError
     };
 };

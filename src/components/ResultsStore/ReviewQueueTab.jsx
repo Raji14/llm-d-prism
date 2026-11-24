@@ -19,7 +19,7 @@ import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
 import { Attachments, BackButton, CheckList, HistoryList, MetaGrid, Notice, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
-import { closeness, curveChecks, curveConfig, curveDraftFromRuns, fmtDay, seriesPoints } from './catalog';
+import { closeness, curveChecks, curveConfig, curveDraftFromRuns, fmtDay, fmtOnDay, seriesPoints } from './catalog';
 
 const CHANGE_REASONS = [
     'Hardware or model label looks wrong',
@@ -180,7 +180,7 @@ function ReviewDetail({ item, actor, words: W, baselines, runsFromKeys, onBack, 
                             {c.dco ? (
                                 <>
                                     DCO {c.dco.version} signed by <span className="font-medium text-zinc-900">{c.dco.by}</span>
-                                    {c.dco.at ? ` on ${fmtDay(c.dco.at)}` : ''}
+                                    {c.dco.at ? ` ${fmtOnDay(c.dco.at)}` : ''}
                                 </>
                             ) : (
                                 <span className="text-amber-700">No DCO sign-off recorded</span>
@@ -536,29 +536,40 @@ export function ReviewQueueTab({
                     </span>
                 </Notice>
             )}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-zinc-600">
-                    <span className="font-mono tabular-nums text-zinc-900">{items.length}</span> waiting · oldest first
-                </p>
-                <Button size="xs" variant="ghost" onClick={onRefresh} disabled={loading}>
-                    {loading ? <Spinner size="xs" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
-                    Refresh
-                </Button>
-            </div>
-            {/* An alert, so a failed load is read out when the message appears. */}
-            {error && (
-                <p role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                    {error}
-                </p>
+            {/* A failed load is an alert (read out when it appears) with a way to
+                retry, and nothing around it claims the queue is empty: what this
+                browser holds is still listed below. */}
+            {error ? (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                    <span>{error}</span>
+                    {onRefresh && (
+                        <Button size="xs" variant="secondary" onClick={onRefresh} disabled={loading}>
+                            {loading ? <Spinner size="xs" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                            Try again
+                        </Button>
+                    )}
+                </div>
+            ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-zinc-600">
+                        <span className="font-mono tabular-nums text-zinc-900">{items.length}</span> waiting · oldest first
+                    </p>
+                    <Button size="xs" variant="ghost" onClick={onRefresh} disabled={loading}>
+                        {loading ? <Spinner size="xs" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                        Refresh
+                    </Button>
+                </div>
             )}
             {items.length === 0 ? (
-                <div className="rounded-3xl border border-zinc-200 bg-white">
-                    <EmptyState
-                        icon={<Inbox className="h-8 w-8" />}
-                        title={W.internal ? 'Nothing to approve' : 'Nothing to review'}
-                        message={W.internal ? 'Requests to mark results official show up here, oldest first.' : 'Submissions waiting for a reviewer show up here, oldest first.'}
-                    />
-                </div>
+                !error && (
+                    <div className="rounded-3xl border border-zinc-200 bg-white">
+                        <EmptyState
+                            icon={<Inbox className="h-8 w-8" />}
+                            title={W.internal ? 'Nothing to approve' : 'Nothing to review'}
+                            message={W.internal ? 'Requests to mark results official show up here, oldest first.' : 'Submissions waiting for a reviewer show up here, oldest first.'}
+                        />
+                    </div>
+                )
             ) : (
                 <ul className="divide-y divide-zinc-100 overflow-hidden rounded-3xl border border-zinc-200 bg-white">
                     {items.map((item) => (

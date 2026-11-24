@@ -130,8 +130,10 @@ export function WorkspaceProvider({ instance, actor, children }) {
             showcases: ws.showcases,
             getCurve,
 
-            createCurve(runs, { name } = {}) {
-                const curve = draftCurve(runs, { name });
+            // `origin: 'report'` marks a draft made only so a report could
+            // price the runs, so My work can keep those apart.
+            createCurve(runs, { name, origin } = {}) {
+                const curve = { ...draftCurve(runs, { name }), ...(origin ? { origin } : {}) };
                 update((w) => ({ ...w, curves: [curve, ...w.curves] }));
                 return curve.id;
             },

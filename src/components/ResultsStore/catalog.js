@@ -75,6 +75,20 @@ export function fmtDay(ts) {
     return d.getFullYear() === now.getFullYear() ? label : `${label}, ${d.getFullYear()}`;
 }
 
+// fmtDay in the middle of a sentence: "today", "yesterday", "on Nov 23".
+export function fmtOnDay(ts) {
+    if (!ts) return '';
+    const day = fmtDay(ts);
+    return day === 'Today' || day === 'Yesterday' ? day.toLowerCase() : `on ${day}`;
+}
+
+// A failure rate for a badge. A rate too small to show at one decimal reads
+// "<0.1%", so a point that did fail never says "0.0% failed".
+export const fmtFailPct = (pct) => {
+    if (!isNum(pct)) return '—';
+    return pct > 0 && Number(pct.toFixed(1)) === 0 ? '<0.1%' : `${pct.toFixed(1)}%`;
+};
+
 export function fmtShortDay(ts) {
     if (!ts) return '';
     const d = new Date(ts);
@@ -346,6 +360,21 @@ const hardwareOf = (d) =>
         .replace(/\s*\(x\d+\)/, '')
         .trim();
 
+// Accelerator names as their makers write them, so one chip never reads
+// "TPU V6E" in one place and "TPU v6e" (the pricing hint) in another:
+// TPU v5e, TPU v6e and TPU7x (Ironwood drops the "v"), H100, MI300X.
+// Anything else stays as recorded.
+export function hardwareName(hw) {
+    const s = String(hw || '').trim();
+    const tpu = s.match(/^(?:google[\s_-]*)?tpu[\s_-]*(v?)(\d+)([a-z]*)$/i);
+    if (tpu) {
+        const [, v, gen, suffix] = tpu;
+        return Number(gen) >= 7 && !v ? `TPU${gen}${suffix.toLowerCase()}` : `TPU v${gen}${suffix.toLowerCase()}`;
+    }
+    const chip = s.match(/^(?:nvidia|amd)?[\s_-]*((?:gb|mi|[abhlv])\d{1,3}[a-z]?)$/i);
+    return chip ? chip[1].toUpperCase() : s;
+}
+
 export const hardwareLabel = (hw, count) => (isGenericHardware(hw) ? '' : `${hw} ×${count || 1}`);
 
 // Benchmark report v0.2 lists each serving component's accelerators per
@@ -468,8 +497,31 @@ const sig2 = (n) => {
 // significant figures, so the label doesn't move with every new run.
 const groupLength = (values) => (values.every((v) => Number.isInteger(v) && v === values[0]) ? values[0] : sig2(median(values)));
 
+const nearWorkload = (a, b) => near(a.isl, b.isl, ISL_TOLERANCE) && near(a.osl, b.osl, OSL_TOLERANCE);
+// Runs in clusters of near-equal measured workloads, each cluster anchored
+// on its first run.
+function clusterNear(runs) {
+    const list = [];
+    runs.forEach((r) => {
+        const hit = list.find((c) => nearWorkload(c[0].wl, r.wl));
+        if (hit) hit.push(r);
+        else list.push([r]);
+    });
+    return list;
+}
+// A load config's runs, less the ones whose measured lengths are far from
+// the rest: a cfg_id can be shared by a very different load, as when an
+// upload measuring 750/130 took the 32000/420 of catalog runs. Runs near
+// the group's median stay together; the others cluster among themselves.
+function splitOutliers(group) {
+    const mid = { isl: median(group.map((r) => r.wl.isl)), osl: median(group.map((r) => r.wl.osl)) };
+    const core = group.filter((r) => nearWorkload(r.wl, mid));
+    return [core, ...clusterNear(group.filter((r) => !core.includes(r)))].filter((c) => c.length);
+}
+
 // Gives runs that measured the same workload one label: by report load
 // config where recorded, else by closeness, per model (tokenizers differ).
+// Either way only near-equal measured lengths share a label.
 function unifyWorkloads(runs) {
     const groups = new Map();
     const clusters = new Map();
@@ -477,17 +529,10 @@ function unifyWorkloads(runs) {
         const w = r.wl;
         if (w.configured || !w.isl || !w.osl) return;
         const model = r.model.toLowerCase();
-        if (w.cfg) {
-            const k = `${w.cfg}|${model}`;
-            if (!groups.has(k)) groups.set(k, []);
-            groups.get(k).push(r);
-            return;
-        }
-        const list = clusters.get(model) || [];
-        const hit = list.find((c) => near(c[0].wl.isl, w.isl, ISL_TOLERANCE) && near(c[0].wl.osl, w.osl, OSL_TOLERANCE));
-        if (hit) hit.push(r);
-        else list.push([r]);
-        clusters.set(model, list);
+        const into = w.cfg ? groups : clusters;
+        const k = w.cfg ? `${w.cfg}|${model}` : model;
+        if (!into.has(k)) into.set(k, []);
+        into.get(k).push(r);
     });
     const label = (group) => {
         const isl = groupLength(group.map((r) => r.wl.isl));
@@ -498,8 +543,8 @@ function unifyWorkloads(runs) {
             r.workload = `${isl}/${osl}`;
         });
     };
-    groups.forEach(label);
-    clusters.forEach((list) => list.forEach(label));
+    groups.forEach((group) => splitOutliers(group).forEach(label));
+    clusters.forEach((list) => clusterNear(list).forEach(label));
 }
 
 function harnessOf(d) {
@@ -582,9 +627,12 @@ function categoryOf(d) {
     return hit ? hit[1] : 'Uncategorized';
 }
 
-// The deployment a run measured (e.g. "4: 1P-TP4 3D-TP4"), when recorded.
+// The deployment a run measured (e.g. "1P-TP4 3D-TP4"), when recorded. The
+// archives lead with the pod count ("4: 1P-TP4 3D-TP4"), which the label
+// itself already says, so it's dropped.
+export const stripPodCount = (s) => String(s || '').replace(/^\d+\s*:\s*/, '');
 function setupOf(d) {
-    const known = (v) => (v && v !== 'Unknown' ? String(v) : null);
+    const known = (v) => (v && v !== 'Unknown' ? stripPodCount(v) || null : null);
     const raw = known(d._raw?.configuration) || known(d._raw?.metadata?.configuration);
     if (raw) return raw;
     const path = String(d._raw?.source_info?.file_identifier || '');
@@ -738,8 +786,9 @@ export function buildRuns(entries, { aliases = {}, submissionsMap = {} } = {}) {
         const d0 = list[0];
         const reported = reportChips(d0.rawReport);
         let hwRaw = mostCommon(list.map(hardwareOf).filter((h) => !isGenericHardware(h))) || hardwareOf(d0);
-        // "TPU7X-2X2X1" names a slice; with its chips counted it's a TPU7X ×4.
+        // "TPU7X-2X2X1" names a slice; with its chips counted it's a TPU7x ×4.
         if (reported?.topology) hwRaw = hwRaw.replace(/[-_\s]?\d+x\d+(?:x\d+)?$/i, '') || hwRaw;
+        hwRaw = hardwareName(hwRaw);
         const accelCount = reported?.chips || mostCommon(list.map(accelCountOf).filter((n) => n > 1)) || accelCountOf(d0);
         const all = list.map((d) => toPoint(d, key, accelCount));
         const points = loadOrder(all.filter((p) => p.output != null)).points;
@@ -1030,6 +1079,8 @@ export function sameSetup(a, b) {
     if (pa.length !== pb.length) return false;
     return pa.every((v, i) => {
         if (v === pb[i]) return true;
+        // Keys saved before deployment labels dropped the pod count ("4: …").
+        if (i === 4 && stripPodCount(v) === stripPodCount(pb[i])) return true;
         const wa = i === 2 && v.match(/^(\d+)\/(\d+)$/);
         const wb = i === 2 && pb[i].match(/^(\d+)\/(\d+)$/);
         return Boolean(wa && wb && near(+wa[1], +wb[1], ISL_TOLERANCE) && near(+wa[2], +wb[2], OSL_TOLERANCE));
@@ -1158,6 +1209,11 @@ export function mapSubmissionState(state, { feedback = '', instance = 'public' }
 
 export const isPublishedState = (s) => s === 'public' || s === 'promoted';
 
+// A draft made only so a report could price its runs, untouched since (its
+// history holds just "Created from…"). My work lists these apart and they
+// don't count as work waiting; editing one makes it an ordinary draft.
+export const isReportDraft = (c) => c?.status === 'draft' && c.origin === 'report' && (c.history || []).length <= 1;
+
 // -------------------------------------------------------------------- curves
 
 export const autoCurveName = (meta) =>
@@ -1255,6 +1311,14 @@ function stageLabel(p) {
     if (isNum(p.output)) return `the ${fmtTput(p.output)} tok/s stage`;
     return p.stage != null ? `stage ${p.stage} of run ${p.idLabel}` : `a stage of run ${p.idLabel}`;
 }
+// The same, short enough for a button: "Exclude point c=64".
+function pointName(p) {
+    if (p.conc != null) return `c=${p.conc}`;
+    if (isNum(p.rate)) return `${p.rate} req/s`;
+    if (isNum(p.output)) return `${fmtTput(p.output)} tok/s`;
+    return p.stage != null ? `stage ${p.stage}` : `in run ${p.idLabel}`;
+}
+const excludeLabel = (p) => `Exclude point ${pointName(p)}`;
 // Sentence case for check text that starts with a label; "c=8" stays as it is.
 const startCase = (s) => (s.startsWith('c=') ? s : s.charAt(0).toUpperCase() + s.slice(1));
 const countOf = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -1308,7 +1372,7 @@ export function loadChecks(included) {
             note,
             text: `${note} Exclude it so it doesn’t set the peak?`,
             fix: { type: 'exclude', pointKey: p.key, reason: `Overloaded: ${lat.name} ${fmtMs(lat.of(p))} for ${gain}` },
-            fixLabel: 'Exclude point',
+            fixLabel: excludeLabel(p),
         });
     }
     if (ordered) {
@@ -1326,7 +1390,7 @@ export function loadChecks(included) {
                 note,
                 text: `${note} Likely noise; rerun it or exclude it.`,
                 fix: { type: 'exclude', pointKey: p.key, reason: `Out of line: ${lat.name} ${fmtMs(lat.of(p))}, slower than ${stageLabel(next)}` },
-                fixLabel: 'Exclude point',
+                fixLabel: excludeLabel(p),
             });
         }
     }
@@ -1422,7 +1486,7 @@ export function curveChecks(curve) {
                       level: 'warn',
                       text: `${label} had ${countOf(p.errCount, 'failed request')} out of ${total} (${p.errPct.toFixed(1)}%), over the ${ERROR_LIMIT_PCT}% limit. Exclude it?`,
                       fix: { type: 'exclude', pointKey: p.key, reason: what },
-                      fixLabel: 'Exclude point',
+                      fixLabel: excludeLabel(p),
                   }
                 : { id: `err-${p.key}`, level: 'ok', text: `${label} excluded: ${p.reason || what}.` }
         );
@@ -1742,15 +1806,19 @@ export function parityFraming(parity) {
 }
 
 // How close a candidate baseline's config is to `target` (both runsConfig /
-// curveConfig): same model counts most, then hardware, chips, workload and
-// harness.
+// curveConfig): the same model counts most, then the same hardware (type,
+// then chip count), then workload, then harness. Each weight outranks all
+// the ones after it together, so another model on the same hardware never
+// ranks above a run of the same model.
 const CLOSENESS = [
-    ['model', 3],
-    ['accelerator', 2],
-    ['chips', 2],
-    ['workload', 1],
+    ['model', 16],
+    ['accelerator', 8],
+    ['chips', 4],
+    ['workload', 2],
     ['harness', 1],
 ];
+// Same model and same accelerator type: the least a closest match shares.
+const CLOSEST_SCORE = 16 + 8;
 export function closeness(config, target) {
     if (!config || !target) return 0;
     const same = (a, b) => a !== '' && a != null && String(a).toLowerCase() === String(b).toLowerCase();
@@ -1763,7 +1831,7 @@ export function closeness(config, target) {
 // `keep` (your own results) stay, so the filter box can still find them.
 export function rankBaselines(options, target, { limit = 60 } = {}) {
     const ranked = options.map((o, i) => ({ o, i, score: closeness(o.config, target) })).sort((a, b) => b.score - a.score || a.i - b.i);
-    const close = ranked.filter((r) => r.score >= 5).slice(0, 8);
+    const close = ranked.filter((r) => r.score >= CLOSEST_SCORE).slice(0, 8);
     const rest = ranked.filter((r) => !close.includes(r));
     return [
         ...close.map((r) => ({ ...r.o, group: 'Closest matches' })),

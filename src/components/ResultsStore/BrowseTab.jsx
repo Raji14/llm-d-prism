@@ -209,7 +209,7 @@ function BrowseRow({ row, selected, onToggle, expanded, onExpand, nav, copy, cur
             </Button>
         ) : curate ? (
             <>
-                <Button size="xs" variant="ghost" onClick={() => nav.makeCurve(row.runs)}>
+                <Button size="xs" variant="ghost" title="Opens a private draft in My work" onClick={() => nav.makeCurve(row.runs)}>
                     Edit
                 </Button>
                 {publish && (
@@ -294,9 +294,10 @@ function SuggestedCard({ row, nav, copy, curate, publish }) {
             <div className="mt-3 rounded-2xl bg-zinc-50 px-3 py-2">
                 <Sparkline points={row.points} width={260} height={56} colorIndex={1} />
             </div>
+            {/* Sans with tabular digits: a mono comma is a full cell wide ("4 , 020"). */}
             <p className="mt-3 text-xs text-zinc-600">
-                <span className="font-mono tabular-nums">{row.runs.length}</span> runs · {concRange(row.points)} · <span className="font-mono tabular-nums">{fmtTput(h.value)}</span> tok/s{' '}
-                {h.label}
+                <span className="font-medium tabular-nums text-zinc-800">{row.runs.length}</span> runs · {concRange(row.points)} ·{' '}
+                <span className="font-medium tabular-nums text-zinc-800">{fmtTput(h.value)}</span> tok/s {h.label}
                 {row.count > 1 && <span> · ×{row.count} batches</span>}
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -306,7 +307,7 @@ function SuggestedCard({ row, nav, copy, curate, publish }) {
                     </Button>
                 )}
                 {curate && (
-                    <Button size="xs" variant="ghost" onClick={() => nav.makeCurve(row.runs)}>
+                    <Button size="xs" variant="ghost" title="Opens a private draft in My work" onClick={() => nav.makeCurve(row.runs)}>
                         Edit
                     </Button>
                 )}
@@ -318,7 +319,7 @@ function SuggestedCard({ row, nav, copy, curate, publish }) {
     );
 }
 
-export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canMakeResultItems = () => false, canPublish = canCurate, officialBlock, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload }) {
+export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setState, nav, mineOf, canCurate = () => false, canMakeResultItems = () => false, canPublish = canCurate, officialBlock, isReviewer = false, resultOf, addTo, onAddToCurve, onWatchFilters, onUpload }) {
     const { query, filters, sort, kind, selected } = state;
     const [expanded, setExpanded] = useState(() => new Set());
     const [limit, setLimit] = useState(PAGE);
@@ -499,7 +500,8 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                             </h2>
                             <p className="mt-1 text-xs text-zinc-600">
                                 Runs of one setup across concurrency levels, grouped for you. The newest ones that aren’t results yet.
-                                {instance === 'internal' && officialBlock !== 'signin' ? ` ${copy.publishVerb} in one step, or edit it first.` : ''}
+                                {instance === 'internal' && officialBlock !== 'signin' ? ` ${copy.publishVerb} in one step, or edit it first.` : ''} Edit opens a private draft in My work that
+                                only you can see.
                             </p>
                         </div>
                         {allSweeps.length > shelf.length && kind !== 'suggested' && (
@@ -588,8 +590,12 @@ export function BrowseTab({ runs, curves, copy, instance, isLoading, state, setS
                                 title={`No ${copy.publishedLabel.toLowerCase()} results yet`}
                                 message={
                                     instance === 'internal'
-                                        ? 'Open a sweep or run and choose Mark official to publish the first official result.'
-                                        : 'Submit a result for review and approve it in Review queue to publish the first result.'
+                                        ? isReviewer
+                                            ? `Open a sweep or run and choose ${copy.publishVerb} to make the first official result.`
+                                            : `${officialBlock === 'signin' ? 'Sign in, open' : 'Open'} a sweep or run and choose ${copy.requestVerb || 'Request official'}; it’s listed here once an approver marks it official.`
+                                        : isReviewer
+                                          ? `Approve a submission in the ${copy.reviewTab} to list the first published result.`
+                                          : 'Submit a result for review; it’s listed here once a reviewer approves it.'
                                 }
                                 action={
                                     <Button size="xs" variant="secondary" onClick={() => setState((s) => ({ ...s, kind: 'all' }))}>

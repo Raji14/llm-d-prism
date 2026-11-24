@@ -17,7 +17,9 @@
 // Internal: Mark official, by an approver (signed in, admin), or Request
 // official (`request`) for anyone else signed in: an approver then marks it
 // official from the Approval queue. Public: Submit for review with attribution
-// and the DCO. `onEditFirst` (one-step only) opens the editor.
+// and the DCO; while any source run is only in this browser, the one step is
+// Continue to upload (the wizard signs in and takes the DCO). `onEditFirst`
+// (one-step only) opens the editor.
 
 import React, { useState } from 'react';
 import { CircleAlert } from 'lucide-react';
@@ -79,6 +81,13 @@ export function PublishDialog({
     const serverRuns = reviewRuns ?? (subject.submissionRunIds?.length || 0);
     const internal = instance === 'internal';
     const asking = internal && request;
+    // Public, with runs only in this browser: nobody can review anything
+    // until they're uploaded, so the dialog says that once and offers that
+    // one step. The upload wizard asks for GitHub sign-in and the DCO itself,
+    // so nothing is asked here that would be thrown away, and there's no
+    // visibility choice (spec §3.7.3).
+    const uploadFirst = !internal && localOnly > 0;
+    const totalRuns = Math.max(subject.builtFrom?.runs || 0, localOnly);
     // What the main button does, in this instance's words (the checks below
     // say it too): Internal Prism never "publishes".
     const action = asking ? { ing: 'requesting', it: 'request it' } : internal ? { ing: 'marking it official', it: 'mark it official' } : { ing: 'publishing', it: 'submit it' };
@@ -90,7 +99,7 @@ export function PublishDialog({
             <Button size="sm" variant="ghost" onClick={onClose}>
                 Cancel
             </Button>
-            {onEditFirst && (
+            {onEditFirst && !uploadFirst && (
                 <Button size="sm" variant={blocking.length ? 'primary' : 'secondary'} onClick={onEditFirst}>
                     Edit first
                 </Button>
@@ -99,8 +108,8 @@ export function PublishDialog({
                 <Button size="sm" disabled={blocking.length > 0} onClick={onMarkOfficial}>
                     {asking ? 'Request official' : 'Mark official'}
                 </Button>
-            ) : localOnly ? (
-                <Button size="sm" disabled={blocking.length > 0 || !dco} onClick={() => onContinueUpload({ attribution })}>
+            ) : uploadFirst ? (
+                <Button size="sm" onClick={() => onContinueUpload?.()}>
                     Continue to upload
                 </Button>
             ) : (
@@ -110,6 +119,30 @@ export function PublishDialog({
             )}
         </>
     );
+
+    if (uploadFirst) {
+        const all = localOnly >= totalRuns;
+        const them = localOnly === 1 ? 'it' : 'them';
+        return (
+            <Modal isOpen={isOpen} onClose={onClose} size="md" title="Submit for review" footer={footer}>
+                <div className="surface-light space-y-4 text-sm text-zinc-700">
+                    <div>
+                        <div className="font-semibold text-zinc-900">{subject.name}</div>
+                        {summary && <p className="mt-0.5 text-xs text-zinc-600">{summary}</p>}
+                    </div>
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-relaxed text-amber-900">
+                        <p className="font-semibold">Upload the runs first</p>
+                        <p className="mt-1">
+                            {all
+                                ? `${totalRuns === 1 ? 'Its run is' : `All ${totalRuns} of its runs are`} only in this browser`
+                                : `${localOnly} of its ${totalRuns} runs ${localOnly === 1 ? 'is' : 'are'} only in this browser`}
+                            , so no reviewer can see {them} yet. Continue to upload opens the upload wizard: sign in with GitHub there and submit {them} for review.
+                        </p>
+                    </div>
+                </div>
+            </Modal>
+        );
+    }
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} size="md" title={internal ? (asking ? 'Request official?' : 'Mark as official?') : 'Submit for review'} footer={footer}>
@@ -145,7 +178,7 @@ export function PublishDialog({
                         {!signedIn && (
                             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                                 <span>
-                                    <span className="font-semibold">GitHub sign-in required for server submissions:</span> sign in to link your GitHub account, or enter an attribution handle below to save for review in this browser.
+                                    <span className="font-semibold">GitHub sign-in required:</span> sign in so reviewers know who submitted it.
                                 </span>
                                 {onSignIn && (
                                     <Button size="xs" variant="secondary" disabled={!signInReady} onClick={onSignIn}>
@@ -187,12 +220,6 @@ export function PublishDialog({
                         <div className="rounded-2xl bg-zinc-50 p-4 text-xs leading-relaxed">
                             <div className="label-caps mb-1 text-zinc-500">What happens next</div>
                             Automatic checks (a few minutes) → a reviewer looks at it → Published. You’ll find it in <span className="font-semibold">My work</span>.
-                            {localOnly > 0 && (
-                                <p className="mt-2 text-amber-800">
-                                    {localOnly} run{localOnly === 1 ? ' is' : 's are'} only in this browser, so {localOnly === 1 ? 'it needs' : 'they need'} uploading first. Continue to upload opens the
-                                    upload wizard, which sends the runs themselves for review. This result stays a draft in this browser.
-                                </p>
-                            )}
                         </div>
                     </>
                 )}

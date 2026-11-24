@@ -24,3 +24,9 @@ When designing and developing features for this user profile, you must:
 
 4. **Address Common Pitfalls:**
    - Detect and warn the user when baseline validations are missing or when the standard llm-d benchmarking tool is misconfigured for their specific edge case.
+
+## Agent-Native Before/After Loop
+- Query existing baselines in the target store via `GET /api/stores/:storeId/results` (or `GET /api/stores/results` across accessible stores).
+- Ingest each candidate experiment with `variables{}` and `lineage.baselineId` via `POST /api/stores/:storeId/results` (schema at `/api/schemas/result.json`).
+- Automatically discover the closest baseline via `GET /api/stores/:storeId/results/:id/baselines`.
+- Publish the before/after delta proof as a shareable Artifact via `POST /api/stores/:storeId/artifacts` (`delta-summary`, `sweep-chart`, `metrics-table`, `fleet-topology`, or sandboxed HTML).

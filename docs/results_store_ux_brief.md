@@ -1,9 +1,12 @@
 # UX brief: Results store
 **Platform:** Prism (`llm-d-prism`) • llm-d benchmarking
-**Document version:** 1.1.0
+**Document version:** 2.0.0 *(Simplified Multi-Store & Agent-Native Update — 2026-11-24)*
 **Author:** Staff UX design
 **Audience:** Product, design, engineering, and the llm-d community team
-**Status:** Built on `fix/results-store-workspace` (on top of `prism2.0`). Recommendations from the 2026-10-20 review, 2026-10-26 UI audit, and 2026-11-02 persona usability test, with what and why, are in section 9. Open items are in section 10.
+**Status:** Simplified experience implemented on `prism3.0`. Full product, UI, and engineering specifications for the 2026-11-24 simplification live in [`specs/changes/results-store-simplification/`](../specs/changes/results-store-simplification/product_spec.md).
+
+> [!IMPORTANT]
+> **2026-11-24 Simplification Summary:** The Result Store has been simplified from 5 tabs and 6+ browser-local nouns down to **3 server-backed primitives** (**Stores**, **Results**, **Artifacts**) and **2 primary tabs** (**Explore**, **Artifacts**, plus a conditional **Review queue**). Logical multi-store configuration replaces rigid `public`/`internal` deployment isolation and `SourcesTab` bucket plumbing; `ClassicResultsStore`, `MyWorkTab`, and `DashboardsTab` (`Watches & reports`) have been retired in favor of inline filters, top-level **Regressions**, and composable **Artifacts** (declarative Prism building blocks + sandboxed HTML). Every Result supports fleet-scale topologies and cross-layer domains (serving, routing, KV-cache & storage, protocol) with first-class baseline discovery and an agent-native REST API (`/api/stores`, `/api/schemas`). The legacy v1.1.0 walkthrough below is retained for historical context.
 
 ---
 

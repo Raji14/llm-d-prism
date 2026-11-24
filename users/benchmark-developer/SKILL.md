@@ -20,3 +20,9 @@ When designing and developing features for this user profile, you must:
 
 3. **Enable Cross-Stack Comparisons:**
    - Guide the generation of benchmarking tools that can smoothly test not just llm-d, but competitor stacks simultaneously for fairness and clear, objective reporting.
+
+## Agent-Native Result Store Workflow
+- Discover accessible logical stores via `GET /api/stores` and schemas via `GET /api/schemas/result.json` and `GET /api/schemas/artifact.json`.
+- Publish fleet-scale serving, routing, KV-cache storage, or protocol results via `POST /api/stores/:storeId/results`.
+- Discover closest baselines via `GET /api/stores/:storeId/results/:id/baselines`.
+- Publish reproducible shareable dashboards (declarative Prism building blocks or sandboxed HTML) via `POST /api/stores/:storeId/artifacts` (readable at `/artifacts/:storeId/:slug` with `Accept: application/json` support).

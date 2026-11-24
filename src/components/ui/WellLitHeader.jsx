@@ -17,6 +17,8 @@ import { MessageCircle } from 'lucide-react';
 import { PageHeader, ShareLinkButton } from './PageHeader';
 
 // Canonical editorial hero header for well-lit path and leaderboard pages.
+// contactHref={null} hides Discuss (Internal Prism's Leaderboard: no public
+// destinations, src/config/site.js feedbackDestinationsFor).
 export function WellLitHeader({
     pageTitle,
     subtitle,
@@ -54,16 +56,19 @@ export function WellLitHeader({
             }
             actions={
                 <>
-                    <a
-                        href={contactHref}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="Contact us"
-                        className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-zinc-300 bg-white hover:bg-zinc-50 hover:border-zinc-400 text-xs font-medium text-zinc-800 transition-colors"
-                    >
-                        <MessageCircle className="w-3.5 h-3.5 text-zinc-600" />
-                        <span className="hidden sm:inline">Discuss</span>
-                    </a>
+                    {contactHref && (
+                        <a
+                            href={contactHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Contact us"
+                            className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full border border-zinc-300 bg-white hover:bg-zinc-50 hover:border-zinc-400 text-xs font-medium text-zinc-800 transition-colors"
+                        >
+                            <MessageCircle className="w-3.5 h-3.5 text-zinc-600" />
+                            <span className="hidden sm:inline">Discuss</span>
+                            <span className="sr-only sm:hidden">Discuss</span>
+                        </a>
+                    )}
                     <ShareLinkButton getUrl={getShareUrl} />
                     {extraActions}
                 </>

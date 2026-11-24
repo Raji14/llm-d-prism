@@ -111,6 +111,25 @@ export function documentTitleFor({ brand, siteName } = {}) {
     return siteName ? `Prism · ${siteName}` : 'Prism · inference benchmarks';
 }
 
+// Public places people can raise or discuss a result (navigation.js links
+// the same repo as REPO_URL).
+export const PUBLIC_FEEDBACK_REPO_URL = 'https://github.com/llm-d/llm-d-prism';
+export const PUBLIC_DISCUSS_URL = 'https://llm-d.ai/community';
+
+/**
+ * Where an instance sends feedback about its results: { issuesUrl,
+ * discussUrl, shareHint }. A public Prism opens prefilled issues on llm-d's
+ * public repo and links its community page. An internal Prism never sends
+ * result details to a public destination: both URLs are null, people copy
+ * the details instead, and shareHint says who to give them to.
+ */
+export function feedbackDestinationsFor(instance = readInstanceMode()) {
+    if (instance === 'internal') {
+        return { issuesUrl: null, discussUrl: null, shareHint: 'Share this with your Prism admins.' };
+    }
+    return { issuesUrl: `${PUBLIC_FEEDBACK_REPO_URL}/issues/new`, discussUrl: PUBLIC_DISCUSS_URL, shareHint: null };
+}
+
 /** Everything a page needs to know about which Prism it's on. */
 export function readSiteProfile() {
     const instance = readInstanceMode();

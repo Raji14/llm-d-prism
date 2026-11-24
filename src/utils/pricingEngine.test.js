@@ -12,7 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { normalizeAcceleratorId, evaluateRecipeCost, DEFAULT_PRICING_CATALOG } from './pricingEngine.js';
+import {
+    normalizeAcceleratorId,
+    evaluateRecipeCost,
+    DEFAULT_PRICING_CATALOG,
+    calculateDiscountedRates,
+    ratesForPreset,
+    presetForRates,
+    normalizePricingSelection,
+    pricingToParam,
+    pricingFromParam,
+    pricingLabelFor,
+    loadPricingSelection,
+    savePricingSelection,
+    pricingParamForUrl,
+    withPricingParam,
+} from './pricingEngine.js';
 import assert from 'node:assert';
 
 console.log('Running pricingEngine unit tests...');
@@ -49,5 +64,69 @@ assert.strictEqual(evaluateRecipeCost('NVIDIA L40S', 1, 1000).acceleratorId, 'ot
 assert.notStrictEqual(evaluateRecipeCost('NVIDIA L40S', 1, 1000).unitHourlyRate, l4Rate);
 assert.strictEqual(evaluateRecipeCost('8x Google TPU v6e (ct6e-standard-8t)', 8, 1000).unitHourlyRate, v6eRate);
 assert.strictEqual(evaluateRecipeCost('1x NVIDIA L4 (g2-standard-12)', 1, 1000).unitHourlyRate, l4Rate);
+
+// 7. TPU v6e is priced at its on-demand list price; the CUD presets discount it.
+assert.strictEqual(v6eRate, 2.7, 'TPU v6e on-demand list price is $2.70 per chip-hour');
+assert.strictEqual(DEFAULT_PRICING_CATALOG['tpu-v6e-trillium'].baseNodeRateUsd, 2.7 * 4);
+assert.strictEqual(ratesForPreset('cud_3yr')['tpu-v6e-trillium'], 1.215);
+assert.strictEqual(ratesForPreset('cud_1yr')['tpu-v6e-trillium'], 1.701);
+
+// 8. Presets are recognised from their rates; anything else is custom.
+assert.strictEqual(presetForRates({}), 'on_demand');
+assert.strictEqual(presetForRates(calculateDiscountedRates(37)), 'cud_1yr');
+assert.strictEqual(presetForRates(calculateDiscountedRates(55)), 'cud_3yr');
+assert.strictEqual(presetForRates({ 'nvidia-h100-80gb': 3.67 }), 'on_demand', 'a list rate changes nothing');
+assert.strictEqual(presetForRates({ 'nvidia-h100-80gb': 2.5 }), 'custom');
+assert.deepStrictEqual(normalizePricingSelection({ preset: 'cud_3yr', rates: { 'nvidia-l4': 9 } }).rates, ratesForPreset('cud_3yr'), 'a preset carries its own rates');
+
+// 9. The pricing URL param: list prices stay out, presets by id, custom rates compactly.
+assert.strictEqual(pricingToParam({ preset: 'on_demand' }), null);
+assert.strictEqual(pricingToParam({ rates: {} }), null);
+assert.strictEqual(pricingToParam({ preset: 'cud_3yr' }), 'cud_3yr');
+assert.strictEqual(pricingToParam({ rates: calculateDiscountedRates(65) }), 'spot', 'rates that equal a preset travel as the preset');
+const custom = { rates: { 'nvidia-h100-80gb': 2.5, 'nvidia-l4': 0.4, 'tpu-v6e-trillium': 2.7 } };
+assert.strictEqual(pricingToParam(custom), 'custom_h100-2.5_l4-0.4', 'only the rates that differ from list prices');
+assert.deepStrictEqual(pricingFromParam('custom_h100-2.5_l4-0.4'), { preset: 'custom', rates: { 'nvidia-h100-80gb': 2.5, 'nvidia-l4': 0.4 } });
+assert.deepStrictEqual(pricingFromParam('cud_3yr'), { preset: 'cud_3yr', rates: ratesForPreset('cud_3yr') });
+assert.deepStrictEqual(pricingFromParam('list'), { preset: 'on_demand', rates: {} });
+[null, '', 'bogus', 'custom_', 'custom_zzz-1', 'custom_h100-abc'].forEach((v) => assert.strictEqual(pricingFromParam(v), null, `${v} is unreadable`));
+
+// 10. Labels name the prices in use.
+assert.strictEqual(pricingLabelFor({}), 'List prices');
+assert.strictEqual(pricingLabelFor({ preset: 'cud_3yr' }), '3-year CUD prices');
+assert.strictEqual(pricingLabelFor(custom), 'Custom prices');
+
+// 11. The saved selection keeps its preset, worked out again from today's list prices.
+{
+    const store = new Map();
+    const previous = globalThis.localStorage;
+    globalThis.localStorage = { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) };
+    try {
+        assert.deepStrictEqual(loadPricingSelection(), { preset: 'on_demand', rates: {} }, 'nothing saved: list prices');
+        savePricingSelection({ preset: 'cud_3yr' });
+        assert.strictEqual(loadPricingSelection().preset, 'cud_3yr');
+        // Rates saved before a list-price fix (v6e at the old $1.90 × 0.45).
+        store.set('prism_custom_pricing_rates', JSON.stringify({ ...ratesForPreset('cud_3yr'), 'tpu-v6e-trillium': 0.855 }));
+        assert.strictEqual(loadPricingSelection().rates['tpu-v6e-trillium'], 1.215);
+        savePricingSelection(custom);
+        assert.deepStrictEqual(loadPricingSelection(), { preset: 'custom', rates: custom.rates });
+    } finally {
+        if (previous === undefined) delete globalThis.localStorage;
+        else globalThis.localStorage = previous;
+    }
+}
+
+// 12. A shared link always names its prices, list prices included; the
+//     address bar keeps pricing=list only when the saved prices differ.
+{
+    const base = 'http://localhost:5173/?view=model-leaderboard&model=Llama+3.1+70B';
+    assert.strictEqual(new URL(withPricingParam(base, { preset: 'on_demand' })).searchParams.get('pricing'), 'list');
+    assert.strictEqual(new URL(withPricingParam(`${base}&pricing=spot`, { preset: 'cud_3yr' })).searchParams.get('pricing'), 'cud_3yr');
+    assert.strictEqual(new URL(withPricingParam(base, custom)).searchParams.get('pricing'), 'custom_h100-2.5_l4-0.4');
+    assert.strictEqual(withPricingParam('not a url', { preset: 'cud_3yr' }), 'not a url');
+    assert.strictEqual(pricingParamForUrl({ preset: 'on_demand' }, { preset: 'on_demand' }), null, 'list on both: nothing to keep');
+    assert.strictEqual(pricingParamForUrl({ preset: 'on_demand' }, custom), 'list', 'list view over saved custom prices: keep it');
+    assert.strictEqual(pricingParamForUrl({ preset: 'cud_1yr' }, {}), 'cud_1yr');
+}
 
 console.log('All pricingEngine unit tests passed successfully!');

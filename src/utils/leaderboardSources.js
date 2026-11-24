@@ -25,7 +25,7 @@
 // Until results are stored on the server, they live in this browser
 // (localStorage), exactly as the Results Store saves them.
 
-import { accelTypeOf, chipsOf, latencyValue, loadOrder, overloadedKeys } from '../components/ResultsStore/catalog.js';
+import { accelTypeOf, chipsOf, latencyValue, loadOrder, overloadedKeys, parseTimestamp } from '../components/ResultsStore/catalog.js';
 import { normalizeAcceleratorId } from './pricingEngine.js';
 import { classifyWorkload, engineKey } from './leaderboardFacets.js';
 import { modelFamilyFor } from './leaderboardData.js';
@@ -116,7 +116,11 @@ export function curveToEntry(curve, { instance = 'public' } = {}) {
 
     const accelLabel = meta.accelerator ? accelTypeOf(meta.accelerator) : null;
     const author = handleOf(curve.attribution) || handleOf(curve.markedBy) || handleOf(curve.owner);
-    const publishedAt = curve.markedAt || curve.updatedAt || curve.createdAt;
+    // When the runs were measured (the newest one), else when the result was
+    // made. Never the approval date: that would make an old run look fresh.
+    // Approval stays in the lineage line.
+    const measuredAt = Math.max(0, ...included.map((p) => parseTimestamp(p.ts)));
+    const runAt = measuredAt || parseTimestamp(curve.createdAt) || null;
     const modelName = meta.modelFull || meta.model || 'Model not recorded';
     const harness = meta.harness && meta.harness !== 'Not recorded' ? meta.harness : null;
 
@@ -145,7 +149,7 @@ export function curveToEntry(curve, { instance = 'public' } = {}) {
             },
             fairness_audit: harness ? { harness } : null,
             sweep_points: sweep,
-            created_at: isNum(publishedAt) ? new Date(publishedAt).toISOString() : null,
+            created_at: runAt ? new Date(runAt).toISOString() : null,
             verification_status: curve.status,
             results_store: {
                 curveId: curve.id,

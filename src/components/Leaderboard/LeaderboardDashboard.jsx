@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { UploadCloud, RotateCcw, FilterX, Inbox, MessageSquarePlus, Database, Eye } from 'lucide-react';
+import { UploadCloud, RotateCcw, FilterX, Inbox, MessageSquarePlus, Database, Eye, Info, X, ArrowRight } from 'lucide-react';
 import { WellLitHeader } from '../ui/WellLitHeader.jsx';
 import { Button } from '../ui/Button.jsx';
 import { EmptyState } from '../ui/EmptyState.jsx';
@@ -25,8 +25,9 @@ import LeaderboardTable from './LeaderboardTable.jsx';
 import PricingConfigModal from './PricingConfigModal.jsx';
 import RecipeDetailDrawer from './RecipeDetailDrawer.jsx';
 import LeaderboardFeedbackModal from './LeaderboardFeedbackModal.jsx';
-import { SUBMIT, METHODOLOGY } from '../layout/navigation.js';
+import { submitFor, METHODOLOGY } from '../layout/navigation.js';
 import { readInstanceMode } from '../ResultsStore/instance.js';
+import { feedbackDestinationsFor } from '../../config/site.js';
 import {
     buildLeaderboardDataset,
     evaluateDatasetAtSlo,
@@ -40,6 +41,7 @@ import {
     objectiveFor,
     workloadFor,
     matchesSearchQuery,
+    parseQueryTokens,
     readSloParams,
     writeSloParams,
     latencyFor,
@@ -47,7 +49,16 @@ import {
     removeQueryToken,
 } from '../../utils/leaderboardFacets.js';
 import { pickDefaultScope, annotateModelWorkloadGroupRanks } from '../../utils/runParity.js';
-import { loadCustomPricingRates, saveCustomPricingRates } from '../../utils/pricingEngine.js';
+import {
+    LIST_PRICE_PRESET,
+    PRICING_URL_PARAM,
+    loadPricingSelection,
+    pricingFromParam,
+    pricingLabelFor,
+    pricingParamForUrl,
+    savePricingSelection,
+    withPricingParam,
+} from '../../utils/pricingEngine.js';
 
 // "a code generation run", "an offline batch run".
 const withArticle = (phrase) => `${/^[aeiou]/i.test(phrase) ? 'an' : 'a'} ${phrase}`;
@@ -57,6 +68,10 @@ const VALID_X_METRICS = ['ttft_p50', 'itl_p50', 'output_tokens_per_sec', 'worklo
 const VALID_Y_METRICS = ['tokens_per_sec_per_chip', 'tokens_per_sec', 'tokens_per_dollar'];
 const VALID_SCALE_MODES = ['linear', 'log'];
 
+// Opening a result's details pushes a history entry marked with this key, so
+// browser Back closes the drawer instead of leaving the Leaderboard.
+const DRAWER_HISTORY_KEY = 'prismLeaderboardRecipe';
+
 const currentParams = () => {
     try {
         return new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
@@ -64,6 +79,8 @@ const currentParams = () => {
         return new URLSearchParams();
     }
 };
+
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // Samples are shown by default only while nothing has been published, so the
 // page is never empty but real results never sit behind made-up ones.
@@ -128,6 +145,8 @@ const readInitialState = (navigationParams, publishedEntries) => {
         chartScaleMode: VALID_SCALE_MODES.includes(scaleParam) ? scaleParam : 'linear',
         selectedRecipeId: recipeParam || null,
         isRecipeDrawerOpen: Boolean(recipeParam),
+        // The pinned baseline row rides in the URL, so it survives Compare → Back.
+        baselineRecipeId: params.get('pin') || null,
     };
 };
 
@@ -143,6 +162,9 @@ export default function LeaderboardDashboard({
     navigationParams
 }) {
     const instance = useMemo(() => readInstanceMode(), []);
+    // Internal Prism never sends result details to a public destination.
+    const destinations = useMemo(() => feedbackDestinationsFor(instance), [instance]);
+    const submit = submitFor(instance);
     const [published, setPublished] = useState(() => loadPublishedResults({ instance }));
     const [initial] = useState(() => readInitialState(navigationParams, published.entries));
 
@@ -177,10 +199,13 @@ export default function LeaderboardDashboard({
     const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
     const [isRecipeDrawerOpen, setIsRecipeDrawerOpen] = useState(initial.isRecipeDrawerOpen);
     const [selectedRecipeId, setSelectedRecipeId] = useState(initial.selectedRecipeId);
+    // A linked result that isn't on the Leaderboard (any more): said, not ignored.
+    const [missingRecipeId, setMissingRecipeId] = useState(null);
     const [feedbackModal, setFeedbackModal] = useState({
         isOpen: false,
         type: 'missing_workload',
-        recipe: null
+        recipe: null,
+        prefillScope: false,
     });
 
     // Two-way synchronization between sentence dropdowns and search query tokens
@@ -204,6 +229,18 @@ export default function LeaderboardDashboard({
         setSearchQuery((prev) => removeDimensionTokens(prev, 'engine'));
     };
 
+    // ...and the other way: a key:value token for a sentence dimension decides
+    // that dimension, so `model:8b` searches every model, not just the one the
+    // sentence had picked.
+    const handleSearchChange = (next) => {
+        setSearchQuery(next);
+        const dims = new Set(parseQueryTokens(next).filter((t) => t.dimension && t.value).map((t) => t.dimension));
+        if (dims.has('model')) setSelectedModelFamily('all');
+        if (dims.has('workload')) setSelectedWorkload('all');
+        if (dims.has('hardware')) setSelectedHardware('all');
+        if (dims.has('engine')) setSelectedEngine('all');
+    };
+
     // Sync incoming navigationParams changes during render
     const [prevNavParams, setPrevNavParams] = useState(navigationParams);
     if (navigationParams !== prevNavParams) {
@@ -223,29 +260,27 @@ export default function LeaderboardDashboard({
         }
     }
 
-    const handleOpenFeedback = (type = 'missing_workload', recipe = null) => {
-        setFeedbackModal({
-            isOpen: true,
-            type,
-            recipe
-        });
-    };
-
     // Comparison and Baseline states
     const [selectedForCompare, setSelectedForCompare] = useState([]);
-    const [baselineRecipeId, setBaselineRecipeId] = useState(null);
+    const [baselineRecipeId, setBaselineRecipeId] = useState(initial.baselineRecipeId);
+    // The scope you were on when hiding samples moved you, to go back to it.
+    const [scopeBeforeHidingSamples, setScopeBeforeHidingSamples] = useState(null);
 
-    // Custom Pricing Overrides State
-    const [customPricing, setCustomPricing] = useState(() => loadCustomPricingRates());
+    // The prices this view uses: a shared link's (pricing=…) wins, so the
+    // recipient sees the sender's $/1M; otherwise the ones saved in this browser.
+    const [pricing, setPricing] = useState(() => pricingFromParam(currentParams().get(PRICING_URL_PARAM)) || loadPricingSelection());
+    const customPricing = pricing.rates;
+    const pricingLabel = pricingLabelFor(pricing);
+    // What Share copies (and challenges link back to): exactly this view,
+    // prices included, so a recipient with other saved prices sees the same numbers.
+    const getShareUrl = () => (typeof window !== 'undefined' ? withPricingParam(window.location.href, pricing) : '');
 
-    const handleSaveRates = (newRates) => {
-        setCustomPricing(newRates);
-        saveCustomPricingRates(newRates);
+    const handleSavePricing = (rates, preset) => {
+        setPricing(savePricingSelection({ preset, rates }));
     };
 
     const handleResetDefaults = () => {
-        setCustomPricing({});
-        saveCustomPricingRates({});
+        setPricing(savePricingSelection({ preset: LIST_PRICE_PRESET }));
     };
 
     // Up to three setups; a fourth checkbox stays disabled until one is cleared.
@@ -275,6 +310,9 @@ export default function LeaderboardDashboard({
             if (rankingMetric !== DEFAULT_OBJECTIVE) params.set('sort', rankingMetric);
             writeSloParams(params, { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile });
             if (includeSamples !== initial.defaultIncludeSamples) params.set('samples', includeSamples ? '1' : '0');
+            const pricingParam = pricingParamForUrl(pricing, loadPricingSelection());
+            if (pricingParam) params.set(PRICING_URL_PARAM, pricingParam);
+            if (baselineRecipeId) params.set('pin', baselineRecipeId);
             if (chartCurveMode !== 'stack') params.set('curves', chartCurveMode);
             if (chartXMetric !== 'ttft_p50') params.set('x', chartXMetric);
             if (chartYMetric !== 'tokens_per_sec_per_chip') params.set('y', chartYMetric);
@@ -283,7 +321,8 @@ export default function LeaderboardDashboard({
 
             const queryString = params.toString();
             const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
-            window.history.replaceState(null, '', newUrl);
+            // Keep the entry's state: it marks the entry the drawer pushed.
+            window.history.replaceState(window.history.state, '', newUrl);
         } catch {
             // ignore URL state errors
         }
@@ -299,6 +338,8 @@ export default function LeaderboardDashboard({
         slaPercentile,
         includeSamples,
         initial.defaultIncludeSamples,
+        pricing,
+        baselineRecipeId,
         chartCurveMode,
         chartXMetric,
         chartYMetric,
@@ -306,6 +347,24 @@ export default function LeaderboardDashboard({
         selectedRecipeId,
         isRecipeDrawerOpen,
     ]);
+
+    // Back and Forward move between the board and a result's details: the
+    // URL's recipe param says whether the drawer is open.
+    useEffect(() => {
+        const onPopState = () => {
+            const params = currentParams();
+            if (params.get('view') && params.get('view') !== 'model-leaderboard') return;
+            const recipe = params.get('recipe');
+            if (recipe) {
+                setSelectedRecipeId(recipe);
+                setIsRecipeDrawerOpen(true);
+            } else {
+                setIsRecipeDrawerOpen(false);
+            }
+        };
+        window.addEventListener('popstate', onPopState);
+        return () => window.removeEventListener('popstate', onPopState);
+    }, []);
 
     // Published Results Store results, plus the illustrative samples when shown.
     const rawDataset = useMemo(() => {
@@ -368,8 +427,16 @@ export default function LeaderboardDashboard({
             return numberOr(b.tokens_per_sec_per_chip, 0) - numberOr(a.tokens_per_sec_per_chip, 0);
         };
 
-        const sorted = filtered.sort(compareRuns);
-        return annotateModelWorkloadGroupRanks(sorted, compareRuns);
+        // Samples never rank above real results: when both are in scope, the
+        // real ones are ranked and the samples follow, unnumbered.
+        const separateSamples = filtered.some((r) => r.is_sample) && filtered.some((r) => !r.is_sample);
+        if (!separateSamples) {
+            const sorted = filtered.sort(compareRuns);
+            return annotateModelWorkloadGroupRanks(sorted, compareRuns);
+        }
+        const real = filtered.filter((r) => !r.is_sample).sort(compareRuns);
+        const samples = filtered.filter((r) => r.is_sample).sort(compareRuns).map((r) => ({ ...r, unrankedSample: true }));
+        return [...annotateModelWorkloadGroupRanks(real, compareRuns), ...samples];
     }, [
         evaluatedDataset,
         searchQuery,
@@ -386,6 +453,13 @@ export default function LeaderboardDashboard({
         notRecorded: filteredDataset.filter((r) => r.missesSlo && r.sloReason === 'not-recorded').length,
     }), [filteredDataset]);
 
+    // P90 is offered only where some run in scope recorded it (the Results
+    // Store keeps P50 and P99), so it's never a dead end.
+    const p90Recorded = useMemo(
+        () => filteredDataset.some((r) => (r.sweep_points || []).some((pt) => isNum(pt.ttft_p90) || isNum(pt.itl_p90))),
+        [filteredDataset]
+    );
+
     const isScoped = selectedModelFamily !== 'all' || selectedWorkload !== 'all' || selectedHardware !== 'all' || selectedEngine !== 'all';
     const isGroupedByModel = selectedModelFamily === 'all';
 
@@ -393,6 +467,29 @@ export default function LeaderboardDashboard({
     const sampleCount = includeSamples ? SEED_LEADERBOARD_RECIPES.length : 0;
     const selectedWorkloadMeta = workloadFor(selectedWorkload);
     const isUnmeasuredWorkload = Boolean(selectedWorkloadMeta) && !evaluatedDataset.some((r) => r.workload_class === selectedWorkload);
+    const onlySamples = includeSamples && publishedCount === 0;
+
+    // Where runs do exist when the sentence finds none: the same workload on
+    // other models first, then the same model on other workloads.
+    const scopeSuggestions = useMemo(() => {
+        if (filteredDataset.length > 0) return [];
+        const groups = new Map();
+        evaluatedDataset.forEach((r) => {
+            if (searchQuery.trim() && !matchesSearchQuery(r, searchQuery)) return;
+            if (selectedHardware !== 'all' && r.hardware?.accelerator_type !== selectedHardware) return;
+            if (selectedEngine !== 'all' && r.stack?.engine !== selectedEngine) return;
+            const sameWorkload = selectedWorkload !== 'all' && r.workload_class === selectedWorkload;
+            const sameModel = selectedModelFamily !== 'all' && r.model_family === selectedModelFamily;
+            if (!sameWorkload && !sameModel) return;
+            const key = `${r.model_family}|||${r.workload_class}`;
+            const g = groups.get(key) || { model: r.model_family, workload: r.workload_class, n: 0, sameWorkload };
+            g.n += 1;
+            groups.set(key, g);
+        });
+        return [...groups.values()]
+            .sort((a, b) => Number(b.sameWorkload) - Number(a.sameWorkload) || b.n - a.n)
+            .slice(0, 3);
+    }, [filteredDataset.length, evaluatedDataset, searchQuery, selectedHardware, selectedEngine, selectedWorkload, selectedModelFamily]);
 
     const handleResetAllFilters = () => {
         const defaultScope = pickDefaultScope(rawDataset);
@@ -417,27 +514,64 @@ export default function LeaderboardDashboard({
             setBaselineRecipeId((prev) => (prev && sampleIds.has(prev) ? null : prev));
         }
         // Re-scope to where the data is, so hiding samples never strands the
-        // sentence on a model that only samples had.
+        // sentence on a model that only samples had...
         const pool = buildLeaderboardDataset({
             seedRecipes: next ? SEED_LEADERBOARD_RECIPES : [],
             publishedResults: published.entries,
         });
-        if (selectedModelFamily !== 'all' && !pool.some((r) => r.model_family === selectedModelFamily)) {
+        const hasModel = (model) => model === 'all' || pool.some((r) => r.model_family === model);
+        // ...and showing them again returns to the scope you were on.
+        if (next && scopeBeforeHidingSamples && hasModel(scopeBeforeHidingSamples.model)) {
+            setSelectedModelFamily(scopeBeforeHidingSamples.model);
+            setSelectedWorkload(scopeBeforeHidingSamples.workload);
+            setScopeBeforeHidingSamples(null);
+            return;
+        }
+        if (!hasModel(selectedModelFamily)) {
+            if (!next) setScopeBeforeHidingSamples({ model: selectedModelFamily, workload: selectedWorkload });
             const scope = pickDefaultScope(pool);
             setSelectedModelFamily(scope.model);
             setSelectedWorkload(scope.workload);
         }
     };
 
-    const go = (e, view) => {
+    const go = (e, view, extra) => {
         if (!onNavigate || e.metaKey || e.ctrlKey || e.shiftKey) return;
         e.preventDefault();
-        onNavigate(view);
+        onNavigate(view, extra);
+    };
+
+    // Opening details pushes a history entry; closing them pops it, so the
+    // next Back returns to wherever the user came from.
+    const openRecipeDrawer = (recipeId) => {
+        setSelectedRecipeId(recipeId);
+        setIsRecipeDrawerOpen(true);
+        setMissingRecipeId(null);
+        try {
+            const params = currentParams();
+            params.set('recipe', recipeId);
+            window.history.pushState(
+                { ...(window.history.state || {}), [DRAWER_HISTORY_KEY]: recipeId },
+                '',
+                `${window.location.pathname}?${params.toString()}`
+            );
+        } catch {
+            // ignore history errors
+        }
+    };
+
+    // keepHistory: the drawer is closing because the user is going to another
+    // view, which pushes its own entry; Back from there reopens the drawer.
+    const closeRecipeDrawer = ({ keepHistory = false } = {}) => {
+        if (!keepHistory && typeof window !== 'undefined' && window.history.state?.[DRAWER_HISTORY_KEY]) {
+            window.history.back();
+            return;
+        }
+        setIsRecipeDrawerOpen(false);
     };
 
     const handleSelectRecipe = (recipe) => {
-        setSelectedRecipeId(recipe.id);
-        setIsRecipeDrawerOpen(true);
+        openRecipeDrawer(recipe.id);
         setTimeout(() => {
             const rowElem = document.getElementById(`recipe-row-${recipe.id}`);
             if (rowElem) {
@@ -450,6 +584,25 @@ export default function LeaderboardDashboard({
         () => (selectedRecipeId ? evaluatedDataset.find((r) => r.id === selectedRecipeId) || null : null),
         [evaluatedDataset, selectedRecipeId]
     );
+
+    // A link to a result that isn't here: say so and drop it from the URL, so
+    // it isn't shared on.
+    if (isRecipeDrawerOpen && selectedRecipeId && !selectedRecipe) {
+        setMissingRecipeId(selectedRecipeId);
+        setIsRecipeDrawerOpen(false);
+        setSelectedRecipeId(null);
+    }
+
+    // Request a workload prefills only what's missing: the scope when it has
+    // no runs; nothing when it's already measured.
+    const handleOpenFeedback = (type = 'missing_workload', recipe = null) => {
+        setFeedbackModal({
+            isOpen: true,
+            type,
+            recipe,
+            prefillScope: type === 'missing_workload' && filteredDataset.length === 0,
+        });
+    };
 
     // The Comparison page reads the SLO from the URL, which carries over within
     // the leaderboard flow, so it evaluates every setup at the same points.
@@ -490,6 +643,9 @@ export default function LeaderboardDashboard({
 
     const slo = { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile };
     const nothingToRank = rawDataset.length === 0;
+    const nothingYet = instance === 'internal' ? 'Nothing is marked Official yet' : 'Nothing is published yet';
+    const methodologySamplesHref = `?view=${METHODOLOGY.view}#samples`;
+    const openMethodologySamples = (e) => go(e, METHODOLOGY.view, { hash: 'samples' });
 
     return (
         <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden">
@@ -501,7 +657,8 @@ export default function LeaderboardDashboard({
                 badgeLabel={null}
                 onNavigateBack={onNavigateBack}
                 onToggleMobileNav={onToggleMobileNav}
-                getShareUrl={() => typeof window !== 'undefined' ? window.location.href : ''}
+                contactHref={destinations.discussUrl}
+                getShareUrl={getShareUrl}
                 extraActions={
                     <Button
                         variant="ghost"
@@ -543,10 +700,12 @@ export default function LeaderboardDashboard({
                         skippedResults={published.skipped}
                         instance={instance}
                         onOpenFeedback={handleOpenFeedback}
+                        methodologySamplesHref={methodologySamplesHref}
+                        onOpenMethodologySamples={openMethodologySamples}
                     />
                     <MetricFiltersBar
                         searchQuery={searchQuery}
-                        setSearchQuery={setSearchQuery}
+                        setSearchQuery={handleSearchChange}
                         onRemoveQueryToken={(rawToken) => setSearchQuery((prev) => removeQueryToken(prev, rawToken))}
                         selectedWorkload={selectedWorkload}
                         isScoped={isScoped}
@@ -556,11 +715,62 @@ export default function LeaderboardDashboard({
                         setMaxTpotSla={setMaxTpotSla}
                         slaPercentile={slaPercentile}
                         setSlaPercentile={setSlaPercentile}
+                        p90Recorded={p90Recorded}
                         onOpenPricingModal={() => setIsPricingModalOpen(true)}
                         onResetFilters={handleResetAllFilters}
-                        hasCustomPricing={Object.keys(customPricing || {}).length > 0}
+                        hasCustomPricing={pricing.preset !== LIST_PRICE_PRESET}
+                        pricingLabel={pricingLabel}
                     />
                 </div>
+
+                {missingRecipeId && (
+                    <div role="status" className="surface-light flex items-start justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-xs text-amber-950">
+                        <span className="flex items-start gap-2 min-w-0">
+                            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <span>
+                                <strong className="font-semibold">That result isn&apos;t on the Leaderboard any more.</strong>{' '}
+                                The link pointed to <code className="font-mono break-all">{missingRecipeId}</code>, which may have been replaced or withdrawn.
+                            </span>
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setMissingRecipeId(null)}
+                            aria-label="Dismiss"
+                            className="shrink-0 p-1 rounded-full text-amber-700 hover:text-amber-950 hover:bg-amber-100 cursor-pointer"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                )}
+
+                {/* Only samples: say so above everything else, at every size. */}
+                {onlySamples && !nothingToRank && (
+                    <div role="note" className="surface-light flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-zinc-300 bg-zinc-50 px-4 py-3 text-xs text-zinc-800">
+                        <p className="flex items-start gap-2.5 min-w-0">
+                            <Info className="w-4 h-4 text-zinc-500 shrink-0 mt-0.5" />
+                            <span>
+                                <strong className="font-semibold text-zinc-900">Every row below is an illustrative sample, not a measured run.</strong>{' '}
+                                {nothingYet}, so the Leaderboard shows made-up examples of how ranking works. Don&apos;t quote their numbers.
+                            </span>
+                        </p>
+                        <div className="flex items-center gap-3 shrink-0 pl-6 sm:pl-0">
+                            <a
+                                href={methodologySamplesHref}
+                                onClick={openMethodologySamples}
+                                className="font-semibold text-zinc-800 underline decoration-zinc-300 underline-offset-2 hover:text-accent-700"
+                            >
+                                About sample data
+                            </a>
+                            <button
+                                type="button"
+                                onClick={handleToggleSamples}
+                                className="font-semibold text-zinc-800 underline decoration-zinc-300 underline-offset-2 hover:text-accent-700 cursor-pointer"
+                            >
+                                Hide samples
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {nothingToRank ? (
                     <div className="surface-light rounded-3xl border border-zinc-200 bg-white">
@@ -592,12 +802,16 @@ export default function LeaderboardDashboard({
                             <EmptyState
                                 icon={<Inbox className="w-9 h-9 text-zinc-400 mx-auto" />}
                                 title={`No ${selectedWorkloadMeta.label} runs yet`}
-                                message={`Be the first to submit ${withArticle(selectedWorkloadMeta.display)} run, or request a benchmark for this workload.`}
+                                message={
+                                    instance === 'internal'
+                                        ? `Upload ${withArticle(selectedWorkloadMeta.display)} run for an approver to mark Official, or request a benchmark for this workload.`
+                                        : `Be the first to submit ${withArticle(selectedWorkloadMeta.display)} run, or request a benchmark for this workload.`
+                                }
                                 action={
                                     <div className="flex flex-wrap items-center justify-center gap-2">
-                                        <Button variant="primary" size="sm" href={`?view=${SUBMIT.view}`} onClick={(e) => go(e, SUBMIT.view)}>
+                                        <Button variant="primary" size="sm" href={`?view=${submit.view}`} onClick={(e) => go(e, submit.view)}>
                                             <UploadCloud className="w-3.5 h-3.5" />
-                                            {SUBMIT.label}
+                                            {submit.label}
                                         </Button>
                                         <Button variant="secondary" size="sm" onClick={() => handleOpenFeedback('missing_workload')}>
                                             <MessageSquarePlus className="w-3.5 h-3.5" />
@@ -611,21 +825,54 @@ export default function LeaderboardDashboard({
                             <EmptyState
                                 icon={<FilterX className="w-9 h-9 text-zinc-400 mx-auto" />}
                                 title="No runs match these filters"
-                                message="Broaden the sentence above, clear the search query, or request a benchmark for this configuration."
+                                message={
+                                    scopeSuggestions.length > 0
+                                        ? `Runs exist nearby: switch to one of these, broaden the sentence above, or request a benchmark for this configuration.`
+                                        : 'Broaden the sentence above, clear the search query, or request a benchmark for this configuration.'
+                                }
                                 action={
-                                    <div className="flex flex-wrap items-center justify-center gap-2">
-                                        <Button variant="primary" size="sm" onClick={() => handleOpenFeedback('missing_workload')}>
-                                            <MessageSquarePlus className="w-3.5 h-3.5" />
-                                            Request this configuration
-                                        </Button>
-                                        {clearFiltersButton}
+                                    <div className="flex flex-col items-center gap-3">
+                                        {scopeSuggestions.length > 0 && (
+                                            <ul className="flex flex-col items-center gap-1.5" aria-label="Where runs exist">
+                                                {scopeSuggestions.map((s) => (
+                                                    <li key={`${s.model}|${s.workload}`}>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                handleModelChange(s.model);
+                                                                handleWorkloadChange(s.workload);
+                                                            }}
+                                                            className="inline-flex items-center gap-1.5 rounded-full border border-accent-200 bg-accent-50/60 px-3 py-1 text-xs font-medium text-accent-800 hover:bg-accent-50 hover:border-accent-300 cursor-pointer"
+                                                        >
+                                                            <span>
+                                                                {workloadFor(s.workload)?.label || s.workload} runs exist for {s.model} ({s.n})
+                                                            </span>
+                                                            <span className="font-semibold">Switch</span>
+                                                            <ArrowRight className="w-3 h-3" />
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                        <div className="flex flex-wrap items-center justify-center gap-2">
+                                            <Button variant="primary" size="sm" onClick={() => handleOpenFeedback('missing_workload')}>
+                                                <MessageSquarePlus className="w-3.5 h-3.5" />
+                                                Request this configuration
+                                            </Button>
+                                            {clearFiltersButton}
+                                        </div>
                                     </div>
                                 }
                             />
                         )}
                     </div>
                 ) : (
-                    <>
+                    <section aria-labelledby="leaderboard-results-heading" className="space-y-4">
+                        {/* The page's h1 is the header; the chart and table titles are h3s. */}
+                        <h2 id="leaderboard-results-heading" className="sr-only">
+                            Results for {scopeLabel}
+                        </h2>
+
                         {/* 2. Compact #1 Top-Entry Strip */}
                         <LeaderboardSummaryCards
                             dataset={filteredDataset}
@@ -635,7 +882,7 @@ export default function LeaderboardDashboard({
                             objective={objectiveFor(rankingMetric)}
                             latencyPercentile={slaPercentile}
                             slo={slo}
-                            customPricing={customPricing}
+                            pricingLabel={pricingLabel}
                             onOpenPricingModal={() => setIsPricingModalOpen(true)}
                         />
 
@@ -667,6 +914,8 @@ export default function LeaderboardDashboard({
                             isGroupedByModel={isGroupedByModel}
                             latencyPercentile={slaPercentile}
                             slo={slo}
+                            pricingLabel={pricingLabel}
+                            getShareUrl={getShareUrl}
                             onSelectRecipe={handleSelectRecipe}
                             selectedRecipe={selectedRecipe}
                             selectedForCompare={selectedForCompare}
@@ -678,9 +927,10 @@ export default function LeaderboardDashboard({
                             onResetFilters={handleResetAllFilters}
                             onClearCompare={() => setSelectedForCompare([])}
                             onOpenFeedback={handleOpenFeedback}
+                            onToggleSamples={includeSamples ? handleToggleSamples : undefined}
                             onNavigate={onNavigate}
                         />
-                    </>
+                    </section>
                 )}
             </div>
 
@@ -689,21 +939,22 @@ export default function LeaderboardDashboard({
                 isOpen={isPricingModalOpen}
                 onClose={() => setIsPricingModalOpen(false)}
                 customRates={customPricing}
-                onSaveRates={handleSaveRates}
+                activePreset={pricing.preset}
+                onSaveRates={handleSavePricing}
                 onResetDefaults={handleResetDefaults}
             />
 
             <RecipeDetailDrawer
                 isOpen={isRecipeDrawerOpen}
-                onClose={() => setIsRecipeDrawerOpen(false)}
+                onClose={closeRecipeDrawer}
                 recipe={selectedRecipe}
                 latencyPercentile={slaPercentile}
                 slo={slo}
+                pricingLabel={pricingLabel}
+                getShareUrl={getShareUrl}
                 onNavigate={onNavigate}
-                onOpenFeedback={(type, recipe) => {
-                    setIsRecipeDrawerOpen(false);
-                    handleOpenFeedback(type, recipe);
-                }}
+                // The challenge form opens over the details, so Cancel returns to them.
+                onOpenFeedback={handleOpenFeedback}
             />
 
             <LeaderboardFeedbackModal
@@ -711,12 +962,16 @@ export default function LeaderboardDashboard({
                 onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
                 initialType={feedbackModal.type}
                 targetRecipe={feedbackModal.recipe}
-                activeFilters={{
+                activeFilters={feedbackModal.prefillScope ? {
                     model: selectedModelFamily,
                     workload: selectedWorkload,
                     hardware: selectedHardware,
                     engine: selectedEngine
-                }}
+                } : {}}
+                destinations={destinations}
+                slo={slo}
+                pricingLabel={pricingLabel}
+                getShareUrl={getShareUrl}
                 onNavigate={onNavigate}
             />
         </div>

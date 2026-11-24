@@ -17,21 +17,42 @@ import {
     Crown,
     Sparkles,
     ArrowRight,
-    Layers
+    Layers,
+    DollarSign
 } from 'lucide-react';
 import { GoogleMark, StatusChip } from '../ui';
-import { getActivePricingLabel } from '../../utils/pricingEngine.js';
+import { isStaleRun } from '../../utils/runParity.js';
 import {
     OBJECTIVES,
     DEFAULT_SLO,
     describeSlo,
     engineLabel,
     formatHardwareShort,
+    formatLatencyMs,
     latencyFor,
     provenanceStatus,
 } from '../../utils/leaderboardFacets.js';
 
-const fmtMs = (v) => (typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(1)}ms` : '—');
+const fmtMs = (v) => formatLatencyMs(v) ?? '—';
+
+// "A small badge shows which prices are in use, and it opens Pricing."
+function PricingBadge({ label, onClick }) {
+    if (!label) return null;
+    if (!onClick) {
+        return <span className="text-tiny font-mono text-zinc-600 shrink-0">{label}</span>;
+    }
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="inline-flex items-center gap-1 text-micro font-mono text-zinc-700 bg-white border border-zinc-200 px-2.5 py-1 rounded-full hover:bg-zinc-50 transition-colors cursor-pointer shrink-0 font-medium"
+            title="Every $/1M here uses these prices. Click to change them."
+        >
+            <DollarSign className="w-3 h-3 text-emerald-600" />
+            <span>{label}</span>
+        </button>
+    );
+}
 
 export default function LeaderboardSummaryCards({
     dataset = [],
@@ -41,14 +62,15 @@ export default function LeaderboardSummaryCards({
     objective = OBJECTIVES[0],
     latencyPercentile = DEFAULT_SLO.percentile,
     slo = DEFAULT_SLO,
-    customPricing = {},
+    pricingLabel = 'List prices',
     onOpenPricingModal
 }) {
-    const activePricingLabel = useMemo(() => getActivePricingLabel(customPricing), [customPricing]);
     const pctLabel = String(latencyPercentile).toUpperCase();
 
+    // Only ranked rows can lead: never a row below the line, and never a
+    // sample while real results are in scope (those samples aren't ranked).
     const qualifyingDataset = useMemo(
-        () => (dataset || []).filter((r) => !r.missesSlo),
+        () => (dataset || []).filter((r) => !r.missesSlo && !r.unrankedSample),
         [dataset]
     );
 
@@ -76,7 +98,7 @@ export default function LeaderboardSummaryCards({
                 <div className="flex items-center gap-2.5">
                     <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
-                        No run in this scope meets {describeSlo(slo)} at any measured load. Relax the SLO above, or inspect the closest runs below.
+                        No {dataset.some((r) => r.unrankedSample) ? 'ranked ' : ''}run in this scope meets {describeSlo(slo)} at any measured load. Relax the latency limit above, or inspect the closest runs below.
                     </span>
                 </div>
             </div>
@@ -121,16 +143,7 @@ export default function LeaderboardSummaryCards({
                             })}
                         </div>
                     </div>
-                    {activePricingLabel && onOpenPricingModal && (
-                        <button
-                            type="button"
-                            onClick={onOpenPricingModal}
-                            className="text-micro font-mono text-zinc-700 bg-white border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-50 transition-colors cursor-pointer shrink-0 font-medium"
-                            title="Click to inspect active pricing rates"
-                        >
-                            {activePricingLabel}
-                        </button>
-                    )}
+                    <PricingBadge label={pricingLabel} onClick={onOpenPricingModal} />
                 </div>
             </div>
         );
@@ -148,6 +161,7 @@ export default function LeaderboardSummaryCards({
     const winnerConcurrency = winnerRecipe.operatingConcurrency;
     const winnerHandle = winnerRecipe.author?.github_id || winnerRecipe.author?.username || null;
     const winnerStatus = provenanceStatus(winnerRecipe);
+    const winnerStale = isStaleRun(winnerRecipe);
     const stackParts = [
         engineLabel(winnerRecipe.stack?.engine),
         winnerRecipe.stack?.tensor_parallel_size ? `TP${winnerRecipe.stack.tensor_parallel_size}` : null,
@@ -168,6 +182,14 @@ export default function LeaderboardSummaryCards({
                             {winnerModel} · {winnerRecipe.recipe_name}
                         </span>
                         <StatusChip status={winnerStatus} size="xs" />
+                        {winnerStale && (
+                            <span
+                                className="inline-flex items-center rounded-full bg-amber-50 px-1.5 py-0.5 text-tiny font-medium text-amber-800 border border-amber-200 shrink-0"
+                                title="Stale run: recorded over 180 days ago or evaluated on an archived serving engine version"
+                            >
+                                Stale
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 text-micro min-w-0 overflow-hidden">
                         <span className="font-mono font-semibold text-accent-700 bg-white border border-accent-200 px-2 py-0.5 rounded-full shrink-0">
@@ -212,12 +234,14 @@ export default function LeaderboardSummaryCards({
                             <span className="text-tiny uppercase tracking-wider text-zinc-600 font-semibold mr-1.5">$/1M</span>
                             <span
                                 className="font-mono font-semibold text-emerald-700 tabular-nums"
-                                title={typeof winnerCostPer1M === 'number' ? undefined : 'No list price for this accelerator. Set your own rate under Pricing.'}
+                                title={typeof winnerCostPer1M === 'number' ? `At ${pricingLabel.toLowerCase()}` : 'No list price for this accelerator. Set your own rate under Pricing.'}
                             >
                                 {typeof winnerCostPer1M === 'number' ? `$${winnerCostPer1M.toFixed(3)}` : '—'}
                             </span>
                         </div>
                     </div>
+
+                    <PricingBadge label={pricingLabel} onClick={onOpenPricingModal} />
 
                     <button
                         type="button"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
     X,
     MessageSquarePlus,
@@ -20,12 +20,15 @@ import {
     Layers,
     ExternalLink,
     Copy,
-    Check
+    Check,
+    Info
 } from 'lucide-react';
 import { Button } from '../ui/Button.jsx';
+import { useFocusTrap } from '../ui';
 import { cn } from '../../utils/cn';
-import { REPO_URL } from '../layout/navigation.js';
-import { engineLabel, workloadFor, HARDWARE_OPTIONS } from '../../utils/leaderboardFacets.js';
+import { feedbackDestinationsFor } from '../../config/site.js';
+import { engineLabel, workloadFor, HARDWARE_OPTIONS, DEFAULT_SLO } from '../../utils/leaderboardFacets.js';
+import { challengeIssueFields, challengeMarkdown, runDetailLines } from './feedbackDetails.js';
 
 const FEEDBACK_TYPES = [
     {
@@ -81,9 +84,21 @@ export default function LeaderboardFeedbackModal({
     initialType = 'missing_workload',
     targetRecipe = null,
     contextRecipe = null,
-    activeFilters = {}
+    activeFilters = {},
+    // Where feedback may go on this instance (src/config/site.js). Without an
+    // issues URL (Internal Prism) nothing is sent anywhere: people copy the
+    // details and share them with their Prism admins.
+    destinations = feedbackDestinationsFor(),
+    slo = DEFAULT_SLO,
+    pricingLabel = null,
+    // The link back to this view (the Leaderboard's names its prices).
+    getShareUrl = null,
 }) {
     const resolvedRecipe = targetRecipe || contextRecipe;
+    // Focus starts in the notes field; Tab stays inside; Escape closes this
+    // dialog only (it can sit over a result's details).
+    const dialogRef = useRef(null);
+    useFocusTrap(dialogRef, isOpen, { onEscape: onClose, initialFocus: (root) => root.querySelector('[data-autofocus]') });
 
     const [feedbackType, setFeedbackType] = useState(() =>
         normalizeTabType(initialType, Boolean(resolvedRecipe))
@@ -112,26 +127,19 @@ export default function LeaderboardFeedbackModal({
         }
     }
 
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && isOpen) onClose();
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
-
     if (!isOpen) return null;
 
+    const issuesUrl = destinations?.issuesUrl || null;
+    const shareHint = destinations?.shareHint || null;
     const activeTypeMeta = FEEDBACK_TYPES.find((t) => t.id === feedbackType) || FEEDBACK_TYPES[0];
-
-    const recipeSummary = resolvedRecipe
-        ? `${resolvedRecipe.id || ''} (${resolvedRecipe.recipe_name || ''})`.trim()
-        : '';
-    const claimSummary = resolvedRecipe
-        ? `${resolvedRecipe.model_family || ''} · ${resolvedRecipe.hardware_summary || ''} · ${engineLabel(resolvedRecipe.stack?.engine)} · ${Math.round(resolvedRecipe.tokens_per_sec_per_chip || 0)} tok/s/chip`
-        : '';
+    // A link back to exactly what the reporter saw (the URL carries the
+    // recipe, the latency limit and the prices).
+    const pageUrl = getShareUrl ? getShareUrl() : typeof window !== 'undefined' ? window.location.href : null;
+    const detailOptions = { slo, pricingLabel, url: pageUrl, notes };
+    const detailLines = resolvedRecipe ? runDetailLines(resolvedRecipe, detailOptions) : [];
 
     const buildGithubIssueUrl = () => {
+        if (!issuesUrl) return null;
         if (feedbackType === 'missing_workload') {
             const params = new URLSearchParams({
                 template: 'leaderboard_request.yml',
@@ -142,18 +150,12 @@ export default function LeaderboardFeedbackModal({
                 stack: requestedEngine,
                 context: notes
             });
-            return `${REPO_URL}/issues/new?${params.toString()}`;
+            return `${issuesUrl}?${params.toString()}`;
         }
 
         if (feedbackType === 'challenge_result') {
-            const params = new URLSearchParams({
-                template: 'leaderboard_challenge.yml',
-                title: `[Leaderboard Challenge]: ${resolvedRecipe?.recipe_name || resolvedRecipe?.id || 'Run discrepancy'}`,
-                recipe: recipeSummary,
-                claim: claimSummary,
-                discrepancy: notes
-            });
-            return `${REPO_URL}/issues/new?${params.toString()}`;
+            const params = new URLSearchParams(challengeIssueFields(resolvedRecipe, detailOptions));
+            return `${issuesUrl}?${params.toString()}`;
         }
 
         const params = new URLSearchParams({
@@ -161,7 +163,7 @@ export default function LeaderboardFeedbackModal({
             title: `[Leaderboard]: ${notes.slice(0, 60) || 'Feedback'}`,
             problem: notes
         });
-        return `${REPO_URL}/issues/new?${params.toString()}`;
+        return `${issuesUrl}?${params.toString()}`;
     };
 
     const buildMarkdownSummary = () => {
@@ -179,14 +181,7 @@ export default function LeaderboardFeedbackModal({
         }
 
         if (feedbackType === 'challenge_result') {
-            return [
-                `## [Leaderboard Challenge]: ${resolvedRecipe?.recipe_name || resolvedRecipe?.id || 'Run discrepancy'}`,
-                `- **Recipe**: ${recipeSummary || 'Not specified'}`,
-                `- **Reported claim**: ${claimSummary || 'Not specified'}`,
-                '',
-                `### Discrepancy details`,
-                notes || '_No additional notes provided._'
-            ].join('\n');
+            return challengeMarkdown(resolvedRecipe, detailOptions);
         }
 
         return [
@@ -204,6 +199,7 @@ export default function LeaderboardFeedbackModal({
     };
 
     const githubIssueUrl = buildGithubIssueUrl();
+    const copyLabel = issuesUrl ? 'Copy markdown' : 'Copy details';
 
     return (
         <div
@@ -211,10 +207,12 @@ export default function LeaderboardFeedbackModal({
             onClick={onClose}
         >
             <div
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="feedback-modal-title"
-                className="w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl text-zinc-900"
+                tabIndex={-1}
+                className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl text-zinc-900 focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -240,7 +238,7 @@ export default function LeaderboardFeedbackModal({
 
                 <div className="mt-4 space-y-4">
                     {/* Mode selector pills — concise labels that never truncate */}
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2" role="group" aria-label="Kind of feedback">
                         {FEEDBACK_TYPES.map((type) => {
                             const Icon = type.icon;
                             const active = feedbackType === type.id;
@@ -249,6 +247,7 @@ export default function LeaderboardFeedbackModal({
                                     key={type.id}
                                     type="button"
                                     onClick={() => setFeedbackType(type.id)}
+                                    aria-pressed={active}
                                     className={cn(
                                         'flex items-center justify-center gap-2 rounded-2xl border px-3 py-2 text-xs font-medium transition-colors cursor-pointer',
                                         active
@@ -325,13 +324,13 @@ export default function LeaderboardFeedbackModal({
                     )}
 
                     {feedbackType === 'challenge_result' && resolvedRecipe && (
-                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-xs space-y-1">
-                            <div className="font-semibold text-zinc-900 truncate">
-                                {recipeSummary}
-                            </div>
-                            <div className="font-mono text-micro text-zinc-600 truncate">
-                                {claimSummary}
-                            </div>
+                        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-xs">
+                            <div className="font-semibold text-zinc-900 mb-1">Included with your report</div>
+                            <ul className="space-y-0.5 font-mono text-micro text-zinc-700 max-h-40 overflow-y-auto">
+                                {detailLines.map((line) => (
+                                    <li key={line} className="break-words">{line}</li>
+                                ))}
+                            </ul>
                         </div>
                     )}
 
@@ -349,14 +348,29 @@ export default function LeaderboardFeedbackModal({
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             placeholder={activeTypeMeta.placeholder}
+                            data-autofocus
                             className="w-full rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-xs text-zinc-900 placeholder-zinc-400 focus:border-zinc-400 focus:outline-none leading-relaxed"
                         />
                     </div>
 
+                    {issuesUrl ? (
+                        <p className="flex items-start gap-1.5 text-micro text-zinc-500">
+                            <Info className="w-3.5 h-3.5 shrink-0 mt-px" />
+                            <span>The GitHub issue is public: anyone can read what you send.</span>
+                        </p>
+                    ) : (
+                        <p className="flex items-start gap-1.5 rounded-xl border border-accent-200 bg-accent-50/60 px-3 py-2 text-xs text-zinc-800" role="note">
+                            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5 text-accent-600" />
+                            <span>
+                                Copy the details as Markdown. {shareHint || 'Share them with the people who run this Prism.'} Nothing is sent from this page.
+                            </span>
+                        </p>
+                    )}
+
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 pt-4">
                         <Button
                             type="button"
-                            variant="secondary"
+                            variant={issuesUrl ? 'secondary' : 'primary'}
                             size="sm"
                             onClick={handleCopyMarkdown}
                         >
@@ -368,7 +382,7 @@ export default function LeaderboardFeedbackModal({
                             ) : (
                                 <>
                                     <Copy className="w-3.5 h-3.5" />
-                                    <span>Copy markdown</span>
+                                    <span>{copyLabel}</span>
                                 </>
                             )}
                         </Button>
@@ -377,15 +391,17 @@ export default function LeaderboardFeedbackModal({
                             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
                                 Cancel
                             </Button>
-                            <a
-                                href={githubIssueUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-700 transition-colors"
-                            >
-                                <span>Open pre-filled GitHub issue</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
+                            {githubIssueUrl && (
+                                <a
+                                    href={githubIssueUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-zinc-900 px-4 py-2 text-xs font-medium text-white hover:bg-zinc-700 transition-colors"
+                                >
+                                    <span>Open pre-filled GitHub issue</span>
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     X,
     Copy,
@@ -41,11 +41,13 @@ import {
     describeSlo,
     engineLabel,
     formatHardwareShort,
+    formatLatencyMs,
     formatQps,
     provenanceStatus,
 } from '../../utils/leaderboardFacets.js';
 import { Button } from '../ui/Button.jsx';
 import { Badge, StatusChip } from '../ui/Badge.jsx';
+import { useFocusTrap } from '../ui';
 import { cn } from '../../utils/cn';
 
 const WELL_LIT_PATH_LABELS = {
@@ -55,20 +57,38 @@ const WELL_LIT_PATH_LABELS = {
     'pd-disaggregation': 'Prefill/decode disaggregation'
 };
 
+// llm-d's deployment guides. The Helm tab shows a values excerpt, not a
+// chart Prism can name, so it points here for the real install steps.
+const LLMD_DOCS_URL = 'https://llm-d.ai/docs';
+
 const NOT_REPORTED = 'Not reported';
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-const fmtMs = (v) => (isNum(v) ? `${v.toFixed(1)} ms` : '—');
+const fmtMs = (v) => formatLatencyMs(v) ?? '—';
 const fmtInt = (v) => (isNum(v) ? Math.round(v).toLocaleString() : '—');
 const fmtCost = (v) => (isNum(v) ? `$${v.toFixed(3)}` : '—');
 // What a template shows for a value the run didn't record.
 const orPlaceholder = (v, name) => (v == null || v === '' ? `<${name}>` : v);
 
+// inference-perf's server.type for the stack that served the run (llm-d
+// serves through vLLM).
+const inferencePerfServerType = (engine) => {
+    const e = String(engine || '').toLowerCase();
+    if (e === 'sglang') return 'sglang';
+    if (e === 'vllm' || e === 'llm-d') return 'vllm';
+    return null;
+};
+
 export default function RecipeDetailDrawer({
     isOpen,
+    // onClose() for a dismissal; onClose({ keepHistory: true }) when leaving
+    // for another view (the Leaderboard keeps the drawer's history entry).
     onClose,
     recipe,
     latencyPercentile = DEFAULT_SLO.percentile,
     slo = DEFAULT_SLO,
+    pricingLabel = null,
+    // The link Share copies; the Leaderboard's names the view's prices.
+    getShareUrl = null,
     onOpenFeedback,
     onNavigate
 }) {
@@ -79,16 +99,11 @@ export default function RecipeDetailDrawer({
     // The load point being previewed, tied to the recipe it was picked on so a
     // different recipe always opens on its own operating point.
     const [preview, setPreview] = useState({ recipeId: null, index: null });
-
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+    const dismiss = () => onClose();
+    // Focus moves into the details (the dialog itself, so its name is read);
+    // Tab stays inside; Escape closes them unless a dialog sits on top.
+    const dialogRef = useRef(null);
+    useFocusTrap(dialogRef, Boolean(isOpen && recipe), { onEscape: dismiss });
 
     // Prevent background scrolling while drawer is open
     useEffect(() => {
@@ -108,7 +123,8 @@ export default function RecipeDetailDrawer({
     const isSample = Boolean(recipe.is_sample);
     const resultsStore = recipe.results_store || null;
 
-    const githubUrl = recipe.pull_request_url || null;
+    // A sample's provenance is illustrative: never link it to a real pull request.
+    const githubUrl = isSample ? null : recipe.pull_request_url || null;
     const containerImage = recipe.container_image || recipe.stack?.container_image || null;
     const gitCommitSha = recipe.git_commit_sha || NOT_REPORTED;
     const runDateLabel = formatRunDate(recipe.created_at) || 'Date not reported';
@@ -145,22 +161,43 @@ export default function RecipeDetailDrawer({
     const osl = recipe.workload?.output_tokens ?? null;
 
     const templateNote = '# Template from what this run recorded. <placeholders> mark values it didn\'t record.';
+    // The checkpoint the run served (an AWQ run serves the AWQ weights), so
+    // every tab loads the same model.
+    const servedModel = recipe.served_model || recipe.model_name;
+    const serverType = inferencePerfServerType(recipe.stack?.engine);
+    const isSglang = String(recipe.stack?.engine || '').toLowerCase() === 'sglang';
+    const recordedLaunch = recipe.reproduction_command || null;
+    const isDockerLaunch = Boolean(recordedLaunch && /^\s*docker\s/.test(recordedLaunch));
 
-    const dockerCommand = recipe.reproduction_command || [
+    // The launch command the run recorded, as recorded; without one, a docker
+    // run template for its serving engine.
+    const dockerRunTemplate = [
         templateNote,
-        `docker run --gpus all -p 8000:8000 ${orPlaceholder(containerImage, 'container-image')} \\`,
-        `  --model ${recipe.model_name} \\`,
-        `  --tensor-parallel-size ${orPlaceholder(tp, 'tensor-parallel-size')}${quant ? ` \\\n  --quantization ${quant}` : ''}`,
+        `docker run ${isTpu ? '--privileged --net host' : '--gpus all --ipc=host -p 8000:8000'} ${orPlaceholder(containerImage, 'container-image')} \\`,
+        ...(isSglang
+            ? [
+                `  python3 -m sglang.launch_server --model-path ${servedModel} \\`,
+                `  --tp ${orPlaceholder(tp, 'tensor-parallel-size')} --host 0.0.0.0 --port 8000${quant ? ` \\\n  --quantization ${quant}` : ''}`,
+            ]
+            : [
+                `  --model ${servedModel} \\`,
+                `  --tensor-parallel-size ${orPlaceholder(tp, 'tensor-parallel-size')}${quant ? ` \\\n  --quantization ${quant}` : ''}`,
+            ]),
     ].join('\n');
+    const dockerCommand = recordedLaunch
+        ? `# Launch command recorded with this run${isDockerLaunch ? '' : ' (not docker: run it in the serving container or wherever the engine is installed)'}\n${recordedLaunch}`
+        : dockerRunTemplate;
 
-    const helmValues = `# Helm values for deploying ${recipe.recipe_name}
+    const helmValues = `# Helm values excerpt for ${recipe.recipe_name}
+# Not a complete chart: merge these into the values of the chart your
+# llm-d deployment guide installs (${LLMD_DOCS_URL}).
 ${templateNote}
 replicaCount: 1
 image:
   repository: ${containerImage ? containerImage.split(':')[0] : '<container-repository>'}
   tag: ${containerImage && containerImage.includes(':') ? containerImage.split(':')[1] : orPlaceholder(stackVersion, 'tag')}
 model:
-  name: "${recipe.model_name}"
+  name: "${servedModel}"
   tensorParallelSize: ${orPlaceholder(tp, 'tensor-parallel-size')}
   pipelineParallelSize: ${orPlaceholder(pp, 'pipeline-parallel-size')}
   quantization: "${orPlaceholder(quant, 'quantization')}"
@@ -204,7 +241,7 @@ spec:
           image: ${orPlaceholder(containerImage, 'container-image')}
           env:
           - name: MODEL_NAME
-            value: "${recipe.model_name}"
+            value: "${servedModel}"
           - name: TENSOR_PARALLEL_SIZE
             value: "${orPlaceholder(tp, 'tensor-parallel-size')}"
           - name: QUANTIZATION
@@ -218,11 +255,11 @@ spec:
     const agentBenchmarkScript = `# config.yml — kubernetes-sigs/inference-perf
 ${templateNote}
 server:
-  type: vllm
-  model_name: ${recipe.model_name}
+  type: ${orPlaceholder(serverType, 'server-type')}
+  model_name: ${servedModel}
   base_url: http://localhost:8000
 tokenizer:
-  pretrained_model_name_or_path: ${recipe.model_name}
+  pretrained_model_name_or_path: ${servedModel}
 data:
   type: ${orPlaceholder(recipe.workload?.dataset_name ? 'shareGPT' : null, 'dataset')}
   input_distribution:
@@ -251,7 +288,7 @@ client = openai.OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="${recipe.model_name}",
+    model="${servedModel}",
     messages=[{"role": "user", "content": "Explain Pareto frontier optimization in distributed LLM serving."}],
     max_tokens=${osl || 512},
     temperature=0.7
@@ -271,8 +308,8 @@ print(response.choices[0].message.content)
 
     const filenameByTab = {
         agent: 'config.yml',
-        docker: 'run-docker.sh',
-        helm: 'helm-values.yaml',
+        docker: isDockerLaunch || !recordedLaunch ? 'run-docker.sh' : 'launch.sh',
+        helm: 'values-excerpt.yaml',
         k8s: 'kuberay-cluster.yaml',
         python: 'client.py'
     };
@@ -346,10 +383,11 @@ print(response.choices[0].message.content)
         URL.revokeObjectURL(url);
     };
 
-    // The page URL already carries this recipe and the active SLO.
+    // The page URL already carries this recipe and the active SLO; the
+    // Leaderboard's share URL also names the prices.
     const handleShareRecipeLink = () => {
         if (typeof window !== 'undefined' && navigator?.clipboard?.writeText) {
-            navigator.clipboard.writeText(window.location.href);
+            navigator.clipboard.writeText(getShareUrl ? getShareUrl() : window.location.href);
             setCopiedRecipeLink(true);
             setTimeout(() => setCopiedRecipeLink(false), 2000);
         }
@@ -358,7 +396,7 @@ print(response.choices[0].message.content)
     const navigateTo = (view) => (e) => {
         if (onNavigate && !e.metaKey && !e.ctrlKey) {
             e.preventDefault();
-            onClose();
+            onClose({ keepHistory: true });
             onNavigate(view);
         }
     };
@@ -374,18 +412,22 @@ print(response.choices[0].message.content)
     return (
         <div
             className="fixed inset-0 z-[110] flex justify-end bg-zinc-950/45 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={onClose}
+            onClick={dismiss}
         >
             <div
-                className="surface-light bg-white border-l border-zinc-200 w-full max-w-2xl h-full flex flex-col p-6 shadow-2xl relative text-zinc-900 overflow-y-auto animate-in slide-in-from-right duration-300"
+                ref={dialogRef}
+                className="surface-light bg-white border-l border-zinc-200 w-full max-w-2xl h-full flex flex-col p-6 shadow-2xl relative text-zinc-900 overflow-y-auto animate-in slide-in-from-right duration-300 focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 aria-label={`${recipe.recipe_name} details`}
+                tabIndex={-1}
+                data-autofocus
             >
                 {/* Close Button */}
                 <button
-                    onClick={onClose}
+                    type="button"
+                    onClick={dismiss}
                     aria-label="Close recipe drawer"
                     className="absolute top-5 right-5 p-2 rounded-full text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
                 >
@@ -458,7 +500,7 @@ print(response.choices[0].message.content)
                             onClick={(e) => {
                                 if (!onNavigate || e.metaKey || e.ctrlKey) return;
                                 e.preventDefault();
-                                onClose();
+                                onClose({ keepHistory: true });
                                 onNavigate('results-store', { curve: resultsStore.curveId });
                             }}
                             className="shrink-0 font-semibold text-emerald-800 hover:text-emerald-950 underline decoration-emerald-300 underline-offset-4"
@@ -597,6 +639,7 @@ print(response.choices[0].message.content)
                         </span>
                         <span className="text-tiny font-mono text-zinc-600 block mt-0.5">
                             {isNum(shownPoint.tokens_per_dollar) ? `${fmtInt(shownPoint.tokens_per_dollar)} tok/$` : 'No list price'}
+                            {isNum(shownPoint.cost_per_1m) && pricingLabel ? ` · ${pricingLabel}` : ''}
                         </span>
                     </div>
                 </div>
@@ -789,17 +832,19 @@ print(response.choices[0].message.content)
                     short screens, and flex-1 still fills tall ones. */}
                 <div className="flex-1 flex flex-col min-h-[20rem] mb-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5">
-                        <div className="flex flex-wrap items-center gap-1 p-1 bg-zinc-100 rounded-xl border border-zinc-200">
+                        <div className="flex flex-wrap items-center gap-1 p-1 bg-zinc-100 rounded-xl border border-zinc-200" role="group" aria-label="Reproduce or deploy">
                             {[
                                 { key: 'agent', label: 'inference-perf YAML' },
-                                { key: 'docker', label: 'Docker' },
-                                { key: 'helm', label: 'Helm' },
+                                { key: 'docker', label: 'Launch command' },
+                                { key: 'helm', label: 'Helm values (excerpt)' },
                                 { key: 'k8s', label: 'Kubernetes' },
                                 { key: 'python', label: 'Python' }
                             ].map(tab => (
                                 <button
                                     key={tab.key}
+                                    type="button"
                                     onClick={() => setActiveTab(tab.key)}
+                                    aria-pressed={activeTab === tab.key}
                                     className={cn(
                                         'px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer',
                                         activeTab === tab.key
@@ -824,6 +869,16 @@ print(response.choices[0].message.content)
                         </div>
                     )}
 
+                    {activeTab === 'helm' && (
+                        <div className="mb-2 px-3 py-2 rounded-xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-700" role="note">
+                            These are values to merge into a chart, not a complete install. Deploy with{' '}
+                            <a href={LLMD_DOCS_URL} target="_blank" rel="noreferrer" className="font-semibold text-accent-700 underline decoration-accent-300 underline-offset-2">
+                                llm-d&apos;s deployment guides
+                            </a>
+                            {recipe.well_lit_path ? ' or the well-lit path above' : ''}.
+                        </div>
+                    )}
+
                     {/* Code Window Container */}
                     <div className="flex-1 flex flex-col rounded-2xl border border-zinc-200 bg-zinc-950 overflow-hidden">
                         <div className="flex items-center justify-between px-4 py-2.5 bg-zinc-900 border-b border-zinc-800 text-xs">
@@ -836,6 +891,7 @@ print(response.choices[0].message.content)
 
                             <div className="flex items-center gap-2">
                                 <button
+                                    type="button"
                                     onClick={handleDownloadManifest}
                                     className="flex items-center gap-1 text-xs text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-2.5 py-1 rounded-lg border border-zinc-700 transition-colors cursor-pointer"
                                     title={`Download ${filenameByTab[activeTab]} to disk`}
@@ -844,6 +900,7 @@ print(response.choices[0].message.content)
                                     <span>Download</span>
                                 </button>
                                 <button
+                                    type="button"
                                     onClick={handleCopy}
                                     className={cn(
                                         'flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg border transition-all cursor-pointer font-medium',
@@ -854,7 +911,7 @@ print(response.choices[0].message.content)
                                     title="Copy code to clipboard"
                                 >
                                     {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                                    <span>{copied ? 'Copied!' : 'Copy'}</span>
+                                    <span>{copied ? 'Copied' : 'Copy'}</span>
                                 </button>
                             </div>
                         </div>
@@ -877,7 +934,7 @@ print(response.choices[0].message.content)
                             <span>Numbers or workload look off? Challenge or flag this run</span>
                         </button>
                     ) : <span />}
-                    <Button variant="secondary" size="sm" onClick={onClose}>
+                    <Button variant="secondary" size="sm" onClick={dismiss}>
                         Done
                     </Button>
                 </div>

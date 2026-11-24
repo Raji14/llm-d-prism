@@ -94,16 +94,18 @@ export const DEFAULT_PRICING_CATALOG = {
         description: 'Google Cloud TPU v5p flagship pod slice',
         baseNodeRateUsd: 16.80,
     },
+    // On-demand list price. $1.90 was close to the 1-year committed rate
+    // (about $1.89; 3-year about $1.22), which the CUD presets already apply.
     'tpu-v6e-trillium': {
         id: 'tpu-v6e-trillium',
         name: 'Google TPU v6e (Trillium)',
         category: 'tpu',
         vendor: 'Google Cloud',
-        unitRateUsd: 1.90,
+        unitRateUsd: 2.70,
         standardVmType: 'ct6e-standard-4t',
         standardCount: 4,
         description: 'Google Cloud 6th Gen Trillium TPU pod slice',
-        baseNodeRateUsd: 7.60,
+        baseNodeRateUsd: 10.80,
     },
     'other': {
         id: 'other',
@@ -118,32 +120,44 @@ export const DEFAULT_PRICING_CATALOG = {
     }
 };
 
+// `shortLabel` names the prices a view uses (Pricing button, #1 card, CSV),
+// so a reader always knows which rates are in play.
 export const DISCOUNT_PRESETS = {
     on_demand: {
         id: 'on_demand',
         label: 'On-Demand (List Price)',
+        shortLabel: 'List prices',
         discountPct: 0,
         description: 'Standard GCP hourly list price'
     },
     cud_1yr: {
         id: 'cud_1yr',
         label: '1-Year CUD (37% Off)',
+        shortLabel: '1-year CUD prices',
         discountPct: 37,
         description: '1-Year Committed Use Discount for sustained cluster workloads'
     },
     cud_3yr: {
         id: 'cud_3yr',
         label: '3-Year CUD (55% Off)',
+        shortLabel: '3-year CUD prices',
         discountPct: 55,
         description: '3-Year Committed Use Discount for production foundation clusters'
     },
     spot: {
         id: 'spot',
         label: 'Spot / Preemptible (65% Off)',
+        shortLabel: 'Spot prices',
         discountPct: 65,
         description: 'Interruptible capacity for batch evaluation sweeps'
     }
 };
+
+export const LIST_PRICE_PRESET = 'on_demand';
+export const CUSTOM_PRICING_PRESET = 'custom';
+export const CUSTOM_PRICING_LABEL = 'Custom prices';
+// The URL param that carries a view's prices, so a shared link shows them.
+export const PRICING_URL_PARAM = 'pricing';
 
 const STORAGE_KEY = 'prism_custom_pricing_rates';
 const STORAGE_PRESET_KEY = 'prism_pricing_discount_preset';
@@ -341,6 +355,154 @@ export function evaluateRecipeCost(hardwareStr, acceleratorCount, tokensPerSec, 
         vendor: catalogItem.vendor,
         standardVmType: resolveStandardVmType(accId, count, catalogItem.standardVmType)
     };
+}
+
+// ------------------------------------------------------- pricing selection
+// A selection is { preset, rates }: preset is a DISCOUNT_PRESETS id or
+// 'custom', rates the per-chip overrides it puts on top of list prices.
+
+const roundRate = (v) => Number(Number(v).toFixed(3));
+const isRate = (v) => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+
+// Only catalog ids with a usable rate; anything else is dropped.
+function cleanRates(rates) {
+    const out = {};
+    Object.entries(rates || {}).forEach(([id, v]) => {
+        if (DEFAULT_PRICING_CATALOG[id] && isRate(v)) out[id] = roundRate(v);
+    });
+    return out;
+}
+
+/** The rates a preset applies, from today's list prices ({} for list prices). */
+export function ratesForPreset(presetId) {
+    const preset = DISCOUNT_PRESETS[presetId];
+    if (!preset || preset.discountPct === 0) return {};
+    return calculateDiscountedRates(preset.discountPct);
+}
+
+/** The preset these rates are exactly, 'on_demand' when they change nothing, else 'custom'. */
+export function presetForRates(rates) {
+    const clean = cleanRates(rates);
+    const changed = Object.keys(clean).filter((id) => clean[id] !== DEFAULT_PRICING_CATALOG[id].unitRateUsd);
+    if (changed.length === 0) return LIST_PRICE_PRESET;
+    const match = Object.values(DISCOUNT_PRESETS).find((preset) => {
+        if (preset.discountPct === 0) return false;
+        const presetRates = ratesForPreset(preset.id);
+        return Object.keys(DEFAULT_PRICING_CATALOG).every(
+            (id) => (clean[id] ?? DEFAULT_PRICING_CATALOG[id].unitRateUsd) === presetRates[id]
+        );
+    });
+    return match ? match.id : CUSTOM_PRICING_PRESET;
+}
+
+/** A consistent selection: a preset always carries its own rates. */
+export function normalizePricingSelection({ preset = null, rates = {} } = {}) {
+    if (preset && preset !== CUSTOM_PRICING_PRESET && DISCOUNT_PRESETS[preset]) {
+        return { preset, rates: ratesForPreset(preset) };
+    }
+    const clean = cleanRates(rates);
+    const detected = presetForRates(clean);
+    return detected === CUSTOM_PRICING_PRESET ? { preset: detected, rates: clean } : { preset: detected, rates: ratesForPreset(detected) };
+}
+
+/**
+ * The prices saved in this browser. A saved preset is worked out again from
+ * today's list prices, so a list-price fix reaches everyone who picked it.
+ */
+export function loadPricingSelection() {
+    let preset = null;
+    try {
+        preset = localStorage.getItem(STORAGE_PRESET_KEY);
+    } catch {
+        // ignore storage error
+    }
+    return normalizePricingSelection({ preset, rates: loadCustomPricingRates() });
+}
+
+/** Saves the prices, and the rates on their own for pages that read only those. */
+export function savePricingSelection(selection) {
+    const normalized = normalizePricingSelection(selection);
+    saveCustomPricingRates(normalized.rates);
+    try {
+        localStorage.setItem(STORAGE_PRESET_KEY, normalized.preset);
+    } catch {
+        // ignore storage error
+    }
+    return normalized;
+}
+
+// Short, URL-safe codes for custom rates: pricing=custom_h100-2.5_l4-0.4
+const RATE_CODES = {
+    'nvidia-h100-80gb': 'h100',
+    'nvidia-a100-80gb': 'a100',
+    'nvidia-a100-40gb': 'a10040',
+    'nvidia-l4': 'l4',
+    'nvidia-v100': 'v100',
+    'tpu-v5e': 'v5e',
+    'tpu-v5p': 'v5p',
+    'tpu-v6e-trillium': 'v6e',
+    other: 'other',
+};
+const CODE_TO_ID = Object.fromEntries(Object.entries(RATE_CODES).map(([id, code]) => [code, id]));
+
+/** The URL value for a selection: null for list prices, a preset id, or the custom rates. */
+export function pricingToParam(selection) {
+    const { preset, rates } = normalizePricingSelection(selection);
+    if (preset === LIST_PRICE_PRESET) return null;
+    if (preset !== CUSTOM_PRICING_PRESET) return preset;
+    const pairs = Object.entries(rates)
+        .filter(([id, v]) => RATE_CODES[id] && v !== DEFAULT_PRICING_CATALOG[id].unitRateUsd)
+        .map(([id, v]) => `${RATE_CODES[id]}-${v}`);
+    return pairs.length ? `custom_${pairs.join('_')}` : null;
+}
+
+/** The selection a URL value describes, or null when it's missing or unreadable. */
+export function pricingFromParam(value) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return null;
+    if (raw === 'list') return normalizePricingSelection({ preset: LIST_PRICE_PRESET });
+    if (DISCOUNT_PRESETS[raw]) return normalizePricingSelection({ preset: raw });
+    const m = raw.match(/^custom_(.+)$/);
+    if (!m) return null;
+    const rates = {};
+    m[1].split('_').forEach((pair) => {
+        const [code, v] = pair.split('-');
+        const id = CODE_TO_ID[code];
+        const n = Number(v);
+        if (id && v && isRate(n)) rates[id] = n;
+    });
+    return Object.keys(rates).length ? normalizePricingSelection({ rates }) : null;
+}
+
+/** "List prices", "3-year CUD prices" or "Custom prices". */
+export function pricingLabelFor(selection) {
+    const { preset } = normalizePricingSelection(selection);
+    return DISCOUNT_PRESETS[preset]?.shortLabel || CUSTOM_PRICING_LABEL;
+}
+
+/**
+ * The pricing param the address bar keeps: the view's prices whenever they
+ * aren't list prices, and pricing=list when the view is on list prices but
+ * this browser saved others, so a reload shows the same numbers.
+ */
+export function pricingParamForUrl(selection, savedSelection = {}) {
+    const param = pricingToParam(selection);
+    if (param) return param;
+    return normalizePricingSelection(savedSelection).preset === LIST_PRICE_PRESET ? null : 'list';
+}
+
+/**
+ * A link that shows exactly these prices to whoever opens it, whatever they
+ * saved themselves: the URL with pricing= set, pricing=list included.
+ */
+export function withPricingParam(href, selection) {
+    try {
+        const u = new URL(href);
+        u.searchParams.set(PRICING_URL_PARAM, pricingToParam(selection) || 'list');
+        return u.toString();
+    } catch {
+        return href;
+    }
 }
 
 /**

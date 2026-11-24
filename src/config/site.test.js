@@ -16,8 +16,11 @@
 import assert from 'node:assert/strict';
 import {
     MAX_PINNED_REPORTS,
+    PUBLIC_DISCUSS_URL,
+    PUBLIC_FEEDBACK_REPO_URL,
     displayNameFor,
     documentTitleFor,
+    feedbackDestinationsFor,
     parseReportIds,
     readBrand,
     readInstanceMode,
@@ -98,5 +101,21 @@ withPage({}, '?instance=internal&brand=prism&site=X&pinned=a', () => {
     assert.equal(readSiteName(), null);
     assert.equal(readPinnedReports(), null);
 });
+
+// 8. Feedback destinations: public Prism uses llm-d's public repo and
+//    community page; internal never sends anything to a public destination.
+{
+    const pub = feedbackDestinationsFor('public');
+    assert.equal(pub.issuesUrl, `${PUBLIC_FEEDBACK_REPO_URL}/issues/new`);
+    assert.equal(pub.discussUrl, PUBLIC_DISCUSS_URL);
+    assert.equal(pub.shareHint, null);
+    const internal = feedbackDestinationsFor('internal');
+    assert.equal(internal.issuesUrl, null);
+    assert.equal(internal.discussUrl, null);
+    assert.match(internal.shareHint, /Prism admins/);
+    // With no argument it follows the deployment.
+    withEnv({ PRISM_INSTANCE: 'internal' }, () => assert.equal(feedbackDestinationsFor().issuesUrl, null));
+    withEnv({ PRISM_INSTANCE: 'public' }, () => assert.equal(feedbackDestinationsFor().discussUrl, PUBLIC_DISCUSS_URL));
+}
 
 console.log('site config: all tests passed');

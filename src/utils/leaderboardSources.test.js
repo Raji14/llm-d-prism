@@ -191,4 +191,16 @@ const curve = (id, status, extra = {}) => ({
     assert.strictEqual(countWaitingResults('internal', memoryStorage('{oops')), 0);
 }
 
+// 11. The run date is when the runs were measured (the newest one), never
+//     the approval date; without measured times, when the result was made.
+{
+    const measured = curve('t', 'published', { createdAt: Date.UTC(2026, 10, 18), markedAt: Date.UTC(2026, 10, 21) });
+    measured.points = measured.points.map((p, i) => ({ ...p, ts: Date.UTC(2025, 8, 20 + i) }));
+    // The excluded point (index 4, newest) doesn't count.
+    assert.strictEqual(curveToEntry(measured).entry.created_at, new Date(Date.UTC(2025, 8, 23)).toISOString());
+    const noTimes = curve('u', 'published', { createdAt: Date.UTC(2026, 10, 18), markedAt: Date.UTC(2026, 10, 21) });
+    assert.strictEqual(curveToEntry(noTimes).entry.created_at, new Date(Date.UTC(2026, 10, 18)).toISOString());
+    assert.strictEqual(curveToEntry(curve('v', 'published')).entry.created_at, null, 'only an approval date: not reported');
+}
+
 console.log('leaderboardSources: all tests passed');

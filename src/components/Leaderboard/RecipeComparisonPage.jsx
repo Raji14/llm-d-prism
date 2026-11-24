@@ -32,9 +32,10 @@ import { Button } from '../ui/Button.jsx';
 import { StatusChip } from '../ui/Badge.jsx';
 import RecipeDetailDrawer from './RecipeDetailDrawer.jsx';
 import { readInstanceMode } from '../ResultsStore/instance.js';
+import { feedbackDestinationsFor } from '../../config/site.js';
 import { buildLeaderboardDataset, evaluateDatasetAtSlo, SEED_LEADERBOARD_RECIPES } from '../../utils/leaderboardData.js';
 import { loadPublishedResults } from '../../utils/leaderboardSources.js';
-import { loadCustomPricingRates } from '../../utils/pricingEngine.js';
+import { PRICING_URL_PARAM, loadPricingSelection, pricingFromParam, pricingLabelFor, withPricingParam } from '../../utils/pricingEngine.js';
 import {
     computeParity,
     diffConfigs,
@@ -45,6 +46,7 @@ import {
     describeSlo,
     engineLabel,
     formatHardwareShort,
+    formatLatencyMs,
     latencyFor,
     provenanceStatus,
     readSloParams,
@@ -59,7 +61,7 @@ const getCostPer1M = (r) => {
 };
 const getPerChipTps = (r) => (isNum(r?.tokens_per_sec_per_chip) ? r.tokens_per_sec_per_chip : null);
 const fmtInt = (v) => (isNum(v) ? Math.round(v).toLocaleString() : '—');
-const fmtMs = (v) => (isNum(v) ? `${v.toFixed(1)} ms` : '—');
+const fmtMs = (v) => formatLatencyMs(v) ?? '—';
 
 // "≈" on totals worked out from the output rate (and anything derived from them).
 const ESTIMATED_TITLE = 'Total throughput estimated from the measured output rate and the result’s prompt and output lengths';
@@ -83,9 +85,14 @@ export default function RecipeComparisonPage({
     navigationParams
 }) {
     // 1. Build the same dataset the Leaderboard ranks, evaluated at the same SLO
-    // (the SLO rides along in the URL within the leaderboard flow).
-    const customPricing = useMemo(() => loadCustomPricingRates(), []);
+    // and prices (both ride along in the URL within the leaderboard flow).
+    const pricing = useMemo(() => pricingFromParam(readSearchParams().get(PRICING_URL_PARAM)) || loadPricingSelection(), []);
+    const customPricing = pricing.rates;
+    const pricingLabel = pricingLabelFor(pricing);
     const instance = useMemo(() => readInstanceMode(), []);
+    const destinations = useMemo(() => feedbackDestinationsFor(instance), [instance]);
+    // Share copies this comparison with its prices named (pricing=list included).
+    const getShareUrl = () => (typeof window !== 'undefined' ? withPricingParam(window.location.href, pricing) : '');
     const [slo] = useState(() => readSloParams(readSearchParams()));
     const published = useMemo(() => loadPublishedResults({ instance }), [instance]);
 
@@ -354,7 +361,8 @@ export default function RecipeComparisonPage({
                     badgeLabel={null}
                     onNavigateBack={backToLeaderboard}
                     onToggleMobileNav={onToggleMobileNav}
-                    getShareUrl={() => typeof window !== 'undefined' ? window.location.href : ''}
+                    contactHref={destinations.discussUrl}
+                    getShareUrl={getShareUrl}
                 />
                 <div className="p-8 max-w-4xl mx-auto text-center space-y-4">
                     <p className="text-slate-400 text-sm">No configurations currently selected for comparison.</p>
@@ -395,7 +403,8 @@ export default function RecipeComparisonPage({
                 badgeLabel={null}
                 onNavigateBack={backToLeaderboard}
                 onToggleMobileNav={onToggleMobileNav}
-                getShareUrl={() => typeof window !== 'undefined' ? window.location.href : ''}
+                contactHref={destinations.discussUrl}
+                getShareUrl={getShareUrl}
             />
 
             {/* Main Content Container */}
@@ -424,6 +433,12 @@ export default function RecipeComparisonPage({
                             >
                                 <SlidersHorizontal className="w-3 h-3 text-accent-600" />
                                 {describeSlo(slo)}
+                            </span>
+                            <span
+                                className="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-white text-zinc-700 border border-zinc-200 font-medium"
+                                title="Every $/1M here uses these prices, the same ones as the Leaderboard view you came from"
+                            >
+                                {pricingLabel}
                             </span>
                         </div>
                     </div>
@@ -1016,6 +1031,8 @@ export default function RecipeComparisonPage({
                 recipe={drawerRecipe}
                 latencyPercentile={pct}
                 slo={slo}
+                pricingLabel={pricingLabel}
+                getShareUrl={getShareUrl}
                 onNavigate={onNavigate}
             />
         </div>

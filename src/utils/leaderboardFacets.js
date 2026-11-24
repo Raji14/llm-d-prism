@@ -82,6 +82,13 @@ export const TPOT_SLO_PRESETS = [
 export const formatLimitMs = (ms) =>
     typeof ms === 'number' && ms >= 1000 ? `${Number((ms / 1000).toFixed(2))} s` : `${ms} ms`;
 
+// A measured latency in the same units as the limits it's held to:
+// 1750 → "1.75 s", 31 → "31.0 ms". Null when there's no number.
+export const formatLatencyMs = (ms) => {
+    if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+    return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms.toFixed(1)} ms`;
+};
+
 // A request rate as people read it. Runs record the measured rate unrounded
 // (0.3655179367259668), so show three significant figures: 0.366, 13.5, 250.
 // Null when there's no number, so callers pick their own placeholder.
@@ -337,8 +344,23 @@ function dimensionForKey(key) {
     return null;
 }
 
+// Every key the filter box understands (matchesSearchQuery below). `quant:`
+// matches weight quantization only; `kv:` matches the KV-cache dtype.
+export const QUERY_KEYS = [
+    ...Object.values(DIMENSION_TOKEN_KEYS).flat(),
+    'quant',
+    'precision',
+    'kv',
+    'tp',
+    'author',
+    'contributor',
+    'team',
+    'status',
+];
+
 /**
  * Parses a raw search query into structured tokens for chip display and sync.
+ * `known` is false for a key:value token whose key the filter doesn't know.
  */
 export function parseQueryTokens(rawQuery = '') {
     const trimmed = String(rawQuery || '').trim();
@@ -355,9 +377,10 @@ export function parseQueryTokens(rawQuery = '') {
                 key,
                 value,
                 dimension: dimensionForKey(key),
+                known: QUERY_KEYS.includes(key),
             };
         }
-        return { raw, key: null, value: clean, dimension: null };
+        return { raw, key: null, value: clean, dimension: null, known: true };
     });
 }
 
@@ -425,7 +448,8 @@ function testPatternAgainstFields(patternStr, candidateStrings) {
  *  - `hardware:<pattern>` (aliases `hw:`, `gpu:`, `tpu:`, `acc:`, `machine:`)
  *  - `stack:<pattern>` (alias `engine:`)
  *  - `workload:<pattern>`
- *  - `quant:<pattern>` (alias `precision:`)
+ *  - `quant:<pattern>` (alias `precision:`): weight quantization
+ *  - `kv:<pattern>`: KV-cache dtype
  *  - `tp:<pattern>`
  *  - `author:<pattern>` (aliases `contributor:`, `team:`)
  *  - `status:<pattern>` (`sample`, `official`, `published`, `verified`, `well-lit`, `community`)
@@ -488,7 +512,10 @@ export function matchesSearchQuery(item, rawQuery) {
                 return testPatternAgainstFields(val, [item.workload_class, item.workload?.dataset_name, item.workload?.mode]);
             }
             if (key === 'quant' || key === 'precision') {
-                return testPatternAgainstFields(val, [item.stack?.quantization, item.stack?.kv_cache_dtype]);
+                return testPatternAgainstFields(val, [item.stack?.quantization]);
+            }
+            if (key === 'kv') {
+                return testPatternAgainstFields(val, [item.stack?.kv_cache_dtype]);
             }
             if (key === 'tp') {
                 const tp = item.stack?.tensor_parallel_size;

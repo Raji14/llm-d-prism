@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, RotateCcw, Check, Info, Tag } from 'lucide-react';
 import { Badge } from '../ui/Badge.jsx';
 import { Button } from '../ui/Button.jsx';
-import { DEFAULT_PRICING_CATALOG, DISCOUNT_PRESETS, calculateDiscountedRates } from '../../utils/pricingEngine.js';
-import { GoogleMark } from '../ui';
+import { DEFAULT_PRICING_CATALOG, DISCOUNT_PRESETS, calculateDiscountedRates, presetForRates } from '../../utils/pricingEngine.js';
+import { GoogleMark, useFocusTrap } from '../ui';
 import { cn } from '../../utils/cn';
 
 const CATALOG = Object.values(DEFAULT_PRICING_CATALOG).filter((item) => item.id !== 'other');
@@ -27,30 +27,22 @@ const CATEGORY_COUNTS = {
     tpu: CATALOG.filter((item) => item.category === 'tpu').length,
 };
 
-export default function PricingConfigModal({ isOpen, onClose, customRates, onSaveRates, onResetDefaults }) {
+// activePreset: the preset the page uses now (a DISCOUNT_PRESETS id or
+// 'custom'), so the modal opens on it. onSaveRates(rates, presetId).
+export default function PricingConfigModal({ isOpen, onClose, customRates, activePreset: pagePreset, onSaveRates, onResetDefaults }) {
     const [rates, setRates] = useState(() => ({ ...customRates }));
-    const [activePreset, setActivePreset] = useState('custom');
+    const [activePreset, setActivePreset] = useState(() => pagePreset || presetForRates(customRates));
     const [selectedCategory, setSelectedCategory] = useState('all'); // 'all' | 'gpu' | 'tpu'
+    // Focus starts on the preset in use; Tab stays inside; Escape closes.
+    const dialogRef = useRef(null);
+    useFocusTrap(dialogRef, isOpen, { onEscape: onClose, initialFocus: (root) => root.querySelector('[data-autofocus]') });
 
     useEffect(() => {
         if (isOpen) {
             setRates({ ...customRates });
-            const isCustomEmpty = Object.keys(customRates || {}).length === 0;
-            if (isCustomEmpty) {
-                setActivePreset('on_demand');
-            }
+            setActivePreset(pagePreset || presetForRates(customRates));
         }
-    }, [isOpen, customRates]);
-
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
+    }, [isOpen, customRates, pagePreset]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -100,15 +92,14 @@ export default function PricingConfigModal({ isOpen, onClose, customRates, onSav
     };
 
     const handleResetSingleRate = (id) => {
-        setRates(prev => {
-            const next = { ...prev };
-            delete next[id];
-            return next;
-        });
+        const next = { ...rates };
+        delete next[id];
+        setRates(next);
+        setActivePreset(presetForRates(next));
     };
 
     const handleSave = () => {
-        onSaveRates(rates);
+        onSaveRates(rates, activePreset);
         onClose();
     };
 
@@ -131,10 +122,12 @@ export default function PricingConfigModal({ isOpen, onClose, customRates, onSav
             onClick={onClose}
         >
             <div
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="pricing-modal-title"
-                className="bg-white border border-zinc-200 rounded-3xl max-w-4xl w-full h-[85vh] max-h-[800px] min-h-[580px] flex flex-col p-6 shadow-2xl relative text-zinc-900 animate-in zoom-in-95 duration-200 overflow-hidden"
+                tabIndex={-1}
+                className="bg-white border border-zinc-200 rounded-3xl max-w-4xl w-full h-[85vh] max-h-[800px] min-h-[580px] flex flex-col p-6 shadow-2xl relative text-zinc-900 animate-in zoom-in-95 duration-200 overflow-hidden focus:outline-none"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close Button */}
@@ -167,11 +160,15 @@ export default function PricingConfigModal({ isOpen, onClose, customRates, onSav
                         <span className="text-micro font-semibold uppercase tracking-wider text-zinc-600 flex items-center gap-1.5">
                             <Tag className="w-3.5 h-3.5 text-emerald-600" /> Discount presets
                         </span>
-                        {customCount > 0 && (
+                        {activePreset === 'custom' && customCount > 0 ? (
                             <Badge tone="success" size="xs">
                                 {customCount} custom rate{customCount > 1 ? 's' : ''} set
                             </Badge>
-                        )}
+                        ) : DISCOUNT_PRESETS[activePreset] ? (
+                            <Badge tone={activePreset === 'on_demand' ? 'neutral' : 'success'} size="xs">
+                                Selected: {DISCOUNT_PRESETS[activePreset].shortLabel}
+                            </Badge>
+                        ) : null}
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -183,6 +180,7 @@ export default function PricingConfigModal({ isOpen, onClose, customRates, onSav
                                     type="button"
                                     onClick={() => handleApplyPreset(preset.id)}
                                     aria-pressed={isSelected}
+                                    data-autofocus={isSelected ? true : undefined}
                                     className={cn(
                                         'px-3 py-2 rounded-xl text-xs text-left transition-colors border cursor-pointer',
                                         isSelected

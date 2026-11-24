@@ -25,19 +25,18 @@ import { classifyWorkload, engineKey, normalizePercentile, DEFAULT_SLA_PERCENTIL
  * Every recipe is roofline-checked against accelerator memory bandwidth and
  * compute peak, and total_tokens_per_sec = output_tokens_per_sec * (ISL + OSL) / OSL.
  */
+
+// Samples are credited to no one: a neutral label, never a real-looking
+// person, team or GitHub handle, so no row reads as somebody's real claim.
+const SAMPLE_AUTHOR = Object.freeze({ username: null, display_name: 'Illustrative sample', github_id: null, team: null });
+
 const ILLUSTRATIVE_RECIPES = [
     {
         id: 'recipe-llama3-70b-h100-llmd',
         recipe_name: 'llm-d Prefix-Aware Routing + SpecDecode (8x H100)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'rajithal',
-            display_name: 'Rajitha L.',
-            github_id: 'rajithal',
-            team: 'llm-d Core',
-            avatar_url: 'https://github.com/rajithal.png',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -89,7 +88,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-llmd-70b-1',
-                author: 'kswain-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-20',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -1.2,
@@ -97,21 +96,21 @@ const ILLUSTRATIVE_RECIPES = [
             },
             {
                 id: 'repro-llmd-70b-2',
-                author: 'shorgan-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-22',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 0.8,
             },
             {
                 id: 'repro-llmd-70b-3',
-                author: 'chenw-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-25',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -1.9,
             },
             {
                 id: 'repro-llmd-70b-4',
-                author: 'arivera-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-28',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 1.4,
@@ -145,12 +144,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'vLLM FP8 Chunked Prefill Baseline (8x H100)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'kellen_s',
-            display_name: 'Kellen S.',
-            github_id: 'kswain-ai',
-            team: 'Serving Benchmarks',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -196,21 +190,21 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-vllm-h100-1',
-                author: 'rajithal',
+                author: 'illustrative-sample',
                 date: '2026-08-19',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 0.5,
             },
             {
                 id: 'repro-vllm-h100-2',
-                author: 'smiller-ml',
+                author: 'illustrative-sample',
                 date: '2026-08-21',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -1.1,
             },
             {
                 id: 'repro-vllm-h100-3',
-                author: 'mk-distrib',
+                author: 'illustrative-sample',
                 date: '2026-08-24',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 1.6,
@@ -243,12 +237,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'SGLang RadixAttention FP8 (8x H100)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'alex_fld',
-            display_name: 'Alex Rivera',
-            github_id: 'arivera-ai',
-            team: 'Field Engineering',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -289,14 +278,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-sglang-h100-1',
-                author: 'kswain-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-18',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -0.9,
             },
             {
                 id: 'repro-sglang-h100-2',
-                author: 'dking-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-23',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 2.1,
@@ -329,12 +318,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'vLLM TPU Trillium FP8 (8x v6e)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'chen_tpu_eng',
-            display_name: 'Chen W.',
-            github_id: 'chenw-gcp',
-            team: 'Cloud TPU Solutions',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x Google TPU v6e (Trillium)',
         hardware: {
             accelerator_type: 'tpu-v6e-trillium',
@@ -375,14 +359,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-v6e-70b-1',
-                author: 'dking-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-15',
                 hardware_summary: '8x Google TPU v6e (ct6e-standard-8t)',
                 delta_pct: 1.1,
             },
             {
                 id: 'repro-v6e-70b-2',
-                author: 'shorgan-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-19',
                 hardware_summary: '8x Google TPU v6e (ct6e-standard-8t)',
                 delta_pct: -0.7,
@@ -415,12 +399,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'SGLang RadixAttention AWQ INT4 (8x L4)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'alex_fld',
-            display_name: 'Alex Rivera',
-            github_id: 'arivera-ai',
-            team: 'Field Engineering',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA L4 (24GB) G2 VM',
         hardware: {
             accelerator_type: 'nvidia-l4',
@@ -461,7 +440,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-l4-70b-1',
-                author: 'epetrova-cloud',
+                author: 'illustrative-sample',
                 date: '2026-08-08',
                 hardware_summary: '8x NVIDIA L4 (g2-standard-96)',
                 delta_pct: -2.4,
@@ -486,20 +465,17 @@ const ILLUSTRATIVE_RECIPES = [
         },
         verification_status: 'verified',
         created_at: '2026-08-04T09:30:00Z',
+        // The AWQ weights this run serves: every copied recipe loads these.
+        served_model: 'hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4',
         reproduction_command:
-            'python3 -m sglang.launch_server --model-path meta-llama/Llama-3.1-70B-Instruct-AWQ --tp 8 --kv-cache-dtype fp8_e5m2',
+            'python3 -m sglang.launch_server --model-path hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4 --tp 8 --quantization awq --kv-cache-dtype fp8_e5m2',
     },
     {
         id: 'recipe-deepseek-r1-h100-llmd',
         recipe_name: 'llm-d Disaggregated P/D + Wide EP (32x H100)',
         model_name: 'deepseek-ai/DeepSeek-R1',
         model_family: 'DeepSeek R1 671B',
-        author: {
-            username: 'marcus_k',
-            display_name: 'Marcus K.',
-            github_id: 'mk-distrib',
-            team: 'llm-d Systems',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '32x NVIDIA H100 (4x A3 Nodes)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -546,7 +522,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-dsr1-1',
-                author: 'rajithal',
+                author: 'illustrative-sample',
                 date: '2026-08-21',
                 hardware_summary: '32x NVIDIA H100 (4x a3-highgpu-8g)',
                 delta_pct: -1.5,
@@ -554,14 +530,14 @@ const ILLUSTRATIVE_RECIPES = [
             },
             {
                 id: 'repro-dsr1-2',
-                author: 'kswain-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-24',
                 hardware_summary: '32x NVIDIA H100 (4x a3-highgpu-8g)',
                 delta_pct: 0.9,
             },
             {
                 id: 'repro-dsr1-3',
-                author: 'shorgan-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-27',
                 hardware_summary: '32x NVIDIA H100 (4x a3-highgpu-8g)',
                 delta_pct: -0.6,
@@ -595,12 +571,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'vLLM Chunked Prefill FP8 (8x A100)',
         model_name: 'mistralai/Mistral-Large-Instruct-2411',
         model_family: 'Mistral Large',
-        author: {
-            username: 'sarah_m',
-            display_name: 'Sarah Miller',
-            github_id: 'smiller-ml',
-            team: 'Enterprise SA',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA A100 (80GB) SXM4',
         hardware: {
             accelerator_type: 'nvidia-a100-80gb',
@@ -641,7 +612,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-mistral-1',
-                author: 'arivera-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-11',
                 hardware_summary: '8x NVIDIA A100 80GB (a2-ultragpu-8g)',
                 delta_pct: 1.8,
@@ -674,12 +645,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'llm-d KV Offload + Prefix Cache (8x TPU v5e)',
         model_name: 'Qwen/Qwen2.5-72B-Instruct',
         model_family: 'Qwen 2.5 72B',
-        author: {
-            username: 'devon_k',
-            display_name: 'Devon King',
-            github_id: 'dking-ai',
-            team: 'Field Engineering',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x Google TPU v5e (Lite Pod)',
         hardware: {
             accelerator_type: 'tpu-v5e',
@@ -721,14 +687,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-qwen-v5e-1',
-                author: 'chenw-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-16',
                 hardware_summary: '8x Google TPU v5e (ct5lp-hightpu-8t)',
                 delta_pct: -0.8,
             },
             {
                 id: 'repro-qwen-v5e-2',
-                author: 'rajithal',
+                author: 'illustrative-sample',
                 date: '2026-08-20',
                 hardware_summary: '8x Google TPU v5e (ct5lp-hightpu-8t)',
                 delta_pct: 1.3,
@@ -754,19 +720,14 @@ const ILLUSTRATIVE_RECIPES = [
         verification_status: 'community_validated',
         created_at: '2026-08-14T15:30:00Z',
         reproduction_command:
-            'docker run -- privileged -e MODEL=Qwen/Qwen2.5-72B-Instruct -e TP=8 ghcr.io/llm-d/llm-d-tpu:v0.4.2 --quantization int8 --enable-prefix-caching --kv-offload-host-gb 64',
+            'docker run --privileged -e MODEL=Qwen/Qwen2.5-72B-Instruct -e TP=8 ghcr.io/llm-d/llm-d-tpu:v0.4.2 --quantization int8 --enable-prefix-caching --kv-offload-host-gb 64',
     },
     {
         id: 'recipe-llama3-8b-single-l4',
         recipe_name: 'vLLM Single-L4 FP8 Serving (1x L4)',
         model_name: 'meta-llama/Llama-3.1-8B-Instruct',
         model_family: 'Llama 3.1 8B',
-        author: {
-            username: 'elena_p',
-            display_name: 'Elena Petrova',
-            github_id: 'epetrova-cloud',
-            team: 'Solutions Architect',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '1x NVIDIA L4 (24GB)',
         hardware: {
             accelerator_type: 'nvidia-l4',
@@ -809,14 +770,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-8b-l4-1',
-                author: 'arivera-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-12',
                 hardware_summary: '1x NVIDIA L4 (g2-standard-12)',
                 delta_pct: 0.6,
             },
             {
                 id: 'repro-8b-l4-2',
-                author: 'smiller-ml',
+                author: 'illustrative-sample',
                 date: '2026-08-17',
                 hardware_summary: '1x NVIDIA L4 (g2-standard-12)',
                 delta_pct: -1.3,
@@ -849,13 +810,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'llm-d Tool-Use & Prefix-Aware Routing (8x H100)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'rajithal',
-            display_name: 'Rajitha L.',
-            github_id: 'rajithal',
-            team: 'llm-d Core',
-            avatar_url: 'https://github.com/rajithal.png',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -901,14 +856,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-agentic-llmd-1',
-                author: 'kswain-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-26',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: 0.9,
             },
             {
                 id: 'repro-agentic-llmd-2',
-                author: 'shorgan-gcp',
+                author: 'illustrative-sample',
                 date: '2026-08-28',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -1.1,
@@ -937,12 +892,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'vLLM Round-Robin Agentic Baseline (8x H100)',
         model_name: 'meta-llama/Llama-3.1-70B-Instruct',
         model_family: 'Llama 3.1 70B',
-        author: {
-            username: 'kellen_s',
-            display_name: 'Kellen S.',
-            github_id: 'kswain-ai',
-            team: 'Serving Benchmarks',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -983,7 +933,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-agentic-vllm-1',
-                author: 'rajithal',
+                author: 'illustrative-sample',
                 date: '2026-08-25',
                 hardware_summary: '8x NVIDIA H100 SXM5 (a3-highgpu-8g)',
                 delta_pct: -0.6,
@@ -1011,12 +961,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'SGLang DeepEP + RadixCache FP8 (32x H100)',
         model_name: 'deepseek-ai/DeepSeek-R1',
         model_family: 'DeepSeek R1 671B',
-        author: {
-            username: 'alex_fld',
-            display_name: 'Alex Rivera',
-            github_id: 'arivera-ai',
-            team: 'Field Engineering',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '32x NVIDIA H100 (4x A3 Nodes)',
         hardware: {
             accelerator_type: 'nvidia-h100-80gb',
@@ -1058,7 +1003,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-dsr1-sglang-1',
-                author: 'mk-distrib',
+                author: 'illustrative-sample',
                 date: '2026-08-22',
                 hardware_summary: '32x NVIDIA H100 (4x a3-highgpu-8g)',
                 delta_pct: 1.2,
@@ -1086,12 +1031,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'vLLM HBM-Only Prefix Cache Baseline (8x TPU v5e)',
         model_name: 'Qwen/Qwen2.5-72B-Instruct',
         model_family: 'Qwen 2.5 72B',
-        author: {
-            username: 'chen_tpu_eng',
-            display_name: 'Chen W.',
-            github_id: 'chenw-gcp',
-            team: 'Cloud TPU Solutions',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x Google TPU v5e (Lite Pod)',
         hardware: {
             accelerator_type: 'tpu-v5e',
@@ -1132,7 +1072,7 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-qwen-vllm-1',
-                author: 'dking-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-18',
                 hardware_summary: '8x Google TPU v5e (ct5lp-hightpu-8t)',
                 delta_pct: -1.0,
@@ -1160,13 +1100,7 @@ const ILLUSTRATIVE_RECIPES = [
         recipe_name: 'llm-d Prefix-Aware Routing + SpecDecode (8x A100)',
         model_name: 'mistralai/Mistral-Large-Instruct-2411',
         model_family: 'Mistral Large',
-        author: {
-            username: 'rajithal',
-            display_name: 'Rajitha L.',
-            github_id: 'rajithal',
-            team: 'llm-d Core',
-            avatar_url: 'https://github.com/rajithal.png',
-        },
+        author: SAMPLE_AUTHOR,
         hardware_summary: '8x NVIDIA A100 (80GB) SXM4',
         hardware: {
             accelerator_type: 'nvidia-a100-80gb',
@@ -1212,14 +1146,14 @@ const ILLUSTRATIVE_RECIPES = [
         reproductions: [
             {
                 id: 'repro-mistral-llmd-1',
-                author: 'smiller-ml',
+                author: 'illustrative-sample',
                 date: '2026-08-19',
                 hardware_summary: '8x NVIDIA A100 80GB (a2-ultragpu-8g)',
                 delta_pct: 0.7,
             },
             {
                 id: 'repro-mistral-llmd-2',
-                author: 'arivera-ai',
+                author: 'illustrative-sample',
                 date: '2026-08-22',
                 hardware_summary: '8x NVIDIA A100 80GB (a2-ultragpu-8g)',
                 delta_pct: -1.2,
@@ -1241,6 +1175,83 @@ const ILLUSTRATIVE_RECIPES = [
         created_at: '2026-08-17T14:30:00Z',
         reproduction_command:
             'docker run --gpus all -e MODEL=mistralai/Mistral-Large-Instruct-2411 -e TP=8 ghcr.io/llm-d/llm-d:v0.4.2 --enable-prefix-caching --routing-policy prefix-cache-aware',
+    },
+    {
+        // Big batches buy the most throughput of any sample, but only past
+        // 1 s TTFT. It shows the latency limit at work: #1 at the default
+        // 2 s, ranked at a lighter load (and lower) at 1 s, 500 ms or 250 ms.
+        // Its curve is drawn point by point; the last point is the one it states.
+        id: 'recipe-llama3-70b-h100-vllm-maxbatch',
+        recipe_name: 'vLLM Max-Batch Throughput FP8 (8x H100)',
+        model_name: 'meta-llama/Llama-3.1-70B-Instruct',
+        model_family: 'Llama 3.1 70B',
+        author: SAMPLE_AUTHOR,
+        hardware_summary: '8x NVIDIA H100 SXM5 (A3 VM)',
+        hardware: {
+            accelerator_type: 'nvidia-h100-80gb',
+            accelerator_count: 8,
+            machine_type: 'a3-highgpu-8g',
+            cloud_provider: 'gcp',
+            region: 'us-central1',
+        },
+        stack: {
+            engine: 'vllm',
+            engine_version: 'v0.6.3',
+            tensor_parallel_size: 8,
+            pipeline_parallel_size: 1,
+            replicas: 1,
+            routing: 'round-robin',
+            pd_disaggregation: false,
+            quantization: 'fp8',
+            kv_cache_dtype: 'fp8',
+            prefix_caching: true,
+            speculative_decoding: { enabled: false },
+            launch_args: {
+                max_model_len: 8192,
+                gpu_memory_utilization: 0.95,
+                max_num_seqs: 512,
+                enable_chunked_prefill: true,
+            },
+        },
+        container_image: 'vllm/vllm-openai:v0.6.3',
+        workload: {
+            input_tokens: 1024,
+            output_tokens: 512,
+            concurrency: 256,
+            target_qps: 14.4,
+            dataset_name: 'ShareGPT Multi-Turn',
+        },
+        metrics: {
+            ttft_ms: { mean: 1840.0, p50: 1750.0, p90: 2600.0, p99: 3400.0 },
+            itl_ms: { mean: 37.0, p50: 36.0, p90: 46.0, p99: 58.0 },
+            output_tokens_per_sec: { mean: 2460, p50: 2460 },
+            total_tokens_per_sec: { mean: 7380, p50: 7380 },
+            prefix_cache_hit_rate_pct: 58.0,
+            kv_cache_usage_pct: 93.0,
+        },
+        // Total = output × (1024 + 512) / 512 at every point.
+        sweep_points: [
+            { concurrency: 16, qps: 4.3, tokens_per_sec: 2200, output_tokens_per_sec: 733.3, ttft_p50: 140, ttft_p90: 210, ttft_p99: 280, itl_p50: 15, itl_p90: 19, itl_p99: 24 },
+            { concurrency: 32, qps: 6.8, tokens_per_sec: 3500, output_tokens_per_sec: 1166.7, ttft_p50: 260, ttft_p90: 390, ttft_p99: 520, itl_p50: 18, itl_p90: 23, itl_p99: 29 },
+            { concurrency: 64, qps: 9.6, tokens_per_sec: 4900, output_tokens_per_sec: 1633.3, ttft_p50: 520, ttft_p90: 780, ttft_p99: 1050, itl_p50: 22, itl_p90: 28, itl_p99: 35 },
+            { concurrency: 128, qps: 12.3, tokens_per_sec: 6300, output_tokens_per_sec: 2100, ttft_p50: 1180, ttft_p90: 1750, ttft_p99: 2300, itl_p50: 29, itl_p90: 37, itl_p99: 46 },
+            { concurrency: 256, qps: 14.4, tokens_per_sec: 7380, output_tokens_per_sec: 2460, ttft_mean: 1840, itl_mean: 37, ttft_p50: 1750, ttft_p90: 2600, ttft_p99: 3400, itl_p50: 36, itl_p90: 46, itl_p99: 58, isNominal: true },
+        ].map((pt) => ({ ...pt, illustrative: true, measured: false })),
+        benchmark_scope: 'system',
+        git_commit_sha: '9c42e10',
+        git_branch: 'release/v0.6.3',
+        fairness_audit: {
+            harness: 'inference-perf v0.2',
+            identical_harness: true,
+            warmup_runs: 5,
+            tokenizer: 'HuggingFace LlamaTokenizer',
+            temp: 0.0,
+            seed: 42,
+        },
+        verification_status: 'verified',
+        created_at: '2026-08-21T10:00:00Z',
+        reproduction_command:
+            'vllm serve meta-llama/Llama-3.1-70B-Instruct --tensor-parallel-size 8 --quantization fp8 --kv-cache-dtype fp8 --enable-prefix-caching --enable-chunked-prefill --max-num-seqs 512',
     },
 ];
 
@@ -1668,6 +1679,8 @@ export function normalizeLeaderboardEntry(raw, customPricing = {}) {
         results_store: raw.results_store || null,
         verification_status: raw.verification_status || (raw.is_verified ? 'verified' : 'community_validated'),
         reproduction_command: raw.reproduction_command || null,
+        // The exact checkpoint served (e.g. an AWQ repo), when it differs from model_name.
+        served_model: raw.served_model || null,
         created_at: raw.created_at || null,
     };
 

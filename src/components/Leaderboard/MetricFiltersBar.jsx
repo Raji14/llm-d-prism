@@ -73,9 +73,14 @@ export default function MetricFiltersBar({
     setMaxTpotSla,
     slaPercentile = DEFAULT_SLO.percentile,
     setSlaPercentile,
+    // False when no run in scope recorded P90 (the Results Store keeps P50
+    // and P99), so P90 is offered disabled with the reason instead of
+    // turning every row into "can't check".
+    p90Recorded = true,
     onOpenPricingModal,
     onResetFilters,
-    hasCustomPricing = false
+    hasCustomPricing = false,
+    pricingLabel = 'List prices'
 }) {
     const [showSlaControls, setShowSlaControls] = useState(false);
     const [showSyntaxHelp, setShowSyntaxHelp] = useState(false);
@@ -92,11 +97,13 @@ export default function MetricFiltersBar({
     const slo = { ttft: maxTtftSla, tpot: maxTpotSla, percentile: slaPercentile };
     const sloIsDefault = isDefaultSlo(slo);
     const isFiltered = isScoped || searchQuery.trim() !== '' || !sloIsDefault;
-    const hasStructuredOrRegex = /(?:^|\s)(model|hardware|hw|gpu|tpu|acc|stack|engine|workload|quant|tp|author|contributor|status):|^\/.+\/[gimsuy]*$|[|^*+?[\]()]/.test(searchQuery.trim());
+    const hasStructuredOrRegex = /(?:^|\s)(model|hardware|hw|gpu|tpu|acc|stack|engine|workload|quant|kv|tp|author|contributor|status):|^\/.+\/[gimsuy]*$|[|^*+?[\]()]/.test(searchQuery.trim());
 
     const activeTokens = useMemo(() => parseQueryTokens(searchQuery), [searchQuery]);
+    const unknownTokens = activeTokens.filter((t) => !t.known);
     const activePercentileLabel = PERCENTILES.find((p) => p.value === slaPercentile)?.label || 'P50';
-    const sloButtonLabel = `SLO: ${describeSlo(slo)}${sloIsDefault ? ' (default)' : ''}`;
+    const sloButtonLabel = `Latency limit: ${describeSlo(slo)}${sloIsDefault ? ' (default)' : ''}`;
+    const p90Note = 'No run in this scope recorded P90 latency, so P90 can’t rank anything here. Use P50 or P99.';
 
     const handleApplySuggestedSlo = () => {
         if (!suggestedSlo) return;
@@ -238,7 +245,7 @@ export default function MetricFiltersBar({
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-accent-200 bg-white hover:bg-accent-50 text-micro font-mono font-semibold text-accent-800 transition-colors cursor-pointer shrink-0"
                         title={`Back to the default: ${describeSlo(DEFAULT_SLO)}`}
                     >
-                        <span>Reset SLO</span>
+                        <span>Reset limit</span>
                         <X className="w-3 h-3 text-accent-600" />
                     </button>
                 ) : suggestedSlo ? (
@@ -253,7 +260,7 @@ export default function MetricFiltersBar({
                     </button>
                 ) : null}
 
-                {/* Pricing Rates Modal Button */}
+                {/* Pricing: always names the prices every $/1M on the page uses */}
                 {onOpenPricingModal && (
                     <button
                         type="button"
@@ -264,13 +271,13 @@ export default function MetricFiltersBar({
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-semibold'
                                 : 'bg-white border-zinc-200 text-zinc-700 hover:text-zinc-900 hover:border-zinc-300'
                         )}
-                        title="Customize GCP GPU/TPU hourly pricing rates and CUD discount presets"
+                        title="Every $/1M on this page uses these prices. Change them, or apply a CUD or Spot discount."
                     >
                         <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Pricing</span>
-                        {hasCustomPricing && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        )}
+                        <span className={cn('font-mono text-micro', hasCustomPricing ? 'text-emerald-800' : 'text-zinc-500')}>
+                            · {pricingLabel}
+                        </span>
                     </button>
                 )}
 
@@ -305,13 +312,23 @@ export default function MetricFiltersBar({
                             key={`${token.raw}-${idx}`}
                             type="button"
                             onClick={() => handleRemoveToken(token.raw)}
-                            className="inline-flex items-center gap-1 rounded-full bg-white border border-zinc-200 px-2.5 py-0.5 font-mono text-micro font-medium text-zinc-800 hover:bg-zinc-100 transition-colors cursor-pointer"
-                            title={`Remove filter "${token.raw}"`}
+                            className={cn(
+                                'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 font-mono text-micro font-medium transition-colors cursor-pointer',
+                                token.known
+                                    ? 'bg-white border-zinc-200 text-zinc-800 hover:bg-zinc-100'
+                                    : 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                            )}
+                            title={token.known ? `Remove filter "${token.raw}"` : `"${token.key}:" isn't a filter key, so it matches nothing. Remove it.`}
                         >
                             <span>{token.raw}</span>
                             <X className="w-3 h-3 text-zinc-600" />
                         </button>
                     ))}
+                    {unknownTokens.length > 0 && (
+                        <span className="text-micro text-amber-900" role="status">
+                            Unknown key{unknownTokens.length > 1 ? 's' : ''} {unknownTokens.map((t) => `${t.key}:`).join(', ')} match nothing. Try model: hw: stack: workload: status: contributor: quant: kv: tp:
+                        </span>
+                    )}
                 </div>
             )}
 
@@ -341,7 +358,7 @@ export default function MetricFiltersBar({
                             );
                         })}
                         <span className="text-micro text-zinc-600 font-mono ml-1 hidden md:inline">
-                            Keys: model: hw: stack: workload: status: contributor: quant: tp: or /regex/
+                            Keys: model: hw: stack: workload: status: contributor: quant: (weights) kv: (KV cache) tp: or /regex/
                         </span>
                     </div>
                     <button
@@ -378,30 +395,44 @@ export default function MetricFiltersBar({
                     <div className="flex flex-wrap items-center justify-between gap-4">
                         {/* SLA Percentile Selector */}
                         {setSlaPercentile && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-zinc-700 font-semibold">Percentile:</span>
                                 <div
                                     role="group"
                                     aria-label="Latency percentile for the SLO and every latency on the page"
                                     className="inline-flex items-center rounded-full border border-zinc-200 bg-white p-0.5"
                                 >
-                                    {PERCENTILES.map((p) => (
-                                        <button
-                                            key={p.value}
-                                            type="button"
-                                            onClick={() => setSlaPercentile(p.value)}
-                                            aria-pressed={slaPercentile === p.value}
-                                            className={cn(
-                                                'px-2 py-0.5 rounded-full font-mono text-micro font-medium transition-colors cursor-pointer',
-                                                slaPercentile === p.value
-                                                    ? 'bg-zinc-900 text-white'
-                                                    : 'text-zinc-700 hover:text-zinc-900'
-                                            )}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
+                                    {PERCENTILES.map((p) => {
+                                        const unavailable = p.value === 'p90' && !p90Recorded;
+                                        const disabled = unavailable && slaPercentile !== p.value;
+                                        return (
+                                            <button
+                                                key={p.value}
+                                                type="button"
+                                                onClick={() => setSlaPercentile(p.value)}
+                                                aria-pressed={slaPercentile === p.value}
+                                                disabled={disabled}
+                                                aria-describedby={unavailable ? 'lb-p90-note' : undefined}
+                                                title={unavailable ? p90Note : undefined}
+                                                className={cn(
+                                                    'px-2 py-0.5 rounded-full font-mono text-micro font-medium transition-colors',
+                                                    slaPercentile === p.value
+                                                        ? 'bg-zinc-900 text-white cursor-pointer'
+                                                        : disabled
+                                                            ? 'text-zinc-400 line-through cursor-not-allowed'
+                                                            : 'text-zinc-700 hover:text-zinc-900 cursor-pointer'
+                                                )}
+                                            >
+                                                {p.label}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
+                                {!p90Recorded && (
+                                    <span id="lb-p90-note" className="text-micro text-zinc-600 max-w-xs">
+                                        {p90Note}
+                                    </span>
+                                )}
                             </div>
                         )}
 

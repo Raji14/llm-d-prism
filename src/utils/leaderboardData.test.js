@@ -24,7 +24,18 @@ import {
     modelFamilyFor,
     pointCost,
 } from './leaderboardData.js';
-import { readSloParams, writeSloParams, DEFAULT_SLO, provenanceStatus, describeSlo, isDefaultSlo, formatQps } from './leaderboardFacets.js';
+import {
+    readSloParams,
+    writeSloParams,
+    DEFAULT_SLO,
+    provenanceStatus,
+    describeSlo,
+    isDefaultSlo,
+    formatQps,
+    formatLatencyMs,
+    matchesSearchQuery,
+    parseQueryTokens,
+} from './leaderboardFacets.js';
 import { computeParity, formatRunDate } from './runParity.js';
 
 console.log('Running leaderboardData unit tests...');
@@ -214,6 +225,60 @@ const sweep = [pt(1, 800, 120, 12), pt(8, 4000, 400, 18), pt(32, 9000, 1500, 30)
     assert.strictEqual(formatRunDate('not a date'), null);
     if (tz === undefined) delete process.env.TZ;
     else process.env.TZ = tz;
+}
+
+// 18. Tightening the latency limit changes the ranking (a sample's curve
+//     crosses 1-2 s TTFT), so the samples show the limit doing something.
+{
+    const chat70b = buildLeaderboardDataset({ seedRecipes: SEED_LEADERBOARD_RECIPES })
+        .filter((r) => r.model_family === 'Llama 3.1 70B' && r.workload_class === 'chat');
+    const rankAt = (ttft) => evaluateDatasetAtSlo(chat70b, { maxTtftSla: ttft, slaPercentile: 'p50' })
+        .filter((r) => !r.missesSlo)
+        .sort((a, b) => b.tokens_per_sec_per_chip - a.tokens_per_sec_per_chip)
+        .map((r) => r.id);
+    const maxBatch = 'recipe-llama3-70b-h100-vllm-maxbatch';
+    assert.strictEqual(rankAt(2000)[0], maxBatch, 'leads at the default 2 s limit');
+    assert.ok(rankAt(1000).indexOf(maxBatch) > 0, 'drops at 1 s');
+    assert.ok(rankAt(250).indexOf(maxBatch) > rankAt(1000).indexOf(maxBatch), 'and further at 250 ms');
+    assert.notDeepStrictEqual(rankAt(2000), rankAt(1000));
+    const [atOne] = evaluateDatasetAtSlo(chat70b.filter((r) => r.id === maxBatch), { maxTtftSla: 1000, slaPercentile: 'p50' });
+    assert.strictEqual(atOne.operatingConcurrency, 64, 'ranked at the load that fits the limit');
+}
+
+// 19. Samples credit no real-looking person or handle.
+{
+    buildLeaderboardDataset({ seedRecipes: SEED_LEADERBOARD_RECIPES }).forEach((s) => {
+        assert.strictEqual(s.author?.github_id ?? null, null, `${s.id}: no GitHub handle`);
+        assert.strictEqual(s.author?.username ?? null, null, `${s.id}: no username`);
+        assert.strictEqual(s.author?.display_name, 'Illustrative sample');
+    });
+}
+
+// 20. An AWQ run carries the checkpoint it served, so every recipe tab loads it.
+{
+    const awq = buildLeaderboardDataset({ seedRecipes: SEED_LEADERBOARD_RECIPES }).find((r) => r.id === 'recipe-llama3-70b-l4-sglang');
+    assert.strictEqual(awq.served_model, 'hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4');
+    assert.ok(awq.reproduction_command.includes(awq.served_model));
+}
+
+// 21. Latencies read in the units of the limits they're held to.
+{
+    assert.strictEqual(formatLatencyMs(1750), '1.75 s');
+    assert.strictEqual(formatLatencyMs(31), '31.0 ms');
+    assert.strictEqual(formatLatencyMs(999.94), '999.9 ms');
+    assert.strictEqual(formatLatencyMs(null), null);
+}
+
+// 22. Filter box: quant: is weights only, kv: is the KV cache, unknown keys are flagged.
+{
+    const awqFp8Kv = { stack: { quantization: 'awq', kv_cache_dtype: 'fp8' } };
+    assert.strictEqual(matchesSearchQuery(awqFp8Kv, 'quant:fp8'), false, 'an FP8 KV cache is not FP8 weights');
+    assert.strictEqual(matchesSearchQuery(awqFp8Kv, 'quant:awq'), true);
+    assert.strictEqual(matchesSearchQuery(awqFp8Kv, 'kv:fp8'), true);
+    const tokens = parseQueryTokens('foo:bar kv:fp8 radix');
+    assert.deepStrictEqual(tokens.map((t) => t.known), [false, true, true]);
+    assert.strictEqual(tokens.find((t) => t.key === 'model'), undefined);
+    assert.strictEqual(parseQueryTokens('model:8b')[0].dimension, 'model');
 }
 
 console.log('leaderboardData: all tests passed');

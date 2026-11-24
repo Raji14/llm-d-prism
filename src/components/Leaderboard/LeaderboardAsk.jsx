@@ -146,6 +146,9 @@ export default function LeaderboardAsk({
     skippedResults = [],
     instance = 'public',
     onOpenFeedback,
+    // The sample-data notice links to Methodology's "Sample data" section.
+    methodologySamplesHref = null,
+    onOpenMethodologySamples,
 }) {
     const selection = {
         model: selectedModelFamily,
@@ -217,8 +220,8 @@ export default function LeaderboardAsk({
     const n = matchCount ?? ranked.length;
     const qualifyingCount = Math.max(0, n - overLimitCount - notRecordedCount);
     const sloSummary = [
-        `${qualifyingCount} meet SLO`,
-        overLimitCount > 0 ? `${overLimitCount} miss` : null,
+        `${qualifyingCount} within the limit`,
+        overLimitCount > 0 ? `${overLimitCount} over it` : null,
         notRecordedCount > 0 ? `${notRecordedCount} can’t check` : null,
     ].filter(Boolean).join(' · ');
     const familyCount = new Set(ranked.map((r) => r.model_family).filter(Boolean)).size;
@@ -315,9 +318,9 @@ export default function LeaderboardAsk({
                 />
             </div>
 
-            {/* Single-line fixed-height Scope Status Bar */}
-            <div className="px-3.5 sm:px-4 py-2 bg-zinc-50/90 border-t border-zinc-200/70 flex items-center justify-between gap-3 text-xs text-zinc-700 min-h-[38px]">
-                <div className="flex items-center gap-2 min-w-0 overflow-hidden" aria-live="polite">
+            {/* Scope status bar: one line on wide screens, wraps on narrow ones so nothing is clipped */}
+            <div className="px-3.5 sm:px-4 py-2 bg-zinc-50/90 border-t border-zinc-200/70 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-xs text-zinc-700 min-h-[38px]">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 min-w-0" aria-live="polite">
                     <span className="inline-flex items-center rounded-full bg-accent-50 border border-accent-200 px-2.5 py-0.5 font-mono text-micro font-semibold text-accent-800 shrink-0">
                         {overLimitCount > 0 || notRecordedCount > 0
                             ? sloSummary
@@ -346,7 +349,7 @@ export default function LeaderboardAsk({
                             <button
                                 type="button"
                                 onClick={() => setSelectedModelFamily('all')}
-                                className="inline-flex items-center gap-1 rounded-full bg-white hover:bg-zinc-100 border border-zinc-200 px-2.5 py-0.5 text-micro font-medium text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer shrink-0"
+                                className="inline-flex items-center gap-1 rounded-full bg-white hover:bg-zinc-100 border border-zinc-200 px-2.5 py-0.5 text-micro font-medium text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                             >
                                 Compare all models
                             </button>
@@ -354,8 +357,8 @@ export default function LeaderboardAsk({
                     )}
 
                     {/* Where the rows come from: published results, samples, or both */}
-                    <span className="hidden md:inline-flex items-center gap-1.5 text-micro text-zinc-600 min-w-0" role="note">
-                        <span className="text-zinc-400" aria-hidden="true">·</span>
+                    <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-micro text-zinc-600 min-w-0" role="note">
+                        <span className="text-zinc-400 hidden sm:inline" aria-hidden="true">·</span>
                         {publishedCount > 0 && (
                             <span
                                 className="inline-flex items-center gap-1 shrink-0"
@@ -371,9 +374,19 @@ export default function LeaderboardAsk({
                                 title="Illustrative entries that ship with Prism to show how ranking works. Never measured, never verified."
                             >
                                 <StatusChip status="sample" size="xs" />
-                                <span className="truncate">
-                                    {publishedCount > 0 ? `${sampleCount} illustrative` : `Illustrative only · nothing ${publishedLabel} yet`}
-                                </span>
+                                {methodologySamplesHref ? (
+                                    <a
+                                        href={methodologySamplesHref}
+                                        onClick={onOpenMethodologySamples}
+                                        className="underline decoration-zinc-300 underline-offset-2 hover:text-accent-700"
+                                    >
+                                        {publishedCount > 0 ? `${sampleCount} illustrative, not ranked` : `Illustrative only · nothing ${publishedLabel} yet`}
+                                    </a>
+                                ) : (
+                                    <span>
+                                        {publishedCount > 0 ? `${sampleCount} illustrative, not ranked` : `Illustrative only · nothing ${publishedLabel} yet`}
+                                    </span>
+                                )}
                             </span>
                         )}
                         {onToggleSamples && (

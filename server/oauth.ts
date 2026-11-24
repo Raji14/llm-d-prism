@@ -44,7 +44,9 @@ const isOAuthConfigured = (): boolean => {
  * allowlists in the IAM bucket (see iam.ts), so an llm-d org admin isn't an
  * approver on, say, an internal Google Cloud Prism, unless that deployment
  * names an org with PRISM_GITHUB_ADMIN_ORG. Read on each call, so it follows
- * the environment it's given.
+ * the environment it's given. PRISM_BRAND must be set to llm-d explicitly:
+ * the app falls back to llm-d's logo when it's unset (src/config/site.js), but
+ * that default never makes llm-d's org admins approvers.
  */
 export function githubAdminOrg(env: Record<string, string | undefined> = process.env): string | null {
     const named = (env.PRISM_GITHUB_ADMIN_ORG || '').trim();

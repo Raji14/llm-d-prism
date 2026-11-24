@@ -9,10 +9,10 @@
 | Variable | Values | Default | Read by |
 | :--- | :--- | :--- | :--- |
 | `PRISM_INSTANCE` | `internal`, `public` | `public` | client (`readInstanceMode`), `GET /api/config` |
-| `PRISM_BRAND` | `llm-d`, `prism` | `prism` | client (`readBrand`), `GET /api/config`, server (`githubAdminOrg`) |
+| `PRISM_BRAND` | `llm-d`, `prism` | `llm-d` in the app; `deploy.sh` sets `prism` | client (`readBrand`), `GET /api/config`, server (`githubAdminOrg`) |
 | `SITE_NAME` | free text | none | client (`readSiteName`), `GET /api/config` (existing) |
 | `PRISM_PINNED_REPORTS` | report ids, space-separated | every built-in report | client (`readPinnedReports`) |
-| `PRISM_GITHUB_ADMIN_ORG` | a GitHub org name | `llm-d` when `PRISM_BRAND=llm-d`, else none | server only (`githubAdminOrg` in `server/oauth.ts`) |
+| `PRISM_GITHUB_ADMIN_ORG` | a GitHub org name | `llm-d` when `PRISM_BRAND=llm-d` is set explicitly, else none (the app's logo default doesn't count) | server only (`githubAdminOrg` in `server/oauth.ts`) |
 
 **Delivery.** `server/server.js` already rewrites `index.html` on every page request to inject `window.env` (today, `GOOGLE_API_KEY`). It now injects the first four variables above too, and escapes `<` so a value can't close the script tag. The values are there synchronously at boot, so the header and tab title show the right brand on first paint. `GET /api/config` also returns `instance` and `brand`.
 
@@ -55,6 +55,7 @@ No schema change and no new routes. The server passes environment variables thro
 4. **Approvers.** List them in `prism-iam/github-admin-allowlist.txt` in the instance's bucket. llm-d's org admins aren't approvers on Internal Prism unless `PRISM_GITHUB_ADMIN_ORG` names an org.
 5. **Behavior change for other deployments.** A deployment that doesn't set `PRISM_BRAND=llm-d` (or `PRISM_GITHUB_ADMIN_ORG`) no longer makes llm-d org admins approvers, or org members contributors. Add them to that deployment's allowlists if they should keep access. Local dev servers too: set `PRISM_BRAND=llm-d` or use the dev preview's Role switch.
 6. Analytics: the example clears `GA_TRACKING_ID`. Otherwise `deploy.sh` defaults to llm-d's property, and internal traffic would land there.
+7. **Logo default (changed 2026-11-23).** With nothing set, the app now wears llm-d's logo, so the dev server and fresh forks show llm-d Prism's Home. Add `?brand=prism` on the dev server to preview Prism's own mark. Deployments aren't affected: `deploy/prod.env` sets `llm-d`, `deploy/internal.env.example` sets `prism`, and `deploy.sh` still defaults to `prism`. The default only changes the logo. llm-d's org admins approve only where `PRISM_BRAND=llm-d` is set explicitly (item 5 still applies).
 
 ## Testing
 

@@ -41,9 +41,9 @@ const withPage = (env, search, fn) => {
 };
 const withEnv = (env, fn) => withPage(env, '', fn);
 
-// 1. Nothing configured: a public Prism wearing its own mark, every report.
+// 1. Nothing configured: a public Prism wearing llm-d's logo, every report.
 assert.equal(readInstanceMode(), 'public');
-assert.equal(readBrand(), 'prism');
+assert.equal(readBrand(), 'llm-d');
 assert.equal(readSiteName(), null);
 assert.equal(readPinnedReports(), null);
 
@@ -73,7 +73,7 @@ withEnv(
 // 4. Values the app doesn't know fall back to the defaults.
 withEnv({ PRISM_INSTANCE: 'staging', PRISM_BRAND: 'ibm' }, () => {
     assert.equal(readInstanceMode(), 'public');
-    assert.equal(readBrand(), 'prism');
+    assert.equal(readBrand(), 'llm-d');
 });
 
 // 5. Pinned ids: any separator, duplicates count once, at most four; blank = default.
@@ -91,9 +91,10 @@ assert.equal(documentTitleFor({ brand: 'prism', siteName: null }), 'Prism · inf
 assert.equal(displayNameFor({ brand: 'llm-d', siteName: 'Anything' }), 'llm-d Prism');
 
 // 7. Dev preview params never apply outside the dev server (this is plain Node).
-withPage({}, '?instance=internal&brand=llm-d&site=X&pinned=a', () => {
+//    The URL asks for the non-default brand, so a match proves it was ignored.
+withPage({}, '?instance=internal&brand=prism&site=X&pinned=a', () => {
     assert.equal(readInstanceMode(), 'public');
-    assert.equal(readBrand(), 'prism');
+    assert.equal(readBrand(), 'llm-d');
     assert.equal(readSiteName(), null);
     assert.equal(readPinnedReports(), null);
 });

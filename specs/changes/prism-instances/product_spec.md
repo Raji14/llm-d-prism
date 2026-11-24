@@ -11,7 +11,7 @@ Prism already runs in more than one place: llm-d's public site, an internal Pris
 
 1. **One codebase, separate instances.** Each audience gets its own Cloud Run service and URL. Nothing switches between them at runtime, and instances don't talk to each other.
 2. **Same journeys everywhere.** Compare serving stacks, catch a regression, validate an optimization, publish a result. Only two things change: the front door (who can get in) and the publish rule (Official on an internal instance, Published on a public one).
-3. **Prism has its own identity.** Only llm-d Prism wears the llm-d logo. Every other Prism shows Prism's own mark, so a private deployment obviously feels like *your* Prism.
+3. **llm-d's logo by default, Prism's own mark by choice.** Prism with nothing configured (the dev server, a fresh fork) wears llm-d's logo, because llm-d Prism is the flagship (changed 2026-11-23; it used to be Prism's own mark). Every other deployment sets `PRISM_BRAND=prism`, which `deploy.sh` does unless told otherwise, so a private deployment still obviously feels like *your* Prism.
 4. **Set at deploy time, not in code.** A deployer sets the instance, brand, display name and pinned reports with parameters. No fork, no per-instance branch.
 
 ## Personas & entry flows
@@ -25,7 +25,7 @@ Prism already runs in more than one place: llm-d's public site, an internal Pris
 | # | Requirement |
 | :--- | :--- |
 | R1 | `PRISM_INSTANCE` (`internal` or `public`) is read from the deployment at runtime, not only at build time. |
-| R2 | `PRISM_BRAND` picks the logo. `llm-d` shows llm-d's logotype. Anything else, or nothing, shows Prism's own mark (the original rainbow prism). |
+| R2 | `PRISM_BRAND` picks the logo. `prism` shows Prism's own mark (the original rainbow prism). `llm-d`, anything else, or nothing shows llm-d's logotype. `deploy.sh` sets `prism` unless told otherwise, so a new deployment never wears llm-d's logo by accident. |
 | R3 | `SITE_NAME` names the instance next to the Prism mark (for example, "Google Cloud") and in the browser tab. |
 | R4 | Home keeps one layout. Only the copy that depends on the publish rule changes per instance: the hero line, the freshness pill, the submit card and the steps. |
 | R5 | Internal Prism never says "public" or "community leaderboard". |

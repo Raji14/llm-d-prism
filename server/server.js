@@ -73,7 +73,7 @@ app.get('/api/config', (req, res) => {
         contactUrl: process.env.CONTACT_US_URL || null,
         // Which Prism this deployment is (src/config/site.js).
         instance: process.env.PRISM_INSTANCE === 'internal' ? 'internal' : 'public',
-        brand: process.env.PRISM_BRAND === 'llm-d' ? 'llm-d' : 'prism',
+        brand: process.env.PRISM_BRAND === 'prism' ? 'prism' : 'llm-d',
         localDir: !!process.env.PRISM_LOCAL_DIR
     });
 });

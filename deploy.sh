@@ -16,6 +16,8 @@ ALLOW_UNAUTHENTICATED="true"
 PUBLIC_URL=""
 # Which Prism this deployment is (src/config/site.js). Only llm-d's public
 # deployment sets PRISM_BRAND=llm-d; every other Prism shows its own mark.
+# The app itself falls back to llm-d's logo when nothing is set (dev server,
+# forks), but a deploy always says which brand it is.
 PRISM_INSTANCE="public"
 PRISM_BRAND="prism"
 PRISM_PINNED_REPORTS=""

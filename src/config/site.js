@@ -18,13 +18,16 @@
 // them at runtime (decided 2026-11-03). The deploy sets:
 //   PRISM_INSTANCE        internal | public. Who can get in, and how a result
 //                         becomes rankable (Official vs Published).
-//   PRISM_BRAND           llm-d | prism. The logo: only llm-d Prism wears
-//                         llm-d's; every other Prism shows Prism's own mark.
+//   PRISM_BRAND           llm-d | prism. The logo: llm-d's by default; prism
+//                         shows Prism's own mark (Internal Prism and every
+//                         other non-llm-d deployment set it; deploy.sh does).
 //   SITE_NAME             Optional name shown next to the mark, e.g. "Google Cloud".
 //   PRISM_PINNED_REPORTS  Optional report ids for Home, in order (up to four).
 // server/server.js injects them as window.env before the app loads, so the
-// right brand shows on first paint. With nothing set, a Prism is public, wears
-// its own mark and pins every built-in report.
+// right brand shows on first paint. With nothing set (the dev server, a fresh
+// fork), a Prism is public, wears llm-d's logo and pins every built-in report.
+// The default only picks the logo: llm-d's GitHub org admins approve results
+// only where the deploy sets PRISM_BRAND=llm-d itself (server/oauth.ts).
 //
 // On the dev server only, ?instance=, ?brand=, ?site= and ?pinned= preview any
 // combination from one server. Production builds ignore them, so a URL can't
@@ -66,9 +69,9 @@ export function readInstanceMode() {
     return firstAllowed(INSTANCE_MODES, devPreview('instance'), runtimeValue('PRISM_INSTANCE'), VITE_ENV.VITE_PRISM_INSTANCE) || 'public';
 }
 
-/** llm-d | prism. Only a deployment that asks for llm-d's logo gets it. */
+/** llm-d | prism. llm-d's logo unless a deployment asks for Prism's own mark. */
 export function readBrand() {
-    return firstAllowed(BRANDS, devPreview('brand'), runtimeValue('PRISM_BRAND'), VITE_ENV.VITE_PRISM_BRAND) || 'prism';
+    return firstAllowed(BRANDS, devPreview('brand'), runtimeValue('PRISM_BRAND'), VITE_ENV.VITE_PRISM_BRAND) || 'llm-d';
 }
 
 /** The instance's name, e.g. "Google Cloud", or null. */

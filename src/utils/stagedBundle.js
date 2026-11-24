@@ -49,6 +49,8 @@ export function buildStagedBundle(run) {
             : null,
     };
 
+    const hardwareName = run.hardware?.hardware_name || run.stages[0]?.scenario?.hardware || 'Unknown Hardware';
+
     return {
         id: Math.random().toString(36).substring(7),
         dirKey: run.runId,
@@ -60,7 +62,7 @@ export function buildStagedBundle(run) {
             format: 'brv02',
             model_name: run.model_name || run.stages[0]?.scenario?.model || 'Unknown Model',
             hardware: {
-                hardware_name: run.hardware?.hardware_name || run.stages[0]?.scenario?.hardware || 'Unknown Hardware',
+                hardware_name: hardwareName,
                 accelerator_count: run.hardware?.accelerator_count ?? null,
             },
             run_metadata: run.run_metadata || null,
@@ -75,6 +77,9 @@ export function buildStagedBundle(run) {
         },
         validation: {
             format: 'brv02',
+            // As for a fresh upload: a stage that records its accelerator, or a
+            // known hardware name. Without it the wizard flags hardware as missing.
+            hasHardware: stageFiles.some((sf) => sf.validation.hasHardware) || isKnownHardware(hardwareName),
             errors: [],
             warnings: [],
             dcoChecked: true,
@@ -84,6 +89,9 @@ export function buildStagedBundle(run) {
         targetDashboards: run.targetDashboards || ['performance-browser'],
     };
 }
+
+// "H100" counts; "Unknown" / "Unknown Hardware" / empty don't.
+const isKnownHardware = (name) => typeof name === 'string' && name.trim() !== '' && !/^unknown\b/i.test(name.trim());
 
 // Hands bundles to the submit wizard (SubmitValidationPage), which resumes at
 // its review step with the given intent ('submit-review' | 'stage-locally').

@@ -19,7 +19,7 @@ import { cn } from '../../utils/cn';
 import { CurveChart, MetricToggles } from './CurveChart';
 import { BackButton, BaselinePicker, ExportActions, Notice, ResultStatusChip, decodeDataUrl } from './parts';
 import { useChartView } from './useChartView';
-import { mdTable, pointsCsv } from './exporters';
+import { distinctLabels, loadLevelLabel, mdTable, pointsCsv } from './exporters';
 import {
     OPERATING_TTFT_MS,
     accelTypeOf,
@@ -86,7 +86,8 @@ function seriesStats(points, { latency, stat, throughput }) {
         usable: usable.point && isNum(usable.point[throughput]) ? usable.point[throughput] : null,
         usableOutput: usable.point && isNum(usable.point.output) ? usable.point.output : null,
         usablePerChip: usable.point && isNum(usable.point.outputPerChip) ? usable.point.outputPerChip : null,
-        usableConc: usable.point?.conc ?? null,
+        // "c=30", or "6.5 req/s" for a request-rate sweep (no concurrency there).
+        usableLevel: loadLevelLabel(usable.point),
         usableWhy: usable.reason,
         usableP99: usableP99.point && isNum(usableP99.point[throughput]) ? usableP99.point[throughput] : null,
         usableP99Why: usableP99.reason,
@@ -153,6 +154,11 @@ const listTested = (mismatches, baseIdx) =>
         })
     );
 const usableCell = (val, why) => (isNum(val) ? fmtTput(val) : why === 'over-limit' ? `none ≤ ${LIMIT_SECONDS}` : 'not recorded');
+// " at c=256" or " at 9 req/s": where a stage sits in its sweep, or '' when not recorded.
+const atLevel = (p) => {
+    const level = loadLevelLabel(p);
+    return level ? ` at ${level}` : '';
+};
 
 // How much a series name says "I'm the baseline": the default baseline is
 // the most baseline-like series when nobody picked one.
@@ -238,6 +244,11 @@ function diffConfigLines(baseText, otherText) {
 // else an Official result, else the most baseline-like name (baseline,
 // standard, none, default), else the first series. With only 1 series, no
 // baseline is set until one is added.
+//
+// `shareUrlFor({ kind: 'compare', items, view })` is ResultsStore's share-link
+// builder, the one "Share this view" uses. Exports call it when they run, so
+// their link opens the view as it is then; without it they read the address
+// bar at that moment.
 export function CompareView({
     items,
     initialView,
@@ -248,6 +259,7 @@ export function CompareView({
     customRates = {},
     nav,
     onShare,
+    shareUrlFor,
     onLiveChange,
     onAddToDashboard,
 }) {
@@ -477,13 +489,19 @@ export function CompareView({
         target
     );
 
-    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+    // The share link is made when an export runs, never while this renders:
+    // a link captured during render was one change behind (baseline,
+    // statistic, Per chip), because the address bar only catches up after the
+    // change renders. It's built from what's on screen with the same builder as
+    // "Share this view"; without one, the address bar by then opens this view.
+    const shareUrlNow = () =>
+        shareUrlFor?.({ kind: 'compare', items: all, view: { latency, stat, throughput, base: baseKey } }) ||
+        (typeof window !== 'undefined' ? window.location.href : '');
     const peakCellMd = (st) => {
         if (st.allOverloaded) return 'not comparable (overloaded)';
         if (st.overloadedPeak) {
             const raw = fmtTput(st.overloadedPeak[throughput]);
-            const rawConc = st.overloadedPeak.conc != null ? ` at c=${st.overloadedPeak.conc}` : '';
-            return `${fmtTput(st.peak)} (healthy; overloaded ${raw}${rawConc} not comparable)`;
+            return `${fmtTput(st.peak)} (healthy; overloaded ${raw}${atLevel(st.overloadedPeak)} not comparable)`;
         }
         return fmtTput(st.peak);
     };
@@ -504,9 +522,14 @@ export function CompareView({
     ];
     const summaryAlign = ['l', 'r', 'r', 'r', ...(hasP99 ? ['r', 'r'] : []), ...(hasCost ? ['r', 'r'] : []), 'r', 'r', 'r', 'r', 'r', 'r'];
 
-    const markdown = [
+    // Built when someone copies it, so its share link is the view on screen.
+    const shareLine = () => {
+        const link = shareUrlNow();
+        return link ? `Share link: ${link}` : null;
+    };
+    const markdown = () => [
         `**Throughput vs latency** · ${latLabel} · ${tp.label.toLowerCase()} throughput`,
-        shareUrl ? `Share link: ${shareUrl}` : null,
+        shareLine(),
         framingText || unrecordedNote ? `> ${[framingText, unrecordedNote].filter(Boolean).join(' ')}` : null,
         overloadedNote ? `> ${overloadedNote}` : null,
         mdTable(
@@ -576,6 +599,18 @@ export function CompareView({
     }
 
     const compared = resolved.filter((x) => !x.item.baseline);
+
+    // The decision summary is too narrow for whole names, and they usually
+    // differ only near the end ("… · standard-k8s · inference-perf"): name each
+    // winner by the part that differs, with its colour and the full name on hover.
+    const shortNames = distinctLabels(rows.map((r) => label(r.s)));
+    const winnerName = (r, extra = null) => (
+        <div className="mt-1 flex min-w-0 items-start gap-1.5" title={label(r.s)}>
+            <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(r.i) }} aria-hidden="true" />
+            <span className="line-clamp-2 min-w-0 break-words text-xs font-semibold text-zinc-900">{shortNames[r.i]}</span>
+            {extra}
+        </div>
+    );
 
     return (
         <div className="space-y-6">
@@ -656,20 +691,24 @@ export function CompareView({
                 </Notice>
             )}
 
-            {/* Sweep-space decision summary when comparing multiple configurations */}
-            {resolved.length >= 2 && (bestUsableRow || bestPerChipRow || cheapestRow) && (
-                <div className="grid gap-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 sm:grid-cols-4">
-                    <div className="sm:col-span-4 flex items-center justify-between border-b border-zinc-200/70 pb-2">
+            {/* Decision summary: with 3+ series it says which wins at a glance.
+                With 2 the table already does, so it would only repeat it. */}
+            {rows.length >= 3 && (bestUsableRow || bestPerChipRow || cheapestRow) && (
+                <div className="grid gap-3 rounded-3xl border border-zinc-200 bg-zinc-50/70 p-4 sm:grid-cols-3">
+                    <div className="sm:col-span-3 flex items-center justify-between border-b border-zinc-200/70 pb-2">
                         <span className="label-caps font-semibold text-zinc-700">Sweep-space decision summary</span>
                         <span className="text-micro text-zinc-500">Evaluated at {LIMIT_P50_LABEL}</span>
                     </div>
                     <div className="min-w-0">
-                        <div className="label-caps text-zinc-500">Best output at {LIMIT_P50_LABEL}</div>
+                        <div className="label-caps text-zinc-500">
+                            Best {tp.label.toLowerCase()} at {LIMIT_P50_LABEL}
+                        </div>
                         {bestUsableRow ? (
                             <>
-                                <div className="mt-1 truncate text-xs font-semibold text-zinc-900">{label(bestUsableRow.s)}</div>
+                                {winnerName(bestUsableRow)}
                                 <div className="font-mono text-xs text-emerald-700">
-                                    {fmtTput(bestUsableRow.stats.usable)} tok/s{bestUsableRow.stats.usableConc != null ? ` at c=${bestUsableRow.stats.usableConc}` : ''}
+                                    {fmtTput(bestUsableRow.stats.usable)} tok/s{tp.perChip ? '/chip' : ''}
+                                    {bestUsableRow.stats.usableLevel ? ` at ${bestUsableRow.stats.usableLevel}` : ''}
                                 </div>
                             </>
                         ) : (
@@ -680,7 +719,7 @@ export function CompareView({
                         <div className="label-caps text-zinc-500">Best per-chip at {LIMIT_P50_LABEL}</div>
                         {bestPerChipRow ? (
                             <>
-                                <div className="mt-1 truncate text-xs font-semibold text-zinc-900">{label(bestPerChipRow.s)}</div>
+                                {winnerName(bestPerChipRow)}
                                 <div className="font-mono text-xs text-zinc-800">
                                     {fmtTput(bestPerChipRow.stats.usablePerChip)} tok/s/chip ({bestPerChipRow.chips} chip{bestPerChipRow.chips === 1 ? '' : 's'})
                                 </div>
@@ -693,12 +732,12 @@ export function CompareView({
                         <div className="label-caps text-zinc-500">Lowest cost at {LIMIT_P50_LABEL}</div>
                         {cheapestRow ? (
                             <>
-                                <div className="mt-1 flex items-center gap-1.5">
-                                    <span className="truncate text-xs font-semibold text-zinc-900">{label(cheapestRow.s)}</span>
-                                    <Badge tone="success" size="xs">
+                                {winnerName(
+                                    cheapestRow,
+                                    <Badge tone="success" size="xs" className="shrink-0">
                                         Cheapest
                                     </Badge>
-                                </div>
+                                )}
                                 <div className="font-mono text-xs text-emerald-700">
                                     {fmtMoney(cheapestRow.costPerM)} / 1M tok ({fmtCount(cheapestRow.tokPerDollar)} tok/$)
                                 </div>
@@ -706,12 +745,6 @@ export function CompareView({
                         ) : (
                             <div className="mt-1 text-xs text-zinc-500">Set $/chip-hr below to price</div>
                         )}
-                    </div>
-                    <div className="flex items-center justify-end">
-                        <Button size="xs" variant="secondary" onClick={() => onAddToDashboard(resolved.map((x) => x.item))}>
-                            <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
-                            Add all {resolved.length} to report
-                        </Button>
                     </div>
                 </div>
             )}
@@ -754,8 +787,10 @@ export function CompareView({
                                 ? 'No baseline is selected yet — this export only has 1 series and no Δ comparison. Add a baseline first, or export anyway?'
                                 : null
                         }
-                        csv={() =>
-                            pointsCsv(
+                        csv={() => {
+                            // Read now, not at render, so the link opens this view (RS-1).
+                            const shareUrl = shareUrlNow();
+                            return pointsCsv(
                                 rows.map((r) => ({
                                     name: label(r.s),
                                     role: !baseKey ? 'compared (no baseline)' : r.key === baseKey ? 'baseline' : 'compared',
@@ -766,15 +801,15 @@ export function CompareView({
                                         framingText,
                                         unrecordedNote,
                                         r.stats.overloadedPeak
-                                            ? `Overloaded peak ${fmtTput(r.stats.overloadedPeak[throughput])}${r.stats.overloadedPeak.conc != null ? ` at c=${r.stats.overloadedPeak.conc}` : ''} not comparable`
+                                            ? `Overloaded peak ${fmtTput(r.stats.overloadedPeak[throughput])}${atLevel(r.stats.overloadedPeak)} not comparable.`
                                             : null,
                                     ]
                                         .filter(Boolean)
                                         .join(' '),
                                     shareUrl,
                                 }))
-                            )
-                        }
+                            );
+                        }}
                         markdown={markdown}
                     />
                 </div>
@@ -786,21 +821,38 @@ export function CompareView({
                             const val = priceOverrides[a.type] !== undefined ? priceOverrides[a.type] : a.defaultPrice ?? '';
                             const isCustom = priceOverrides[a.type] !== undefined && priceOverrides[a.type] !== '';
                             return (
-                                <label key={a.type} className="inline-flex items-center gap-1.5">
-                                    <span className="font-medium text-zinc-800">{a.type}</span>
-                                    <Input
-                                        surface="light"
-                                        type="number"
-                                        step="0.05"
-                                        min="0"
-                                        aria-label={`${a.type} price per chip-hour in USD`}
-                                        value={val}
-                                        placeholder="—"
-                                        onChange={(e) => setPriceOverrides((prev) => ({ ...prev, [a.type]: e.target.value }))}
-                                        className="w-20 py-1 font-mono text-xs"
-                                    />
-                                    <span className="text-micro text-zinc-500">({isCustom ? 'Custom override' : a.source})</span>
-                                </label>
+                                <span key={a.type} className="inline-flex items-center gap-1.5">
+                                    <label className="inline-flex items-center gap-1.5">
+                                        <span className="font-medium text-zinc-800">{a.type}</span>
+                                        <Input
+                                            surface="light"
+                                            type="number"
+                                            step="0.05"
+                                            min="0"
+                                            aria-label={`${a.type} price per chip-hour in USD`}
+                                            value={val}
+                                            placeholder="—"
+                                            onChange={(e) => setPriceOverrides((prev) => ({ ...prev, [a.type]: e.target.value }))}
+                                            className="w-20 py-1 font-mono text-xs"
+                                        />
+                                        <span className="text-micro text-zinc-500">({isCustom ? 'Custom override' : a.source})</span>
+                                    </label>
+                                    {isCustom && a.defaultPrice != null && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setPriceOverrides((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next[a.type];
+                                                    return next;
+                                                })
+                                            }
+                                            className="rounded text-micro font-medium text-accent-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                                        >
+                                            Reset to {fmtMoney(a.defaultPrice)}
+                                        </button>
+                                    )}
+                                </span>
                             );
                         })}
                     </div>
@@ -926,7 +978,7 @@ export function CompareView({
                                                     {r.stats.overloadedPeak && (
                                                         <div className="mt-0.5 font-sans text-micro text-amber-800">
                                                             overloaded peak ({fmtTput(r.stats.overloadedPeak[throughput])}
-                                                            {r.stats.overloadedPeak.conc != null ? ` at c=${r.stats.overloadedPeak.conc}` : ''}) not comparable
+                                                            {atLevel(r.stats.overloadedPeak)}) not comparable
                                                         </div>
                                                     )}
                                                 </>

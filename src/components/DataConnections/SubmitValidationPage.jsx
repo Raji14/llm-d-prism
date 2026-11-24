@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, UploadCloud, CheckCircle, AlertCircle, FileText, ChevronLeft, ChevronRight, ChevronDown, Trash2, Upload, ShieldAlert, Check, ArrowRight, ArrowLeft, GitCompare, Zap, Cpu, Pencil } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Scatter } from 'recharts';
-import { validateBenchmark, validatePrismUploadStructure } from '../../utils/benchmarkValidator';
+import { mergeValidationMessages, validateBenchmark, validatePrismUploadStructure } from '../../utils/benchmarkValidator';
 import { parseReportV02, stageToEntry, canonicalStringify } from '../../utils/benchmarkReportV02Parser';
 import yaml from 'js-yaml';
 import { getBenchmarkKey } from '../../utils/dashboardHelpers';
@@ -11,6 +11,14 @@ import { useGitHubAuth } from '../../hooks/useGitHubAuth';
 import { Badge, Button, Checkbox, Input, Label, PageHeader, Panel, Select, Spinner } from '../ui';
 import { cn } from '../../utils/cn';
 import { readInstanceMode } from '../../config/site.js';
+import { REPORT_FORMAT_URL, submitFor } from '../layout/navigation.js';
+
+// The "Cloud bucket" source stays hidden until it really reads a bucket.
+// handleCloudScan doesn't scan anything yet: it stages a fixed sample run
+// (Llama-3-8B on H100 ×8), which could then be submitted for review as if it
+// had been measured. Turn this on once the scan lists the bucket's report
+// files (GCS / S3) and validates them like a file upload (processFiles).
+const CLOUD_SCAN_READY = false;
 
 const checkStageMetrics = (entry, format) => {
     let parsedStage = null;
@@ -106,6 +114,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     const existingRunIds = React.useMemo(() => brv02Runs.map(r => r.runId), [brv02Runs]);
 
     const [stagedFiles, setStagedFiles] = useState([]);
+    // Files from the last upload that weren't loaded, each with the reason:
+    // [{ name, reason }]. Listed under the steps until the next upload.
+    const [droppedFiles, setDroppedFiles] = useState([]);
     const [manifestUrlInputs, setManifestUrlInputs] = useState({});
     const [evidenceUrlInputs, setEvidenceUrlInputs] = useState({});
     const hasInitialized = React.useRef(false);
@@ -122,6 +133,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
     }); // 'stage-locally' or 'submit-review'
     const uploadIntent = internal ? 'stage-locally' : requestedIntent;
     const [ingestionSource, setIngestionSource] = useState('local'); // 'local' or 'cloud'
+    // Files only until the bucket scan is real (CLOUD_SCAN_READY above).
+    const activeSource = CLOUD_SCAN_READY ? ingestionSource : 'local';
     const [cloudPath, setCloudPath] = useState('');
     const [cloudProvider, setCloudProvider] = useState('gcs'); // 'gcs' or 's3'
 
@@ -567,7 +580,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         });
 
         if (addToast) {
-            addToast(`Successfully scanned and staged 1 run bundle from ${cloudPath}.`, 'success');
+            addToast(`Added a sample run for ${cloudPath}. Scanning buckets isn’t connected yet.`, 'info');
         }
     };
 
@@ -582,7 +595,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
     const processFiles = async (files) => {
         let uploadedCount = 0;
-
+        // Every file this upload couldn't use, with the reason, so nothing is
+        // dropped without a word (RSP-3).
+        const dropped = [];
 
         const groups = {};
         const standaloneFiles = [];
@@ -621,6 +636,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 content = await file.text();
             } catch (e) {
                 console.warn(`Failed to read file ${filename}:`, e);
+                dropped.push({ name: filename, reason: 'The file couldn’t be read' });
                 continue;
             }
 
@@ -630,6 +646,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     standaloneMetadata.push({ file, content, parsed });
                 } catch (e) {
                     console.warn("Failed to parse run_metadata.yaml:", e);
+                    dropped.push({ name: filename, reason: 'Invalid YAML/JSON format' });
                 }
             } else if (/config\.ya?ml$/i.test(filename)) {
                 try {
@@ -637,6 +654,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     standaloneConfigs.push({ file, content, parsed });
                 } catch (e) {
                     console.warn("Failed to parse config.yaml:", e);
+                    dropped.push({ name: filename, reason: 'Invalid YAML/JSON format' });
                 }
             } else if (/summary_lifecycle_metrics\.json$/i.test(filename)) {
                 try {
@@ -644,12 +662,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     standaloneSummaries.push({ file, content, parsed });
                 } catch (e) {
                     console.warn("Failed to parse summary_lifecycle_metrics.json:", e);
+                    dropped.push({ name: filename, reason: 'Invalid YAML/JSON format' });
                 }
             } else if (/\.(ya?ml|json)$/i.test(filename)) {
                 const validation = validateBenchmark(content, filename);
                 if (validation.format) {
                     standaloneReportFiles.push({ file, content, validation });
+                } else {
+                    // "Invalid YAML/JSON format", "Empty document" or "Unrecognized benchmark format".
+                    dropped.push({ name: filename, reason: validation.errors[0] || 'Unrecognized benchmark format' });
                 }
+            } else {
+                dropped.push({ name: filename, reason: 'Not a .yaml or .json file' });
             }
         }
 
@@ -783,6 +807,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 }
 
                 if (stageFiles.length === 0 && !runMetadataFile && !configFile) {
+                    dropped.push({ name: `${group.dirKey}/`, reason: 'No .yaml or .json report files in this folder' });
                     continue;
                 }
 
@@ -1100,8 +1125,10 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             const bundleValidation = {
                 format: isFormatValid ? 'brv02' : false,
                 hasHardware,
-                errors: bundleErrors,
-                warnings: bundleWarnings,
+                // The per-file check and the run check both report a stage with
+                // zero metrics, in different words: keep one message per problem.
+                errors: mergeValidationMessages(bundleErrors),
+                warnings: mergeValidationMessages(bundleWarnings),
                 fieldErrors: uploadValidation.fieldErrors,
                 entries
             };
@@ -1135,9 +1162,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 return combined;
             });
         }
+        // The list under the steps says which files were skipped and why.
+        setDroppedFiles(dropped);
 
         if (addToast) {
-            addToast(`${uploadedCount} stage report file${uploadedCount === 1 ? ' is' : 's are'} loaded across ${newStagedBundles.length} run directory bundle${newStagedBundles.length === 1 ? '' : 's'}.`, 'info');
+            const runs = newStagedBundles.length;
+            const loaded = `Loaded ${uploadedCount} stage report${uploadedCount === 1 ? '' : 's'} into ${runs} run${runs === 1 ? '' : 's'}.`;
+            const skipped = dropped.length ? `${dropped.length} file${dropped.length === 1 ? ' wasn’t' : 's weren’t'} loaded: see why under the steps.` : '';
+            if (!uploadedCount && !runs && dropped.length) addToast(`No benchmark reports found. ${skipped}`, 'error');
+            else addToast([loaded, skipped].filter(Boolean).join(' '), 'info');
         }
     };
 
@@ -1324,12 +1357,9 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
         });
 
         if (addToast) {
-            addToast(
-                internal
-                    ? `Saved ${validBundles.length} run${validBundles.length === 1 ? '' : 's'} in this browser. They’re in My work, ready to curate.`
-                    : `Successfully staged ${validBundles.length} runs locally.`,
-                "success"
-            );
+            const n = validBundles.length;
+            // Same words on both instances: the runs are saved here, in My work.
+            addToast(`Saved ${n} run${n === 1 ? '' : 's'} in this browser. ${n === 1 ? 'It’s' : 'They’re'} in My work, ready to curate.`, 'success');
         }
         
         resetWizard();
@@ -1434,10 +1464,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             }
 
             if (addToast) {
+                const n = validBundles.length;
+                const runsWord = `${n} run${n === 1 ? '' : 's'}`;
                 addToast(
                     targetState === 'unlisted'
-                        ? "Benchmark saved as unlisted!"
-                        : "Benchmark submissions submitted successfully for review!",
+                        ? `Saved ${runsWord} as unlisted.`
+                        : `Submitted ${runsWord} for review. ${n === 1 ? 'It’s' : 'They’re'} Published once a reviewer approves.`,
                     "success"
                 );
             }
@@ -1464,7 +1496,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
         } catch (e) {
             console.error("Failed to submit benchmarks:", e);
-            if (addToast) addToast(`Failed to submit benchmarks: ${e.message}`, "error");
+            if (addToast) addToast(`Couldn’t submit the runs: ${e.message}`, "error");
         } finally {
             setIsSubmitting(false);
         }
@@ -1472,6 +1504,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
     const resetWizard = () => {
         setStagedFiles([]);
+        setDroppedFiles([]);
         setWizardStep(1);
         setDcoSigned(false);
         setSelectedReviewers([]);
@@ -1497,34 +1530,43 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
             <div className="flex-1 flex flex-col p-6 overflow-y-auto space-y-6 bg-transparent">
                 <div className="max-w-3xl mx-auto w-full space-y-6 text-slate-200">
                     <div>
-                        <h3 className="text-base font-extrabold text-slate-100 flex items-center gap-2 select-none">
-                            Contributor Attribution & DCO
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-1 select-none">Accept the Developer Certificate of Origin (DCO) and verify your identity using GitHub.</p>
+                        <h2 className="text-base font-extrabold text-slate-100 flex items-center gap-2 select-none">
+                            Attribution &amp; DCO
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-1 select-none">Sign in with GitHub and sign off on the Developer Certificate of Origin (DCO). Reviewers see who submitted each run.</p>
                     </div>
 
                     {!isAuthenticated ? (
                         <div className="border border-slate-900 bg-slate-950/40 rounded-2xl p-8 shadow-inner flex flex-col items-center text-center space-y-4 max-w-xl mx-auto">
                             <div className="p-3.5 bg-slate-900 rounded-full text-slate-400">
-                                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                     <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33.85 0 1.71.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0012 2z" />
                                 </svg>
                             </div>
                             <div className="space-y-1.5 select-none">
-                                <h4 className="font-bold text-slate-200">GitHub Verification Required</h4>
-                                <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">To ensure benchmark validity and trace contributor identity, manual entry is disabled. Please verify via GitHub OAuth to proceed.</p>
+                                <h3 className="font-bold text-slate-200">Sign in with GitHub</h3>
+                                <p className="text-xs text-slate-500 max-w-sm leading-relaxed font-medium">Submissions are tied to your GitHub account, so reviewers know who sent each run.</p>
                             </div>
                             {!isConfigured ? (
-                                <div className="relative group/tooltip inline-block w-full sm:w-auto">
-                                    <button
-                                        type="button"
-                                        disabled
-                                        className="w-full px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-900 text-slate-500 bg-slate-900/20 cursor-not-allowed opacity-50 select-none shadow-md"
-                                    >
-                                        Authenticate with GitHub
-                                    </button>
-                                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-slate-900 border border-slate-800 text-slate-200 text-xs font-medium rounded-xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-200 shadow-2xl z-[9999] w-64 pointer-events-none leading-relaxed text-center">
-                                        GitHub Login is not configured yet.
+                                // Said in the page, not in a hover tooltip on a disabled
+                                // button that keyboard and screen-reader users never get.
+                                <div className="w-full space-y-3">
+                                    <p id="wizard-github-unconfigured" className="surface-light rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-xs leading-relaxed text-amber-900">
+                                        GitHub sign-in isn’t configured on this server, so runs can’t be submitted for review here. You can still save them in this browser
+                                        and curate them in My work.
+                                    </p>
+                                    <div className="flex flex-wrap items-center justify-center gap-2">
+                                        <button
+                                            type="button"
+                                            disabled
+                                            aria-describedby="wizard-github-unconfigured"
+                                            className="px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 border border-slate-900 text-slate-500 bg-slate-900/20 cursor-not-allowed opacity-50 select-none shadow-md"
+                                        >
+                                            Authenticate with GitHub
+                                        </button>
+                                        <Button size="sm" variant="secondary" onClick={handleStageLocally} disabled={formatCount === 0}>
+                                            Save to My work instead
+                                        </Button>
                                     </div>
                                 </div>
                             ) : (
@@ -1614,18 +1656,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                 <div className="max-w-2xl mx-auto w-full space-y-6 text-slate-200">
                     <div className="text-center py-4 select-none">
                         <CheckCircle size={48} className="text-accent-600 mx-auto mb-3" />
-                        <h3 className="text-base font-extrabold text-slate-100 tracking-tight">Ready to Submit</h3>
-                        <p className="text-xs text-slate-500 mt-1">Review the summary below before pushing to the review queue.</p>
+                        <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Ready to submit</h2>
+                        <p className="text-xs text-slate-500 mt-1">Check the summary, then submit the runs for review. They’re Published once a reviewer approves them.</p>
                     </div>
 
                     <div className="bg-slate-950/40 rounded-2xl border border-slate-900/80 p-5 space-y-4 shadow-inner">
                         <div className="flex justify-between items-center text-xs pb-3 border-b border-slate-900/60 select-none">
-                            <span className="text-slate-500 font-semibold">Total Runs Selected</span>
-                            <span className="font-bold text-slate-200">{validBundles.length} runs</span>
+                            <span className="text-slate-500 font-semibold">Runs to submit</span>
+                            <span className="font-bold text-slate-200">{validBundles.length} run{validBundles.length === 1 ? '' : 's'}</span>
                         </div>
                         
                         <div className="space-y-3">
-                            <span className="label-caps text-slate-500 block select-none">Staging Summary</span>
+                            <span className="label-caps text-slate-500 block select-none">Runs</span>
                             <div className="space-y-2 max-h-40 overflow-y-auto">
                                 {validBundles.map(b => (
                                     <div key={b.id} className="flex justify-between items-center text-xs bg-slate-950/60 border border-slate-900/40 px-3.5 py-2 rounded-xl">
@@ -1660,19 +1702,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     {/* Visibility Selection Section */}
                     <div className="bg-slate-950/40 rounded-2xl border border-slate-900/80 p-5 space-y-3 shadow-inner">
                         <div>
-                            <h4 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Benchmark Visibility</h4>
-                            <p className="text-micro text-slate-400 mt-0.5">Select the visibility and publishing workflow for this submission.</p>
+                            <h3 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">Visibility</h3>
+                            <p className="text-micro text-slate-400 mt-0.5">Choose whether these runs go to a reviewer or are saved unlisted.</p>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                            <div 
-                                onClick={() => setTargetVisibility('submitted_pending_review')}
-                                className={cn('p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'submitted_pending_review'
+                            <label
+                                className={cn('block p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'submitted_pending_review'
                                     ? 'bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
                                     : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700')}
                             >
-                                <div className="flex items-center justify-between mb-1">
+                                <span className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-emerald-400">
-                                        Public Review
+                                        Submit for review
                                     </span>
                                     <input 
                                         type="radio" 
@@ -1681,19 +1722,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         onChange={() => setTargetVisibility('submitted_pending_review')}
                                         className="accent-emerald-500 cursor-pointer"
                                     />
-                                </div>
-                                <p className="text-tiny text-slate-400 leading-normal">
-                                    Submits to the maintainer review queue for formal verification and publishing on the global grid.
-                                </p>
-                            </div>
+                                </span>
+                                <span className="block text-tiny text-slate-400 leading-normal">
+                                    A reviewer checks the runs. Once they approve, the runs are Published for everyone.
+                                </span>
+                            </label>
 
-                            <div 
-                                onClick={() => setTargetVisibility('unlisted')}
-                                className={cn('p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'unlisted'
+                            <label
+                                className={cn('block p-3.5 rounded-xl border cursor-pointer transition-all', targetVisibility === 'unlisted'
                                     ? 'bg-accent-600/10 border-accent-600/50 shadow-[0_0_15px_rgba(6,182,212,0.1)]'
                                     : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700')}
                             >
-                                <div className="flex items-center justify-between mb-1">
+                                <span className="flex items-center justify-between mb-1">
                                     <span className="text-xs font-bold text-accent-700">
                                         Unlisted
                                     </span>
@@ -1704,11 +1744,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         onChange={() => setTargetVisibility('unlisted')}
                                         className="accent-accent-600 cursor-pointer"
                                     />
-                                </div>
-                                <p className="text-tiny text-slate-400 leading-normal">
-                                    Experimental runs that haven't been reviewed yet.
-                                </p>
-                            </div>
+                                </span>
+                                <span className="block text-tiny text-slate-400 leading-normal">
+                                    Saved without review and left out of listings, for runs that are still experimental.
+                                </span>
+                            </label>
                         </div>
                     </div>
 
@@ -1724,7 +1764,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 flex gap-3 text-xs leading-normal">
                             <ShieldAlert className="text-amber-500 shrink-0 mt-0.5" size={16} />
                             <p className="text-slate-400 font-medium">
-                                By submitting, you initiate a formal pull-request style review. Prism maintainers will inspect the payload, manifests, and evidence logs before merging these results into the public Results Store.
+                                A reviewer checks the report files, manifests and logs. Once they approve, the runs are Published in the Results store.
                             </p>
                         </div>
                     )}
@@ -1900,30 +1940,33 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
 
     return (
         <div className="min-h-full bg-slate-950 text-slate-100 flex flex-col font-sans antialiased relative overflow-x-hidden pt-0">
-            {/* Toast Stack */}
-            <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+            {/* Top right, under the header, as in the Results store: at the
+                bottom they covered the footer's hint next to Next. */}
+            <div className="fixed right-4 top-20 z-[100] flex flex-col gap-2" aria-live="polite">
                 {toasts.map(t => (
-                    <div key={t.id} className={cn(
-                        'px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium transition-all animate-in slide-in-from-right duration-300 flex items-center justify-between gap-4',
-                        t.type === 'error' ? 'bg-red-500/90 backdrop-blur' :
-                        t.type === 'success' ? 'bg-green-500/90 backdrop-blur' : 'bg-blue-600/90 backdrop-blur'
-                    )}>
-                        <span>{t.message}</span>
-                        <button onClick={() => removeToast(t.id)} className="hover:bg-white/20 rounded-full p-1 opacity-75 hover:opacity-100">
-                            <X size={14} />
+                    <div key={t.id} className="surface-light flex max-w-sm items-start gap-3 rounded-2xl bg-zinc-900 px-4 py-3 text-sm text-white shadow-lg">
+                        <span
+                            aria-hidden="true"
+                            className={cn('mt-1.5 h-2 w-2 shrink-0 rounded-full', t.type === 'error' ? 'bg-red-400' : t.type === 'success' ? 'bg-emerald-400' : 'bg-sky-400')}
+                        />
+                        <span className="flex-1">{t.message}</span>
+                        <button type="button" onClick={() => removeToast(t.id)} aria-label="Dismiss" className="rounded-full p-0.5 text-white/70 hover:bg-white/10 hover:text-white">
+                            <X size={14} aria-hidden="true" />
                         </button>
                     </div>
                 ))}
             </div>
             <PageHeader
                 kicker="Prism toolkit"
-                title={internal ? 'Upload runs' : uploadIntent === 'stage-locally' ? 'Stage & preview benchmarks' : 'Submit benchmarks'}
+                // The nav's words: "Upload runs" on Internal Prism, "Submit a run"
+                // on a public one; its browser-only path is plain "Upload runs".
+                title={internal || uploadIntent === 'stage-locally' ? 'Upload runs' : submitFor(readInstanceMode()).label}
                 subtitle={
                     internal
                         ? 'Check Benchmark Report v0.2 files and preview their curves. Runs stay in this browser for now; curate them into a result in the Results store, then mark it official or ask an approver to.'
                         : uploadIntent === 'stage-locally'
-                          ? 'Validate benchmark report structure and preview performance curves locally in your browser session.'
-                          : 'Validate Benchmark Report v0.2 bundles, attach hardware and stack metadata, and submit runs for community review.'
+                          ? 'Check Benchmark Report v0.2 files and preview their curves. The runs stay in this browser, in My work, until you submit them for review.'
+                          : 'Check Benchmark Report v0.2 files, preview their curves, then sign in with GitHub to submit the runs for review. They’re Published once a reviewer approves them.'
                 }
                 onNavigateBack={onNavigateBack}
             />
@@ -1937,7 +1980,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                 { step: 1, label: 'Upload files' },
                                 { step: 2, label: 'Validation & preview' },
                                 { step: 3, label: 'Attribution & DCO' },
-                                { step: 4, label: 'Submit & confirm' },
+                                { step: 4, label: 'Submit for review' },
                             ].map((item, idx) => (
                                 <React.Fragment key={item.step}>
                                     {idx > 0 && <ChevronRight size={14} className="text-zinc-300 shrink-0" />}
@@ -1989,6 +2032,38 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                     </div>
                 )}
 
+                {/* Files the last upload couldn't use, each with why (RSP-3). */}
+                {wizardStep <= 2 && droppedFiles.length > 0 && (
+                    <div role="alert" className="surface-light rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-900">
+                        <div className="flex items-start justify-between gap-3">
+                            <p className="font-semibold">
+                                {droppedFiles.length} file{droppedFiles.length === 1 ? ' wasn’t' : 's weren’t'} loaded
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setDroppedFiles([])}
+                                aria-label="Dismiss the list of files that weren’t loaded"
+                                className="rounded-full p-0.5 text-red-700 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                            >
+                                <X size={14} aria-hidden="true" />
+                            </button>
+                        </div>
+                        <ul className="mt-1.5 list-disc space-y-0.5 pl-5">
+                            {droppedFiles.map((f, i) => (
+                                <li key={`${f.name}-${i}`}>
+                                    <span className="font-mono">{f.name}</span>: {f.reason}.
+                                </li>
+                            ))}
+                        </ul>
+                        <p className="mt-2 text-red-800">
+                            Prism reads Benchmark Report v0.2 files (and inference-perf reports), one file per stage.{' '}
+                            <a href={REPORT_FORMAT_URL} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-2">
+                                Report format<span className="sr-only"> (opens in a new tab)</span> ↗
+                            </a>
+                        </p>
+                    </div>
+                )}
+
                 {/* Content */}
                 <div className="flex-1 flex overflow-hidden rounded-3xl border border-slate-800 bg-slate-900/40 shadow-xs">
                     
@@ -2001,35 +2076,34 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             'flex flex-col bg-slate-950/20 backdrop-blur-md transition-all duration-300 relative'
                         )}>
                             <div className={stagedFiles.length === 0 ? 'max-w-md w-full bg-slate-900/30 border border-slate-900/50 p-6 rounded-2xl shadow-xl space-y-4' : 'flex flex-col h-full'}>
-                            {/* Workflow Option Description */}
+                            {/* What this upload does, in the instance's words. */}
                             <div className="mb-5 space-y-2 select-none">
                                 {uploadIntent === 'stage-locally' ? (
                                     <>
-                                        <p className="text-xs font-bold text-slate-200">
-                                            {internal ? 'Upload runs' : 'Stage & Preview Benchmark Runs'}
-                                        </p>
+                                        <h2 className="text-xs font-bold text-slate-200">Check your run files</h2>
                                         <p className="text-xs text-slate-500 leading-normal">
                                             {internal
                                                 ? 'Upload your benchmark run files to check their structure and preview the performance curves. They stay in this browser for now and show up in My work, ready to curate into a result.'
-                                                : 'Upload your benchmark run files to validate their structure and preview the performance curves locally. Staged runs are stored in your local session and will not be published to the public Results store.'}
+                                                : 'Upload your benchmark run files to check their structure and preview the performance curves. They stay in this browser, in My work; nothing is submitted for review until you choose to.'}
                                         </p>
                                     </>
                                 ) : (
                                     <>
-                                        <p className="text-xs font-bold text-slate-200">
-                                            Publish Benchmarks to Results Store
-                                        </p>
+                                        <h2 className="text-xs font-bold text-slate-200">Submit runs for review</h2>
                                         <p className="text-xs text-slate-500 leading-normal">
-                                            Upload your benchmark run files to validate them, edit their metadata, add developer attribution, and submit them to be reviewed and published to the public Results store.
+                                            Upload your run’s report files to check them and preview the curves. Then sign in with GitHub, sign off on the DCO and submit them. They’re Published once a reviewer approves them.
                                         </p>
                                     </>
                                 )}
                             </div>
 
-                            {/* Ingestion Source Switch (Only visible for Submit Review) */}
-                            {uploadIntent === 'submit-review' && (
-                                <div className="mb-4 flex bg-slate-950/60 border border-slate-900/60 p-1 rounded-xl">
+                            {/* Where the runs come from (submit path only). Hidden while the
+                                bucket scan only stages a sample run (CLOUD_SCAN_READY). */}
+                            {CLOUD_SCAN_READY && uploadIntent === 'submit-review' && (
+                                <div className="mb-4 flex bg-slate-950/60 border border-slate-900/60 p-1 rounded-xl" role="group" aria-label="Where the runs come from">
                                     <button
+                                        type="button"
+                                        aria-pressed={ingestionSource === 'local'}
                                         onClick={() => setIngestionSource('local')}
                                         className={cn(
                                             'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
@@ -2038,9 +2112,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                             : 'text-slate-500 hover:text-slate-300'
                                         )}
                                     >
-                                        Local Ingestion
+                                        Files
                                     </button>
                                     <button
+                                        type="button"
+                                        aria-pressed={ingestionSource === 'cloud'}
                                         onClick={() => setIngestionSource('cloud')}
                                         className={cn(
                                             'flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer',
@@ -2049,12 +2125,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                             : 'text-slate-500 hover:text-slate-300'
                                         )}
                                     >
-                                        Cloud Ingestion
+                                        Cloud bucket
                                     </button>
                                 </div>
                             )}
 
-                        {ingestionSource === 'local' ? (
+                        {activeSource === 'local' ? (
                             <div 
                                 onDragOver={handleDragOver}
                                 onDragLeave={handleDragLeave}
@@ -2066,9 +2142,15 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     : 'border-slate-900 hover:border-accent-600/50'
                                 )}
                             >
-                                <UploadCloud size={48} className={cn('mb-4', isDragging ? 'text-accent-700' : 'text-slate-500')} />
-                                <h3 className="font-semibold text-slate-200 mb-2 select-none">Drag & Drop files here</h3>
-                                <p className="text-xs text-slate-500 mb-6">Supports .yaml and .json benchmark reports.</p>
+                                <UploadCloud size={48} aria-hidden="true" className={cn('mb-4', isDragging ? 'text-accent-700' : 'text-slate-500')} />
+                                {/* An instruction, not a section: a heading here skipped from h1 to h3. */}
+                                <p className="font-semibold text-slate-200 mb-2 select-none">Drag &amp; drop files here</p>
+                                <p className="text-xs text-slate-500 mb-6">
+                                    Benchmark Report v0.2 files (.yaml or .json), one per stage.{' '}
+                                    <a href={REPORT_FORMAT_URL} target="_blank" rel="noopener noreferrer" className="font-semibold text-accent-700 underline underline-offset-2">
+                                        Report format<span className="sr-only"> (opens in a new tab)</span> ↗
+                                    </a>
+                                </p>
                                 
                                 <div className="flex flex-col gap-2 w-full max-w-xs">
                                     <label className="relative flex items-center justify-center px-4 py-2 bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white text-xs font-semibold rounded-xl cursor-pointer transition-all shadow-md">
@@ -2086,11 +2168,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                             <div className="flex-1 flex flex-col justify-between bg-slate-950/40 p-5 rounded-2xl border border-slate-900 shadow-inner">
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-2 text-accent-700 font-semibold text-xs">
-                                        <UploadCloud size={16} />
-                                        <span>Cloud Bucket Import</span>
+                                        <UploadCloud size={16} aria-hidden="true" />
+                                        <span>Cloud bucket</span>
                                     </div>
                                     <p className="text-xs text-slate-500">
-                                        Ingest verified benchmark runs directly from object storage (Google Cloud Storage or AWS S3).
+                                        Load runs from a Google Cloud Storage or Amazon S3 folder.
                                     </p>
                                     
                                     <div>
@@ -2116,16 +2198,18 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                         />
                                     </div>
                                     
+                                    {/* handleCloudScan doesn't read the bucket yet: it builds a sample run. */}
                                     <div className="bg-accent-600/5 border border-accent-600/10 rounded-xl p-2.5 text-tiny text-slate-500 leading-normal">
-                                        Note: Requires matching bucket permissions or configured service account roles. Click scan to ingest.
+                                        Preview: scanning isn’t connected to buckets yet. Scan adds a sample run (Llama-3-8B on H100 ×8) so you can try the next steps.
                                     </div>
                                 </div>
 
                                 <button 
+                                    type="button"
                                     onClick={handleCloudScan}
                                     className="w-full py-2 bg-gradient-to-r from-accent-400 to-blue-600 hover:from-accent-600 hover:to-blue-500 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-accent-600/10 transition-all flex items-center justify-center gap-1.5 mt-4 cursor-pointer"
                                 >
-                                    <UploadCloud size={14} /> Scan & Stage Cloud Run
+                                    <UploadCloud size={14} aria-hidden="true" /> Scan bucket
                                 </button>
                             </div>
                         )}
@@ -2167,20 +2251,21 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     <div className="bg-amber-500/10 border border-amber-500/20 text-amber-250 p-3.5 rounded-xl text-xs flex items-start gap-2.5 leading-normal shadow-[0_4px_20px_rgba(245,158,11,0.05)] select-none">
                                         <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5 animate-pulse" />
                                         <div className="flex-1">
-                                            <span className="font-bold text-amber-450 block mb-0.5">Verification Required for Inferred Metadata</span>
-                                            Prism has auto-populated some metadata fields (such as Model Name or Hardware Specs) by guessing/inferring from configuration files or folder structures. Please verify all fields marked with <Badge tone="warning" size="xs" className="px-1 text-tiny font-extrabold font-mono mx-0.5">Inferred</Badge> before continuing to publish to the Results store.
+                                            <span className="font-bold text-amber-450 block mb-0.5">Check the guessed fields</span>
+                                            Prism filled in some fields (such as the model name or hardware) by guessing from configuration files or folder names. Check every field marked <Badge tone="warning" size="xs" className="px-1 text-tiny font-extrabold font-mono mx-0.5">Inferred</Badge> before you continue.
                                         </div>
                                     </div>
                                 )}
                                 {wizardStep === 1 && (
                                     <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs mb-1">
                                         <button 
+                                            type="button"
                                             onClick={() => setIsUploadSidebarCollapsed(!isUploadSidebarCollapsed)}
+                                            aria-expanded={!isUploadSidebarCollapsed}
                                             className="p-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800/80 text-slate-400 hover:text-accent-700 cursor-pointer transition-all flex items-center gap-1 select-none"
-                                            title={isUploadSidebarCollapsed ? "Show Ingestion panel" : "Hide Ingestion panel"}
                                         >
-                                            {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-accent-700" /> : <ChevronLeft size={14} />}
-                                            <span className="label-caps px-0.5">{isUploadSidebarCollapsed ? "Upload Benchmarks" : "Maximize"}</span>
+                                            {isUploadSidebarCollapsed ? <ChevronRight size={14} className="text-accent-700" aria-hidden="true" /> : <ChevronLeft size={14} aria-hidden="true" />}
+                                            <span className="label-caps px-0.5">{isUploadSidebarCollapsed ? 'Show the upload panel' : 'Hide the upload panel'}</span>
                                         </button>
                                     </div>
                                 )}
@@ -2247,7 +2332,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                         <AlertCircle size={18} className="text-red-500 shrink-0" />
                                                     )}
                                                     <div className="flex flex-col">
-                                                        <span className="text-sm font-bold text-slate-800 dark:text-slate-200 select-all">{bundle.payload.model_name || 'Unknown Model'}</span>
+                                                        <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 select-all">{bundle.payload.model_name || 'Unknown Model'}</h2>
                                                         <span className="text-xs text-slate-500 dark:text-slate-400 select-all font-mono opacity-80 mt-0.5">{bundle.dirKey}</span>
                                                         
                                                         <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -2280,8 +2365,8 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 </Badge>
                                                             )}
 
-                                                            {/* Attribution Check Tag */}
-                                                            {bundle.payload.attribution ? (
+                                                            {/* Attribution Check Tag: public only (Internal Prism has no attribution step). */}
+                                                            {internal ? null : bundle.payload.attribution ? (
                                                                 <Badge tone="success" className="gap-1 normal-case tracking-normal animate-in fade-in zoom-in-95 duration-150">
                                                                     <Check size={10} className="shrink-0 text-emerald-500" /> Attribution: {bundle.payload.attribution.author || 'Author'} ({bundle.payload.attribution.organization || 'Org'})
                                                                 </Badge>
@@ -2308,13 +2393,24 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                 </div>
                                                 <div className="flex items-center gap-4">
                                                     <button 
+                                                        type="button"
                                                         onClick={(e) => { e.stopPropagation(); removeFile(bundle.id); }}
                                                         className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
                                                         title="Skip run"
+                                                        aria-label={`Skip ${bundle.name || bundle.payload.model_name || 'this run'}`}
                                                     >
-                                                        <Trash2 size={16} />
+                                                        <Trash2 size={16} aria-hidden="true" />
                                                     </button>
-                                                    {bundle.isExpanded ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
+                                                    {/* The row toggles on click; this button does it from the keyboard. */}
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); toggleExpand(bundle.id); }}
+                                                        aria-expanded={Boolean(bundle.isExpanded)}
+                                                        aria-label={`${bundle.isExpanded ? 'Hide' : 'Show'} details for ${bundle.name || bundle.payload.model_name || 'this run'}`}
+                                                        className="rounded p-1 text-slate-400 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                                                    >
+                                                        {bundle.isExpanded ? <ChevronDown size={18} aria-hidden="true" /> : <ChevronRight size={18} aria-hidden="true" />}
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -2343,7 +2439,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                             )}>
                                                                 {hasErrors && (
                                                                     <div className={activeWarnings.length > 0 ? "mb-2" : ""}>
-                                                                        <h4 className="font-semibold mb-1 flex items-center gap-1 text-red-750 dark:text-red-300"><ShieldAlert size={14}/> Errors:</h4>
+                                                                        <h3 className="font-semibold mb-1 flex items-center gap-1 text-red-750 dark:text-red-300"><ShieldAlert size={14} aria-hidden="true"/> Errors:</h3>
                                                                         <ul className="list-disc pl-5 space-y-1 font-semibold">
                                                                             {activeErrors.map((e, i) => <li key={i}>{e}</li>)}
                                                                         </ul>
@@ -2351,7 +2447,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                                 )}
                                                                 {activeWarnings.length > 0 && (
                                                                     <div>
-                                                                        <h4 className="font-semibold mb-1 flex items-center gap-1 text-amber-750 dark:text-amber-300"><AlertCircle size={14}/> Warnings:</h4>
+                                                                        <h3 className="font-semibold mb-1 flex items-center gap-1 text-amber-750 dark:text-amber-300"><AlertCircle size={14} aria-hidden="true"/> Warnings:</h3>
                                                                         <ul className="list-disc pl-5 space-y-1">
                                                                             {activeWarnings.map((w, i) => <li key={i}>{w}</li>)}
                                                                         </ul>
@@ -2750,7 +2846,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                     
                                                     {bundle.payload.entries && bundle.payload.entries.length > 0 && (
                                                         <div>
-                                                            <h4 className="font-semibold text-slate-300 text-xs uppercase tracking-wider mb-2.5 select-none">Parsed Sub-runs / Stages Validation Checklist ({bundle.payload.entries.length})</h4>
+                                                            <h3 className="font-semibold text-slate-300 text-xs uppercase tracking-wider mb-2.5 select-none">Stage checks ({bundle.payload.entries.length})</h3>
                                                             <div className="overflow-x-auto border border-slate-900/60 rounded-xl bg-slate-950/20">
                                                                 <table className="w-full text-left text-xs border-collapse">
                                                                     <thead className="bg-slate-950/45 text-slate-400 border-b border-slate-900/80 uppercase tracking-wider text-tiny">
@@ -2841,15 +2937,14 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                         </div>
                                                     )}
 
-                                                    {/* Target Dashboards Selection */}
-                                                                                                        {/* Publish Destinations Selection */}
+                                                    {/* Which well-lit path dashboards also show this run. */}
                                                     {wizardStep === 2 && (
                                                         <div className="mt-4 p-4 bg-slate-950/20 border border-slate-900/80 rounded-xl shadow-inner">
-                                                        <h5 className="font-semibold text-xs text-slate-300 mb-1 flex items-center gap-1.5 uppercase tracking-wider select-none">
-                                                            Publish Destinations
-                                                        </h5>
+                                                        <h3 className="font-semibold text-xs text-slate-300 mb-1 flex items-center gap-1.5 uppercase tracking-wider select-none">
+                                                            Also show on
+                                                        </h3>
                                                         <p className="text-tiny text-slate-500 mb-3 leading-normal">
-                                                            Select the dashboards where this benchmark run should be published.
+                                                            Well-lit path dashboards that should include this run.
                                                         </p>
                                                         <div className="flex flex-wrap gap-4 text-xs font-semibold select-none">
                                                             <label className="flex items-center gap-2 cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 px-3 py-1.5 rounded-xl border border-slate-900/80 hover:border-accent-600/35 shadow-md transition-all">
@@ -2913,11 +3008,11 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                                         {wizardStep === 2 && (
                                                             <div className="bg-slate-100/30 dark:bg-slate-800/10 border border-slate-200/60 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm self-start text-xs space-y-4 w-full">
                                                             <div>
-                                                                <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5 text-sm">
-                                                                    <span>🔍 Benchmark Assistant</span>
-                                                                </h4>
+                                                                <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 flex items-center gap-1.5 text-sm">
+                                                                    <span>Similar runs</span>
+                                                                </h3>
                                                                 <p className="text-tiny text-slate-500 mb-4 leading-relaxed">
-                                                                    Compare staging metrics and sync metadata tags with matching {internal ? 'runs in this Prism' : 'public runs'}.
+                                                                    Compare this run with matching {internal ? 'runs in this Prism' : 'public runs'} and copy their labels.
                                                                 </p>
 
                                                                 {(() => {
@@ -3067,7 +3162,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                             : 'bg-slate-900/40 text-slate-500 border-slate-900/50 cursor-not-allowed'
                                         )}
                                     >
-                                        {internal ? 'Save to My work' : 'Proceed to Staging'}
+                                        Save to My work
                                         <ArrowRight size={14} />
                                     </button>
                                 ) : (
@@ -3090,8 +3185,12 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                         {wizardStep === 3 && (
                             <div className="flex items-center gap-3">
                                 {(!isAuthenticated || !user?.username || !dcoSigned) && (
-                                    <span className="text-tiny text-amber-500 font-semibold max-w-[200px] text-right animate-pulse">
-                                        Please authenticate via GitHub and accept DCO to continue.
+                                    <span className="text-tiny text-amber-500 font-semibold max-w-[220px] text-right" aria-live="polite">
+                                        {!isConfigured
+                                            ? 'GitHub sign-in isn’t configured on this server.'
+                                            : !isAuthenticated || !user?.username
+                                              ? 'Sign in with GitHub and sign the DCO to continue.'
+                                              : 'Sign the DCO to continue.'}
                                     </span>
                                 )}
                                 <button 
@@ -3132,7 +3231,7 @@ export default function UploadValidationPage({ onNavigateBack, onNavigate, dashb
                                     ) : (
                                         <Check size={14} />
                                     )}
-                                    {targetVisibility === 'unlisted' ? 'Save as Unlisted' : 'Submit for Public Review'}
+                                    {targetVisibility === 'unlisted' ? 'Save as unlisted' : 'Submit for review'}
                                 </button>
                             </div>
                         )}

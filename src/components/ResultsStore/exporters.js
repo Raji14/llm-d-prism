@@ -47,6 +47,34 @@ export const fileSlug = (s) =>
         .replace(/^-|-$/g, '')
         .slice(0, 60) || 'export';
 
+// What tells series apart, for places too narrow for whole names:
+// "qwen3-32b · H100 ×8 · 7200/1000 · standard-k8s · inference-perf" next to
+// "… · precise-prefix-cache-routing · inference-perf" → "standard-k8s" and
+// "precise-prefix-cache-routing". The " · " parts every name shares at the
+// start and the end are dropped. Names come back whole when there's only one,
+// when one would be left empty, or when the short ones wouldn't be unique.
+export function distinctLabels(names) {
+    const full = names.map((n) => String(n ?? ''));
+    if (full.length < 2) return full;
+    const parts = full.map((n) => n.split(' · '));
+    const minLen = Math.min(...parts.map((p) => p.length));
+    let head = 0;
+    while (head < minLen - 1 && parts.every((p) => p[head] === parts[0][head])) head++;
+    let tail = 0;
+    while (head + tail < minLen - 1 && parts.every((p) => p[p.length - 1 - tail] === parts[0][parts[0].length - 1 - tail])) tail++;
+    const short = parts.map((p, i) => p.slice(head, p.length - tail).join(' · ') || full[i]);
+    return new Set(short).size === short.length ? short : full;
+}
+
+// A stage's load level as people read it: "c=30" for a concurrency sweep,
+// "6.5 req/s" for a request-rate sweep (rate sweeps record no concurrency),
+// null when neither was recorded.
+export function loadLevelLabel(p) {
+    if (p?.conc != null && p.conc !== '') return `c=${p.conc}`;
+    if (typeof p?.rate === 'number' && Number.isFinite(p.rate)) return `${Number(p.rate.toFixed(2))} req/s`;
+    return null;
+}
+
 // Every point of every series, one row each, with all recorded statistics
 // and provenance. series: [{ name, role, points, modelId, hw, setup, workload,
 // harness, engine, measured, caveats, shareUrl }]. A point saved before Prism

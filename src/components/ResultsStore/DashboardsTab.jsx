@@ -50,7 +50,7 @@ import {
 import { cn } from '../../utils/cn';
 import { loadCustomPricingRates } from '../../utils/pricingEngine';
 import { CurveChart, MetricToggles } from './CurveChart';
-import { fileSlug, mdTable, toCsv } from './exporters';
+import { fileSlug, loadLevelLabel, mdTable, toCsv } from './exporters';
 import { resultStatusLabel } from './instance';
 import { CopyButton, ExportActions, Notice, ResultStatusChip } from './parts';
 import { useChartView } from './useChartView';
@@ -125,8 +125,12 @@ const ttftLabel = (p) => {
     return parts.length ? parts.join(' · ') : 'TTFT not recorded';
 };
 
-// "c=128 · TTFT p50 1.27 s · p99 12.84 s": the point a price was worked out at.
-const pointLabel = (p) => [p.conc != null ? `c=${p.conc}` : null, nobreak(ttftLabel(p))].filter(Boolean).join('\u00a0· ');
+// "c=128 · TTFT p50 1.27 s · p99 12.84 s", or "6.5 req/s · TTFT p50 …" on a
+// request-rate sweep: the point a price was worked out at.
+const pointLabel = (p) => {
+    const level = loadLevelLabel(p);
+    return [level ? nobreak(level) : null, nobreak(ttftLabel(p))].filter(Boolean).join('\u00a0· ');
+};
 
 // Every batch of a setup's rows, newest first, so any of them can be pinned
 // as a watch's baseline: pinning only the newest made older batches read as
@@ -1002,24 +1006,48 @@ const TPOT_LIMIT_OPTIONS = [
 // A result's status in a word, for exports and the Unofficial label's tooltip.
 const STATUS_WORD = { draft: 'Draft', needs_changes: 'Needs changes', in_review: 'In review', declined: 'Declined', superseded: 'Superseded', official: 'Official', published: 'Published' };
 
-function ReportView({ showcase, copy, nav, onDelete, headingId }) {
+function ReportView({ showcase, copy, nav, onDelete, headingId, runsByKey }) {
     const ws = useWorkspace();
     const [editing, setEditing] = useState(false);
     const [sortBy, setSortBy] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
+    // What's typed in a $/chip-hour box while it has focus, so clearing it to
+    // type a new price doesn't snap back to the list price mid-edit.
+    const [priceDrafts, setPriceDrafts] = useState({});
     const hintId = useId();
     const curves = showcase.curveIds.map((id) => ws.getCurve(id)).filter(Boolean);
     // Results that aren't Official / Published yet go in too. They're marked
     // Unofficial / Unpublished wherever the report shows or exports them.
     const isOfficial = (c) => c.status === copy.publishedStatus;
     const unofficial = curves.filter((c) => !isOfficial(c)).length;
+    const internal = copy.publishedStatus === 'official';
+    // Built only from catalog runs (none uploaded in this browser). Adding
+    // catalog runs to a report makes drafts of them, so the label is about the
+    // result (its points and labels), not the runs: say so (RS-15).
+    const fromCatalog = (c) => {
+        const keys = c.builtFrom?.runKeys || [];
+        return keys.length > 0 && !(c.localRunIds || []).length && keys.every((k) => runsByKey?.get(k) && !runsByKey.get(k).isLocalOnly);
+    };
+    const catalogUnofficial = curves.filter((c) => !isOfficial(c) && fromCatalog(c)).length;
+    const catalogWho = catalogUnofficial === unofficial ? (unofficial === 1 ? 'It’s' : 'They’re') : `${catalogUnofficial} of them are`;
+    const catalogWhat = catalogUnofficial === 1 ? 'the result' : 'the results';
+    const catalogNote = !catalogUnofficial
+        ? ''
+        : internal
+          ? `${catalogWho} built from runs in this Prism’s catalog: only ${catalogWhat} still ${catalogUnofficial === 1 ? 'needs' : 'need'} an approver.`
+          : `${catalogWho} built from public catalog runs: the runs are public; only ${catalogWhat} ${catalogUnofficial === 1 ? 'hasn’t' : 'haven’t'} been reviewed.`;
+    const catalogTitle = internal
+        ? ` Built from runs in this Prism’s catalog; the result itself isn’t marked ${copy.publishedLabel} yet.`
+        : ' Built from public catalog runs; the result itself hasn’t been reviewed yet.';
     const unofficialNote = !unofficial
         ? ''
-        : unofficial === 1 && curves.length > 1
-          ? `One of these results isn’t ${copy.publishedLabel} yet. It’s marked ${copy.unofficialLabel}: its points and labels can still change.`
-          : `${unofficial === curves.length ? (unofficial === 1 ? 'This result isn’t' : 'None of these results are') : `${unofficial} of these results aren’t`} ${copy.publishedLabel} yet. ${
-                unofficial === 1 ? 'It’s' : 'They’re'
-            } marked ${copy.unofficialLabel}: ${unofficial === 1 ? 'its' : 'their'} points and labels can still change.`;
+        : `${
+              unofficial === 1 && curves.length > 1
+                  ? `One of these results isn’t ${copy.publishedLabel} yet. It’s marked ${copy.unofficialLabel}: its points and labels can still change.`
+                  : `${unofficial === curves.length ? (unofficial === 1 ? 'This result isn’t' : 'None of these results are') : `${unofficial} of these results aren’t`} ${copy.publishedLabel} yet. ${
+                        unofficial === 1 ? 'It’s' : 'They’re'
+                    } marked ${copy.unofficialLabel}: ${unofficial === 1 ? 'its' : 'their'} points and labels can still change.`
+          }${catalogNote ? ` ${catalogNote}` : ''}`;
     // Results that never recorded TTFT open on a metric they have, not an empty chart.
     const view = useChartView(curves.map((c) => c.points.filter((p) => p.included)));
     const { latency, stat, throughput } = view;
@@ -1155,6 +1183,9 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                 { label: 'Measured', get: (r) => r.measured },
                 { label: 'Run IDs', get: (r) => r.runIds },
                 { label: 'Priced at concurrency', get: (r) => r.point?.conc },
+                // Request-rate sweeps record a rate, not a concurrency (RS-6). A
+                // concurrency sweep's target QPS is only a cap, so it stays empty there.
+                { label: 'Priced at request rate (req/s)', get: (r) => (r.point?.conc == null ? r.point?.rate : null) },
                 { label: 'TTFT p50 (ms)', get: (r) => r.point?.ttftP50 ?? r.point?.ttft },
                 { label: 'TTFT p99 (ms)', get: (r) => r.point?.ttftP99 },
                 { label: 'TPOT p50 (ms)', get: (r) => r.point?.tpotP50 ?? r.point?.tpot },
@@ -1166,7 +1197,8 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                 { label: '$ per 1M output tokens', get: (r) => r.cpm },
                 { label: 'Tokens per $', get: (r) => (r.cpm != null ? 1e6 / r.cpm : null) },
                 { label: 'Not priced because', get: (r) => r.note },
-                { label: 'Caveats', get: () => [mixed ? `Not like-for-like: ${mixed}` : null, unofficialNote].filter(Boolean).join(' ') },
+                // Whole sentences, each with its full stop, so they don't run together.
+                { label: 'Caveats', get: () => [mixed ? `Not like-for-like: ${mixed}.` : null, unofficialNote].filter(Boolean).join(' ') },
             ],
             exportRows
         );
@@ -1174,7 +1206,9 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
         `**${showcase.name}** · cost at ${atPeak && !maxTpotMs ? 'peak throughput' : limitLabel}`,
         showcase.description ? showcase.description : null,
         mixed ? `> **Not like-for-like:** these results use different ${mixed}.` : null,
-        unofficial ? `> _${copy.unofficialLabel}: not ${copy.publishedLabel} yet, so its points and labels can still change._` : null,
+        unofficial
+            ? `> _${copy.unofficialLabel}: not ${copy.publishedLabel} yet, so ${unofficial === 1 ? 'its' : 'their'} points and labels can still change.${catalogNote ? ` ${catalogNote}` : ''}_`
+            : null,
         mdTable(
             ['Result', 'Deployment', 'Accelerator', 'Chips', tputColLabel, 'Priced at', '$ / chip-hour (source)', '$ / 1M output tokens', 'Tokens per $'],
             exportRows.map((r) => [
@@ -1289,79 +1323,124 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                 ? 'Each result is priced at its highest throughput, however slow that point is.'
                                 : `Each result is priced at its highest throughput with ${limitLabel}, so an overloaded point can’t make it look cheaper.`
                         } Your prices and this choice are saved with the report.`}
-                        actions={
-                            <div className="flex flex-wrap items-center gap-4">
-                                <Switch
-                                    surface="light"
-                                    size="sm"
-                                    checked={perChip}
-                                    onChange={(v) => ws.updateShowcase(showcase.id, { perChip: v })}
-                                    label="Per chip"
-                                />
-                                {!atPeak && hasAnyP99 && (
-                                    <ToggleGroup
-                                        size="xs"
-                                        aria-label="Pricing TTFT statistic"
-                                        value={priceStat}
-                                        onChange={(st) => ws.updateShowcase(showcase.id, { priceStat: st })}
-                                        options={[
-                                            { value: 'p50', label: 'P50' },
-                                            { value: 'p99', label: 'P99' },
-                                        ]}
-                                    />
-                                )}
-                                <div className="flex items-center gap-2">
-                                    <span className="text-micro text-zinc-500">Price at</span>
-                                    <ToggleGroup size="xs" aria-label="Price at" value={priceAt} onChange={(v) => ws.updateShowcase(showcase.id, { priceAt: v })} options={priceOptions} />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-micro text-zinc-500">TPOT limit</span>
-                                    <Select
-                                        surface="light"
-                                        aria-label="Secondary TPOT limit"
-                                        value={showcase.maxTpotMs ? String(showcase.maxTpotMs) : ''}
-                                        onChange={(e) => ws.updateShowcase(showcase.id, { maxTpotMs: e.target.value ? Number(e.target.value) : null })}
-                                        className="w-40 py-1 text-xs"
-                                    >
-                                        {TPOT_LIMIT_OPTIONS.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>
-                                                {opt.label}
-                                            </option>
-                                        ))}
-                                    </Select>
-                                </div>
-                            </div>
-                        }
                     >
+                        {/* In the body rather than the header's actions slot: there the
+                            row couldn't wrap and ran past the card's right edge. */}
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3 border-b border-zinc-100 px-5 py-3">
+                            <Switch
+                                surface="light"
+                                size="sm"
+                                checked={perChip}
+                                onChange={(v) => ws.updateShowcase(showcase.id, { perChip: v })}
+                                label="Per chip"
+                            />
+                            {!atPeak && hasAnyP99 && (
+                                <ToggleGroup
+                                    size="xs"
+                                    aria-label="Pricing TTFT statistic"
+                                    value={priceStat}
+                                    onChange={(st) => ws.updateShowcase(showcase.id, { priceStat: st })}
+                                    options={[
+                                        { value: 'p50', label: 'P50' },
+                                        { value: 'p99', label: 'P99' },
+                                    ]}
+                                />
+                            )}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-micro text-zinc-500">Price at</span>
+                                <ToggleGroup size="xs" aria-label="Price at" value={priceAt} onChange={(v) => ws.updateShowcase(showcase.id, { priceAt: v })} options={priceOptions} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-micro text-zinc-500">TPOT limit</span>
+                                <Select
+                                    surface="light"
+                                    aria-label="Secondary TPOT limit"
+                                    value={showcase.maxTpotMs ? String(showcase.maxTpotMs) : ''}
+                                    onChange={(e) => ws.updateShowcase(showcase.id, { maxTpotMs: e.target.value ? Number(e.target.value) : null })}
+                                    className="w-40 py-1 text-xs"
+                                >
+                                    {TPOT_LIMIT_OPTIONS.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </Select>
+                            </div>
+                        </div>
                         <div className="flex flex-wrap gap-x-8 gap-y-3 border-b border-zinc-100 px-5 py-4">
                             {accelTypes.map((t, idx) => {
                                 const start = listPrice(t, customRates);
                                 const { source } = priceOf(t);
+                                const overridden = source === 'entered';
                                 const startLabel = start ? (start.source === 'custom' ? 'your Leaderboard rate' : 'GCP on-demand list (us-central1)') : '';
+                                // The box starts filled in with the price Prism would use, as
+                                // Compare's does; what you type overrides it until you reset.
+                                const shown = priceDrafts[t] !== undefined ? priceDrafts[t] : overridden ? String(prices[t]) : start ? start.price.toFixed(2) : '';
+                                const dropDraft = () =>
+                                    setPriceDrafts((d) => {
+                                        const next = { ...d };
+                                        delete next[t];
+                                        return next;
+                                    });
                                 return (
                                     <div key={t} className="space-y-1">
-                                        <label className="flex items-center gap-2 text-xs text-zinc-600">
-                                            <span className="font-medium text-zinc-900">{t}</span>$ per chip-hour
-                                            <Input
-                                                surface="light"
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={prices[t] ?? ''}
-                                                placeholder={start ? start.price.toFixed(2) : 'e.g. 2.70'}
-                                                aria-describedby={`${hintId}-${idx}`}
-                                                onChange={(e) => ws.setReportPrice(showcase.id, t, e.target.value === '' ? null : Number(e.target.value))}
-                                                className="w-24 py-1.5 text-right font-mono text-xs"
-                                            />
-                                        </label>
+                                        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-600">
+                                            <label className="flex items-center gap-2">
+                                                <span className="font-medium text-zinc-900">{t}</span>$ per chip-hour
+                                                <Input
+                                                    surface="light"
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.01"
+                                                    value={shown}
+                                                    placeholder="e.g. 2.70"
+                                                    aria-describedby={`${hintId}-${idx}`}
+                                                    onFocus={() => setPriceDrafts((d) => ({ ...d, [t]: shown }))}
+                                                    onBlur={dropDraft}
+                                                    onChange={(e) => {
+                                                        const v = e.target.value;
+                                                        const n = Number(v);
+                                                        setPriceDrafts((d) => ({ ...d, [t]: v }));
+                                                        // Empty, zero or the starting price again: no override.
+                                                        ws.setReportPrice(showcase.id, t, v === '' || !(n > 0) || (start && n === start.price) ? null : n);
+                                                    }}
+                                                    className="w-24 py-1.5 text-right font-mono text-xs"
+                                                />
+                                            </label>
+                                            {overridden ? (
+                                                <>
+                                                    <Badge tone="neutral" size="xs">
+                                                        custom
+                                                    </Badge>
+                                                    {start && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                dropDraft();
+                                                                ws.setReportPrice(showcase.id, t, null);
+                                                            }}
+                                                            className="rounded text-micro font-medium text-accent-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                                                        >
+                                                            Reset to {fmtMoney(start.price)}
+                                                        </button>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                start && (
+                                                    <Badge tone="neutral" size="xs">
+                                                        {start.source === 'custom' ? 'your rate' : 'list price'}
+                                                    </Badge>
+                                                )
+                                            )}
+                                        </div>
                                         {/* The one place that says where this price comes from. */}
                                         <p id={`${hintId}-${idx}`} className="text-micro text-zinc-500">
-                                            {source === 'entered'
+                                            {overridden
                                                 ? start
-                                                    ? `Custom override (Report). Clear it to use ${startLabel} (${fmtMoney(start.price)}).`
+                                                    ? `Custom override (Report). Reset to use ${startLabel} (${fmtMoney(start.price)}).`
                                                     : 'Custom override (Report).'
                                                 : start
-                                                  ? `${PRICE_SOURCE[start.source]} for ${start.name}. Enter what you pay to override it.`
+                                                  ? `${PRICE_SOURCE[start.source]} for ${start.name}. Type what you pay to override it.`
                                                   : 'No list price for this accelerator. Enter yours.'}
                                         </p>
                                     </div>
@@ -1371,39 +1450,38 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
                                 <thead className="border-b border-zinc-200 bg-zinc-50/70">
-                                    <tr className="label-caps text-zinc-500">
-                                        <th className="px-5 py-3 font-semibold" aria-sort={sortBy === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                    <tr className="label-caps whitespace-nowrap text-zinc-500">
+                                        <th className="py-3 pl-4 pr-3 font-semibold" aria-sort={sortBy === 'name' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
                                             <button type="button" onClick={() => toggleSort('name', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
                                                 Result {sortBy === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3 font-semibold">Accelerator</th>
-                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'chips' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                                            <button type="button" onClick={() => toggleSort('chips', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                                                Chips {sortBy === 'chips' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                        <th className="px-3 py-3 font-semibold" aria-sort={sortBy === 'chips' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('chips', 'asc')} title="Sort by chip count" className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                Hardware {sortBy === 'chips' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'tput' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                                            <button type="button" onClick={() => toggleSort('tput', 'desc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                                                {tputColLabel} {sortBy === 'tput' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                        <th className="px-3 py-3 text-right font-semibold" aria-sort={sortBy === 'tput' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('tput', 'desc')} title={tputColLabel} className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                {perChip ? 'Tok/s/chip' : 'Output tok/s'} {sortBy === 'tput' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'price' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                                            <button type="button" onClick={() => toggleSort('price', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                                                $ / chip-hour {sortBy === 'price' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                        <th className="px-3 py-3 text-right font-semibold" aria-sort={sortBy === 'price' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('price', 'asc')} title="$ / chip-hour" className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                $/chip-hr {sortBy === 'price' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'cpm' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                                            <button type="button" onClick={() => toggleSort('cpm', 'asc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                                                $ / 1M output tokens {sortBy === 'cpm' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                        <th className="px-3 py-3 text-right font-semibold" aria-sort={sortBy === 'cpm' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('cpm', 'asc')} title="$ / 1M output tokens" className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                $/1M output {sortBy === 'cpm' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3 text-right font-semibold" aria-sort={sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
-                                            <button type="button" onClick={() => toggleSort('tokPerDollar', 'desc')} className="inline-flex items-center gap-1 hover:text-zinc-900">
-                                                Tokens per $ {sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+                                        <th className="px-3 py-3 text-right font-semibold" aria-sort={sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                                            <button type="button" onClick={() => toggleSort('tokPerDollar', 'desc')} title="Output tokens per dollar" className="inline-flex items-center gap-1 hover:text-zinc-900">
+                                                Tokens/$ {sortBy === 'tokPerDollar' ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
                                             </button>
                                         </th>
-                                        <th className="px-4 py-3">
+                                        <th className="py-3 pl-1 pr-3">
                                             <span className="sr-only">Actions</span>
                                         </th>
                                     </tr>
@@ -1413,44 +1491,54 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                         const isCheapest = cheapestCpm != null && cpm != null && Math.abs(cpm - cheapestCpm) < 1e-9;
                                         return (
                                             <tr key={c.id} className={cn(isCheapest && 'bg-emerald-50/30')}>
-                                                <td className="px-5 py-3">
-                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(i) }} aria-hidden="true" />
-                                                        <button type="button" onClick={() => nav.openCurve(c.id)} className="text-left font-medium text-zinc-900 hover:text-accent-700">
-                                                            {c.name}
-                                                        </button>
-                                                        {isOfficial(c) ? (
-                                                            <ResultStatusChip status={c.status} copy={copy} size="xs" />
-                                                        ) : (
-                                                            <Badge tone="warning" size="xs" title={`${STATUS_WORD[c.status] || c.status}: not ${copy.publishedLabel} yet`}>
-                                                                {copy.unofficialLabel}
-                                                            </Badge>
-                                                        )}
-                                                        {isCheapest && (
-                                                            <Badge tone="success" size="xs">
-                                                                Cheapest
-                                                            </Badge>
-                                                        )}
+                                                <td className="min-w-[11rem] max-w-[16rem] py-3 pl-4 pr-3">
+                                                    <div className="flex items-start gap-2">
+                                                        <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: seriesColor(i) }} aria-hidden="true" />
+                                                        <div className="min-w-0 space-y-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => nav.openCurve(c.id)}
+                                                                title={c.name}
+                                                                className="line-clamp-2 text-left font-medium text-zinc-900 hover:text-accent-700"
+                                                            >
+                                                                {c.name}
+                                                            </button>
+                                                            <div className="flex flex-wrap items-center gap-1">
+                                                                {isOfficial(c) ? (
+                                                                    <ResultStatusChip status={c.status} copy={copy} size="xs" />
+                                                                ) : (
+                                                                    <Badge tone="warning" size="xs" title={`${STATUS_WORD[c.status] || c.status}: not ${copy.publishedLabel} yet.${fromCatalog(c) ? catalogTitle : ''}`}>
+                                                                        {copy.unofficialLabel}
+                                                                    </Badge>
+                                                                )}
+                                                                {isCheapest && (
+                                                                    <Badge tone="success" size="xs">
+                                                                        Cheapest
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-3 text-zinc-700">{type}</td>
-                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{chips}</td>
-                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-900">{fmtTput(shownTput(point, chips))}</td>
-                                                <td className="px-4 py-3 text-right">
+                                                <td className="whitespace-nowrap px-3 py-3 font-mono tabular-nums text-zinc-700">
+                                                    {type} ×{chips}
+                                                </td>
+                                                <td className="whitespace-nowrap px-3 py-3 text-right font-mono tabular-nums text-zinc-900">{fmtTput(shownTput(point, chips))}</td>
+                                                <td className="whitespace-nowrap px-3 py-3 text-right">
                                                     <div className="font-mono tabular-nums text-zinc-700">{price ? fmtMoney(price) : '—'}</div>
                                                     {price && source && (
                                                         <div className="mt-0.5 text-tiny text-zinc-500">
-                                                            {source === 'list' ? 'GCP list' : 'Custom override'}
+                                                            {source === 'list' ? 'GCP list' : 'Custom'}
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-3 text-right">
+                                                <td className="px-3 py-3 text-right">
                                                     {point ? (
                                                         <>
-                                                            <div className="flex items-center justify-end gap-1.5 font-mono tabular-nums text-zinc-900">
+                                                            <div className="flex items-center justify-end gap-1.5 whitespace-nowrap font-mono tabular-nums text-zinc-900">
                                                                 <span>{cpm != null ? fmtMoney(cpm) : `Enter a ${type} price`}</span>
                                                             </div>
-                                                            <div className="mt-0.5 text-tiny text-zinc-500">at {pointLabel(point)}</div>
+                                                            <div className="mt-0.5 whitespace-nowrap text-tiny text-zinc-500">at {pointLabel(point)}</div>
                                                         </>
                                                     ) : (
                                                         <>
@@ -1459,8 +1547,8 @@ function ReportView({ showcase, copy, nav, onDelete, headingId }) {
                                                         </>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-700">{cpm != null ? fmtCount(1e6 / cpm) : '—'}</td>
-                                                <td className="py-3 pl-2 pr-4 text-right">
+                                                <td className="whitespace-nowrap px-3 py-3 text-right font-mono tabular-nums text-zinc-700">{cpm != null ? fmtCount(1e6 / cpm) : '—'}</td>
+                                                <td className="py-3 pl-1 pr-3 text-right">
                                                     <button
                                                         type="button"
                                                         aria-label={`Remove ${c.name} from this report`}
@@ -1631,7 +1719,7 @@ export function DashboardsTab({ runs, runsByKey, copy, activeId, onSelect, nav, 
                 ) : active.kind === 'watch' ? (
                     <WatchView key={active.id} watch={active} runs={runs} runsByKey={runsByKey} nav={nav} onDelete={() => setConfirmDelete(active)} headingId={viewHeadingId} />
                 ) : (
-                    <ReportView key={active.id} showcase={active} copy={copy} nav={nav} onDelete={() => setConfirmDelete(active)} headingId={viewHeadingId} />
+                    <ReportView key={active.id} showcase={active} copy={copy} nav={nav} runsByKey={runsByKey} onDelete={() => setConfirmDelete(active)} headingId={viewHeadingId} />
                 )}
             </section>
             {/* Nothing can bring a deleted watch or report back, so ask first. */}

@@ -32,16 +32,50 @@ export function validateFormat(fileContent, filename) {
     return { format: false, error: "Unrecognized benchmark format" };
 }
 
+// A name that says something: "Unknown" / "Unknown Hardware" don't count.
+const isKnownName = (v) => typeof v === 'string' && v.trim() !== '' && !/^unknown\b/i.test(v.trim());
+
+// Benchmark Report v0.2 records the accelerator on a stack component's
+// standardized block (scenario.stack[].standardized.accelerator.model), the
+// same place the parser reads it from. Older reports put it under config.
+// Either one counts as hardware metadata.
 export function validateHardware(parsedData) {
-    let hasHardware = false;
-    
-    if (parsedData.scenario && parsedData.scenario.stack) {
-        hasHardware = parsedData.scenario.stack.some(component => 
-            component.config?.accelerator?.model || component.config?.machine?.type
-        );
+    const stack = parsedData?.scenario?.stack;
+    if (!Array.isArray(stack)) return false;
+    return stack.some((component) => {
+        const std = component?.standardized?.accelerator;
+        const stdModel = typeof std === 'string' ? std : std?.model;
+        return isKnownName(stdModel) || Boolean(component?.config?.accelerator?.model || component?.config?.machine?.type);
+    });
+}
+
+// "[file] Stage 0 has zero…" (validateBenchmark, prefixed by the wizard) and
+// "Stage 0 (file) has zero…" (validatePrismUploadStructure) are one problem.
+// One stage per file, so the file names it; the stage does when there's no file.
+const zeroMetricsKey = (msg) => {
+    const m = String(msg).match(/^(?:\[(.+?)\]\s*)?Stage (\S+)(?: \((.+)\))? has zero or negative metrics/);
+    if (m) return `zero-metrics|${m[1] || m[3] || `stage ${m[2]}`}`;
+    const ip = String(msg).match(/^\[(.+?)\]\s*Stage metrics are zero or negative/);
+    return ip ? `zero-metrics|${ip[1]}` : null;
+};
+
+/**
+ * Joins validation messages from several checks, keeping one message per
+ * problem: the per-file check and the run check both flag a stage with zero
+ * metrics, in different words. Order is kept; other messages pass through
+ * unless they repeat exactly.
+ */
+export function mergeValidationMessages(...lists) {
+    const seen = new Set();
+    const out = [];
+    for (const msg of lists.flat()) {
+        if (msg == null || msg === '') continue;
+        const key = zeroMetricsKey(msg) || `msg|${msg}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(msg);
     }
-    
-    return hasHardware;
+    return out;
 }
 
 export function validateBenchmark(fileContent, filename) {
@@ -110,15 +144,16 @@ export function validateBenchmark(fileContent, filename) {
             const stageMatch = filename.match(/stage_?(\d+)/i);
             const stageIndex = stageMatch ? parseInt(stageMatch[1], 10) : 0;
 
+            // The wizard prefixes every file's messages with "[file]" itself.
             if (throughput <= 0 && latencyVal <= 0) {
-                result.errors.push(`[${filename}] Stage metrics are zero or negative: throughput=${throughput}, latency=${latencyVal}`);
+                result.errors.push(`Stage metrics are zero or negative: throughput=${throughput}, latency=${latencyVal}`);
             }
 
             result.entries = [{
                 model_name: modelName,
                 stage: stageIndex
             }];
-            result.hasHardware = !!(parsed.hardware || parsed.accelerator || (parsed.scenario?.stack && parsed.scenario.stack.some(c => c.config?.accelerator?.model)));
+            result.hasHardware = !!(parsed.hardware || parsed.accelerator || validateHardware(parsed));
             
             const dirParts = filename.split('/');
             if (dirParts.length > 1) dirParts.pop();

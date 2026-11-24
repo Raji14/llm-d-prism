@@ -172,21 +172,22 @@ All views render inside the shared Prism 2.0 shell in `src/App.jsx`:
 
 1. **`SiteHeader` (`src/components/layout/SiteHeader.jsx`)**: Sticky `h-16` top
    bar (`max-w-6xl`) outside `<main>` with:
-   - `llm-d` logotype + vertical divider + `Prism` wordmark (links to `home`),
-   - Top-level links and click-to-open dropdown menus defined in
-     `src/components/layout/navigation.js` (`Leaderboard`, `Well-lit paths ▾`,
-     `Tools ▾`, `Docs ↗`) with an active `bg-accent-500` indicator bar,
-   - GitHub repo link and the `Submit a run` CTA, a `Button href variant="secondary"`
+   - Skip-to-content link targeting `main#main-content`,
+   - Local `/llm-d-logotype-and-icon.png` logotype + vertical divider + `Prism` wordmark (links to `home`),
+   - Top-level links and click-to-open disclosure dropdowns (no `role="menu"`) defined in
+     `src/components/layout/navigation.js` (`Leaderboard`, `Results store`, `Well-lit paths ▾`,
+     `Regressions`, `Docs ▾`) with `aria-current` active markers and an `bg-accent-500` indicator bar,
+   - GitHub repo link and the `Submit a run` / `Upload runs` CTA, a `Button href variant="secondary"`
      (outline pill) so a view's own primary action stays the only filled button in view,
-   - Responsive mobile drawer (`md:hidden`).
-2. **Scroll container (`<main>`)**: `flex-1 min-h-0 overflow-y-auto flex flex-col`.
+   - Responsive mobile drawer (`md:hidden`) closing on Escape and navigation.
+2. **Scroll container (`<main>`)**: `flex-1 min-h-0 overflow-y-auto flex flex-col *:shrink-0`.
    Individual views must use `min-h-full` (never `min-h-screen` or `h-screen`) on
    their root element and must NOT add left sidebar padding (`pl-24` / `pl-28`)
    or secondary fixed top bars.
 3. **`SiteFooter` (`src/components/layout/SiteFooter.jsx`)**: Rendered at the
-   bottom of `<main>` across every view (`max-w-6xl`) with `Explore` (including
-   `How we measure`), `Well-lit paths`, `Tools`, and `Project` link columns plus
-   the oversized `Prism` watermark.
+   bottom of `<main>` across every view (`max-w-6xl`) with `Explore`,
+   `Well-lit paths`, `Docs` (`How we measure`, `Report format`, `llm-d docs`),
+   and `Project` link columns plus the oversized `Prism` watermark.
 4. **Code splitting**: `PrismHome` is the only view in the entry chunk; every
    other view is `React.lazy` inside one `<Suspense fallback={<LoadingState size="md" />}>`.
    Register new views the same way, and import primitives by file
@@ -201,7 +202,7 @@ All from `import { ... } from './ui'` (or the relative path to `src/components/u
 | `Button` | `variant: primary\|secondary\|ghost\|danger\|dangerOutline\|outline\|link\|inverse\|inverseOutline`, `size: xs\|sm\|md\|lg\|icon`, `isLoading`, `href` | hand-rolled `<button className="px-4 py-2 …">` and button-styled `<a>`s. `href` renders an `<a>` (open-in-new-tab works; disabled → `aria-disabled`). `lg` = `h-12` hero CTA. `inverse` / `inverseOutline` = filled / outline on dark (`bg-zinc-950`) bands |
 | `Badge` | `tone: neutral\|brand\|success\|info\|warning\|danger\|violet`, `size: xs\|sm\|md` | ad-hoc chip spans |
 | `StatusChip` | `status: staged\|processing\|in_review\|approved\|verified\|community_validated\|sample\|rejected\|…` (auto tone+label+dot) | status color ternaries. `sample` marks illustrative data that must never pass as measured |
-| `Modal` | `isOpen, onClose, title, subtitle, size: sm\|md\|lg\|xl, footer, closeOnBackdrop, closeOnEscape` | `fixed inset-0` overlays |
+| `Modal` / `useFocusTrap` | `isOpen, onClose, title, subtitle, size: sm\|md\|lg\|xl, footer, closeOnBackdrop, closeOnEscape` | `fixed inset-0` overlays. `Modal` (and standalone dialogs/drawers via `useFocusTrap`) traps Tab/Shift+Tab, closes on Escape, and restores focus to the trigger |
 | `Input/Select/Textarea/Checkbox/Label` | `error`, standard DOM props | ad-hoc form field styling |
 | `Panel` | `title, kicker, subtitle, actions, padding: none\|sm\|md`, `titleAs` (default `h3`), `kickerAs` (default `div`) | ad-hoc panel shells. `titleAs="h2"` when the panel heads a top-level section of the page; `kickerAs="h2"` when the kicker is its only label |
 | `StatCard` | `icon, title, value, details[], onClick, active` | KPI cards (clickable = filter card) |
@@ -212,7 +213,7 @@ All from `import { ... } from './ui'` (or the relative path to `src/components/u
 | `HeroCurvesBg` | `className` | subtle accent perspective-fan SVG backdrop |
 | `SectionLabel` | `tone: accent\|muted`, `children` | section kicker (`kicker` utility + accent color) |
 | `GoogleMark` | `className, title` | the Google "G" next to GCP machine types (fixed brand colors, exempt from theme redirect) |
-| `ShareLinkButton` | — (copies URL + "Link copied!" toast) | per-dashboard share buttons |
+| `ShareLinkButton` | — (copies URL + in-place `"Copied"` with polite `aria-live`) | per-dashboard share buttons |
 | `ToggleGroup` | `options[{value,label}], value, onChange, fullWidth`, `aria-label` or `aria-labelledby` | `rounded-full` metric/mode pill selectors (`bg-zinc-900 text-white` active). Always name the group: two unnamed groups side by side sound the same to a screen reader |
 | `Tabs` / `TabPanel` | `tabs[{value,label,count?,icon?}], value, onChange, ariaLabel, idBase` / `idBase, value` | page-section underline tabs (Results store). Active = `text-accent-700 font-semibold` + 3px `bg-accent-600` bar + filled count; baseline is an inset shadow so the bar isn't clipped when the row scrolls. Pass one `useId()` as `idBase` to both and render the selected tab's content in the `TabPanel` |
 | `Switch` | `checked, onChange, label, aria-label, disabled` | on/off settings that apply immediately (e.g. *Show in Browse*): `role="switch"` track + knob, `bg-accent-600` when on, `label` = visible state text. Never a ghost button that reads "Shown"/"Hidden" |
@@ -295,11 +296,11 @@ disaggregation:
    `src/components/layout/navigation.js` (Home reads its title, description and
    badge from there). A headline number goes in `src/utils/wellLitProofs.js`,
    computed from the dashboard's data in `src/utils/wellLitPathData.js`, never
-   typed in; it then gets a card in `PROOF_CARDS` in `src/components/PrismHome.jsx`
-   (layer kicker, plain-SVG mini chart drawn from `proof.points`, legend and
-   unit) and a `PathProof` card with its full sweep in MethodologyPage's
-   `#paths` section. No defensible number → no Home card; link the path in
-   the band's "Also live" footnote instead.
+   typed in; well-lit pages render the same guide proof with
+   `renderWellLitProofOutcome()` above their live sweep results, Home renders it
+   in `PROOF_CARDS` (`src/components/PrismHome.jsx`), and MethodologyPage renders
+   its full sweep in `#paths`. No defensible number → no Home card; link the
+   path in the band's "Also live" footnote instead.
 
 ## Recipe: new dashboard from benchmark results
 
